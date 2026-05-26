@@ -38,7 +38,9 @@
 #include "HAL/shared/Delay.h"
 #include "HAL/shared/esp_wifi.h"
 
-#include "bsp_init.h"
+#ifndef ARDUINO_ARCH_HC32
+  #include "bsp_init.h"
+#endif
 
 
 #include <math.h>
@@ -984,17 +986,17 @@ inline void tmc_standby_setup() {
  *  - Print startup messages and diagnostics
  *  - Get EEPROM or default settings
  *  - Initialize managers for:
- *    â€?temperature
- *    â€?planner
- *    â€?watchdog
- *    â€?stepper
- *    â€?photo pin
- *    â€?servos
- *    â€?LCD controller
- *    â€?Digipot I2C
- *    â€?Z probe sled
- *    â€?status LEDs
- *    â€?Max7219
+ *    ï¿½?temperature
+ *    ï¿½?planner
+ *    ï¿½?watchdog
+ *    ï¿½?stepper
+ *    ï¿½?photo pin
+ *    ï¿½?servos
+ *    ï¿½?LCD controller
+ *    ï¿½?Digipot I2C
+ *    ï¿½?Z probe sled
+ *    ï¿½?status LEDs
+ *    ï¿½?Max7219
  */
 void setup() {
 
@@ -1014,14 +1016,14 @@ void setup() {
   #define SETUP_RUN(C) do{ SETUP_LOG(STRINGIFY(C)); C; }while(0)
 
 
-  MYSERIAL0.begin(BAUDRATE);
+  MYSERIAL1.begin(BAUDRATE);
   millis_t serial_connect_timeout = millis() + 1000UL;
-  while (!MYSERIAL0 && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
+  while (!MYSERIAL1 && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
 
   #if HAS_MULTI_SERIAL && !HAS_ETHERNET
-    MYSERIAL1.begin(BAUDRATE);
+    MYSERIAL2.begin(BAUDRATE);
     serial_connect_timeout = millis() + 1000UL;
-    while (!MYSERIAL1 && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
+    while (!MYSERIAL2 && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
   #endif
 	SERIAL_ECHOLNPGM("\n==============MARLIN==============");
   SERIAL_ECHOLNPGM("start");

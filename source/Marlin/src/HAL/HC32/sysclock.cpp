@@ -1,0 +1,248 @@
+/**
+ * Marlin 3D Printer Firmware
+ * Copyright (c) 2023 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
+ *
+ * Based on Sprinter and grbl.
+ * Copyright (c) 2011 Camiel Gubbels / Erik van der Zalm
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
+
+/**
+ * HC32f460 system clock configuration
+ */
+
+#ifdef ARDUINO_ARCH_HC32
+
+#include "../../inc/MarlinConfig.h"
+#include "sysclock.h"
+
+#include <core_hooks.h>
+#include <drivers/sysclock/sysclock_util.h>
+
+/***
+ * @brief Automatically calculate M, N, P values for the MPLL to reach a target frequency.
+ * @param input_frequency The input frequency.
+ * @param target_frequency The target frequency.
+ * @return The MPLL configuration structure. Q and R are not set.
+ *
+ * @note
+ * Simplified MPLL block diagram, with intermediary clocks (1) = VCO_in, (2) = VCO_out:
+ *
+ *  INPUT -> [/ M] -(1)-> [* N] -(2)-|-> [/ P] -> MPLL-P
+ */
+constexpr stc_clk_mpll_cfg_t get_mpll_config(double input_frequency, double target_frequency) {
+  // PLL input clock divider: M in [1, 24]
+  for (uint32_t M = 1; M <= 24; M++) {
+    double f_vco_in = input_frequency / M;
+
+    // 1 <= VCO_in <= 25 MHz
+    if (f_vco_in < 1e6 || f_vco_in > 25e6) continue;
+
+    // VCO multiplier: N in [20, 480]
+    for (uint32_t N = 20; N <= 480; N++) {
+      double f_vco_out = f_vco_in * N;
+
+      // 240 <= VCO_out <= 480 MHz
+      if (f_vco_out < 240e6 || f_vco_out > 480e6) continue;
+
+      // Output "P" divider: P in [2, 16]
+      for (uint32_t P = 2; P <= 16; P++) {
+        double f_calculated_out = f_vco_out / P;
+        if (f_calculated_out == target_frequency) {
+          // Found a match, return it
+          return {
+            .PllpDiv = P,
+            .PllqDiv = P, // Don't care for Q and R
+            .PllrDiv = P, // "
+            .plln =    N,
+            .pllmDiv = M
+          };
+        }
+      }
+    }
+  }
+
+  // If no valid M, N, P found, return invalid config
+  return { 0, 0, 0, 0, 0 };
+}
+
+/**
+ * @brief Get the division factor required to get the target frequency from the input frequency.
+ * @tparam input_freq The input frequency.
+ * @tparam target_freq The target frequency.
+ * @return The division factor.
+ */
+template <uint32_t input_freq, uint32_t target_freq>
+constexpr en_clk_sysclk_div_factor_t get_division_factor() {
+  // Calculate the divider to get the target frequency
+  constexpr float fdivider = static_cast<float>(input_freq) / static_cast<float>(target_freq);
+  constexpr int divider = static_cast<int>(fdivider);
+
+  // divider must be an integer
+  static_assert(fdivider == divider, "Target frequency not achievable, divider must be an integer");
+
+  // divider must be between 1 and 64 (enum range), and must be a power of 2
+  static_assert(divider >= 1 && divider <= 64, "Invalid divider, out of range");
+  static_assert((divider & (divider - 1)) == 0, "Invalid divider, not a power of 2");
+
+  // return the divider
+  switch (divider) {
+    case 1:  return ClkSysclkDiv1;
+    case 2:  return ClkSysclkDiv2;
+    case 4:  return ClkSysclkDiv4;
+    case 8:  return ClkSysclkDiv8;
+    case 16: return ClkSysclkDiv16;
+    case 32: return ClkSysclkDiv32;
+    case 64: return ClkSysclkDiv64;
+  }
+}
+
+/**
+ * @brief Validate the runtime clocks match the expected values.
+ */
+void validate_system_clocks() {
+  #define CLOCK_ASSERT(expected, actual)                            \
+    if (expected != actual) {                                       \
+      SERIAL_ECHOPGM("Clock Mismatch for " #expected ": expected "); \
+      SERIAL_ECHO(expected);                                         \
+      SERIAL_ECHOPGM(", got ");                                      \
+      SERIAL_ECHOLN(actual);                                         \
+      CORE_ASSERT_FAIL("Clock Mismatch: " #expected);                \
+    }
+
+  update_system_clock_frequencies();
+
+  CLOCK_ASSERT(F_SYSTEM_CLOCK, SYSTEM_CLOCK_FREQUENCIES.system);
+  CLOCK_ASSERT(F_HCLK, SYSTEM_CLOCK_FREQUENCIES.hclk);
+  CLOCK_ASSERT(F_EXCLK, SYSTEM_CLOCK_FREQUENCIES.exclk);
+  CLOCK_ASSERT(F_PCLK0, SYSTEM_CLOCK_FREQUENCIES.pclk0);
+  CLOCK_ASSERT(F_PCLK1, SYSTEM_CLOCK_FREQUENCIES.pclk1);
+  CLOCK_ASSERT(F_PCLK2, SYSTEM_CLOCK_FREQUENCIES.pclk2);
+  CLOCK_ASSERT(F_PCLK3, SYSTEM_CLOCK_FREQUENCIES.pclk3);
+  CLOCK_ASSERT(F_PCLK4, SYSTEM_CLOCK_FREQUENCIES.pclk4);
+}
+
+/**
+ * @brief Configure HC32 system clocks.
+ *
+ * This function is called by the Arduino core early in the startup process, before setup() is called.
+ * It is used to configure the system clocks to the desired state.
+ *
+ * See https://github.com/MarlinFirmware/Marlin/pull/27099 for more information.
+ *
+ * Modified for Kobra Max: try XTAL with high drive strength; fall back to internal 16 MHz HRC
+ * if XTAL does not lock within the DDL timeout. Prevents an infinite spin in
+ * sysclock_configure_mpll() when the XTAL startup timeout is silently ignored.
+ */
+void core_hook_sysclock_init() {
+  // DIAG-BEEP-1: ~0.5 s at ~4 kHz on PB5 (BEEPER_PIN) at MRC 8 MHz — before any clock change.
+  // Hear this → hook runs. Hear only this → hang is inside clock init.
+  PORT_Unlock();
+  PORT_OE(PortB, Pin05, Enable);
+  PORT_Lock();
+  for (int _r = 0; _r < 2000; _r++) {
+    PORT_SetBits(PortB, Pin05);
+    for (volatile int _d = 0; _d < 250; _d++) {}
+    PORT_ResetBits(PortB, Pin05);
+    for (volatile int _d = 0; _d < 250; _d++) {}
+  }
+
+  // Set wait cycles, as we are about to switch to 200 MHz HCLK
+  sysclock_configure_flash_wait_cycles();
+  sysclock_configure_sram_wait_cycles();
+
+  // Use internal HRC as MPLL source unconditionally.
+  // Avoids any XTAL startup hang (CLK_XtalCmd timeout is silently ignored by the DDL,
+  // after which sysclock_configure_mpll spins forever waiting for MPLL ready).
+  // HRC is always available; MPLL output is F_SYSTEM_CLOCK regardless of source.
+  //
+  // HRC frequency: nominally 16 MHz (ICG default). If ICG configures 20 MHz, the MPLL
+  // will over-clock slightly (250 MHz vs 200 MHz). Intentionally not panicking on that
+  // here — runtime clock validation via ALWAYS_VALIDATE_CLOCKS catches it when enabled.
+  sysclock_configure_hrc();
+
+  constexpr stc_clk_mpll_cfg_t pllConf_hrc = get_mpll_config(16000000UL, F_SYSTEM_CLOCK);
+  static_assert(pllConf_hrc.pllmDiv != 0 && pllConf_hrc.plln != 0 && pllConf_hrc.PllpDiv != 0,
+                "MPLL auto-configuration failed for HRC source");
+  sysclock_configure_mpll(ClkPllSrcHRC, &pllConf_hrc);
+
+  // Setup clock divisors
+  constexpr stc_clk_sysclk_cfg_t sysClkConf = {
+    .enHclkDiv  = get_division_factor<F_SYSTEM_CLOCK, F_HCLK>(),
+    .enExclkDiv = get_division_factor<F_SYSTEM_CLOCK, F_EXCLK>(),
+    .enPclk0Div = get_division_factor<F_SYSTEM_CLOCK, F_PCLK0>(),
+    .enPclk1Div = get_division_factor<F_SYSTEM_CLOCK, F_PCLK1>(),
+    .enPclk2Div = get_division_factor<F_SYSTEM_CLOCK, F_PCLK2>(),
+    .enPclk3Div = get_division_factor<F_SYSTEM_CLOCK, F_PCLK3>(),
+    .enPclk4Div = get_division_factor<F_SYSTEM_CLOCK, F_PCLK4>(),
+  };
+  sysclock_set_clock_dividers(&sysClkConf);
+
+  // Set power mode, before switch
+  power_mode_update_pre(F_SYSTEM_CLOCK);
+
+  // Switch to MPLL-P as system clock source
+  CLK_SetSysClkSource(CLKSysSrcMPLL);
+
+  // Set power mode, after switch
+  power_mode_update_post(F_SYSTEM_CLOCK);
+
+  // Verify clocks match expected values (at runtime)
+  #if ANY(MARLIN_DEV_MODE, ALWAYS_VALIDATE_CLOCKS)
+    validate_system_clocks();
+  #endif
+
+  // Verify clock configuration (at compile time)
+  #if ARDUINO_CORE_VERSION_INT >= GET_VERSION_INT(1, 2, 0)
+    assert_mpll_config_valid<
+      16000000UL,
+      pllConf_hrc.pllmDiv,
+      pllConf_hrc.plln,
+      pllConf_hrc.PllpDiv,
+      pllConf_hrc.PllqDiv,
+      pllConf_hrc.PllrDiv
+    >();
+    static_assert(get_mpll_output_clock(
+      16000000UL,
+      pllConf_hrc.pllmDiv,
+      pllConf_hrc.plln,
+      pllConf_hrc.PllpDiv
+    ) == F_SYSTEM_CLOCK, "HRC MPLL output does not match F_SYSTEM_CLOCK");
+
+    assert_system_clocks_valid<
+      F_SYSTEM_CLOCK,
+      sysClkConf.enHclkDiv,
+      sysClkConf.enPclk0Div,
+      sysClkConf.enPclk1Div,
+      sysClkConf.enPclk2Div,
+      sysClkConf.enPclk3Div,
+      sysClkConf.enPclk4Div,
+      sysClkConf.enExclkDiv
+    >();
+  #endif
+
+  // DIAG-BEEP-2: ~0.5 s at ~4 kHz on PB5 at HCLK 168 MHz — clock init completed.
+  // Hear beep-1 + beep-2 → clock is up, hang is somewhere after this function returns.
+  // Inner loop scaled for 168 MHz: 250 * (168/8) = 5250 per half-period.
+  for (int _r = 0; _r < 2000; _r++) {
+    PORT_SetBits(PortB, Pin05);
+    for (volatile int _d = 0; _d < 5250; _d++) {}
+    PORT_ResetBits(PortB, Pin05);
+    for (volatile int _d = 0; _d < 5250; _d++) {}
+  }
+}
+
+#endif // ARDUINO_ARCH_HC32

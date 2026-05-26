@@ -132,11 +132,13 @@ void PrintJobRecovery::purge() {
 	  card.removeJobRecoveryFile();
 #endif
 	
+  #ifndef ARDUINO_ARCH_HC32
 	  if(info.valid_head != 0xFF || info.valid_foot != 0xFF) {
 		if(persistentStore.FLASH_If_Erase(FLASH_OUTAGE_DATA_ADDR, FLASH_OUTAGE_DATA_ADDR+0x400) != FLASHIF_OK) {
 		}
 	  }
-	
+  #endif
+
 	  memset(&info, 0, sizeof(info));	// init();
 
 }
@@ -145,7 +147,11 @@ void PrintJobRecovery::purge() {
  * Load the recovery data, if it exists
  */
 void PrintJobRecovery::load() {
+  #ifndef ARDUINO_ARCH_HC32
      memcpy(&info, (uint8_t *)(FLASH_OUTAGE_DATA_ADDR), sizeof(info));
+  #else
+     memset(&info, 0, sizeof(info)); // HC32: flash-direct PLR not available; info cleared on load
+  #endif
 }
 
 /**
@@ -384,9 +390,11 @@ void PrintJobRecovery::write() {
     return;
   }
 */
+  #ifndef ARDUINO_ARCH_HC32
   if(persistentStore.FLASH_If_Write(FLASH_OUTAGE_DATA_ADDR, &info, sizeof(info)) != FLASHIF_OK) {
   	SERIAL_ECHOLNPGM("write error");
   }
+  #endif
 }
 
 /**

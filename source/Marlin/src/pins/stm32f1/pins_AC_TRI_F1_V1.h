@@ -21,7 +21,7 @@
  */
 #pragma once
 
-#ifndef HC32F46x
+#if !defined(HC32F46x) && !defined(ARDUINO_ARCH_HC32)
   #error "Oops! Select an HC32F46x board in 'options > c/c++->defines.'"
 #endif
 
@@ -34,9 +34,8 @@
 
 //
 // EEPROM
-//
-#define FLASH_EEPROM_EMULATION
-#define MARLIN_EEPROM_SIZE              0x2000  // 4KB
+// HC32 HAL has no flash EEPROM backend; use SD card emulation (SDSUPPORT is enabled).
+#define SDCARD_EEPROM_EMULATION
 
 //
 // Limit Switches
@@ -94,10 +93,17 @@
    * If undefined software serial is used according to the pins below
    */
 
-#define X_HARDWARE_SERIAL  Serial1
-#define Y_HARDWARE_SERIAL  Serial1
-#define Z_HARDWARE_SERIAL  Serial1
-#define E0_HARDWARE_SERIAL Serial1
+#ifdef ARDUINO_ARCH_HC32
+  #define X_HARDWARE_SERIAL  MSerial1
+  #define Y_HARDWARE_SERIAL  MSerial1
+  #define Z_HARDWARE_SERIAL  MSerial1
+  #define E0_HARDWARE_SERIAL MSerial1
+#else
+  #define X_HARDWARE_SERIAL  Serial1
+  #define Y_HARDWARE_SERIAL  Serial1
+  #define Z_HARDWARE_SERIAL  Serial1
+  #define E0_HARDWARE_SERIAL Serial1
+#endif
 
 //#define E1_HARDWARE_SERIAL Serial3
 

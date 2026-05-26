@@ -94,12 +94,7 @@ void CaseLight::update(const bool sflag) {
     #endif
       {
           const bool s = on ? !INVERT_CASE_LIGHT : INVERT_CASE_LIGHT;
-//          WRITE(CASE_LIGHT_PIN, s ? HIGH : LOW);
-          if(s) {
-            PORT_SetBitsMapp(CASE_LIGHT_PIN);
-          } else {
-            PORT_ResetBitsMapp(CASE_LIGHT_PIN);
-          }
+          WRITE(CASE_LIGHT_PIN, s ? HIGH : LOW);
       }
 
   #endif // !CASE_LIGHT_USE_NEOPIXEL

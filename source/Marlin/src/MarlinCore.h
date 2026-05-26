@@ -26,7 +26,9 @@
 #ifdef DEBUG_GCODE_PARSER
   #include "gcode/parser.h"
 #endif
-#include "../board/startup.h"
+#ifndef ARDUINO_ARCH_HC32
+  #include "../board/startup.h"
+#endif
 
 #include <math.h>
 #include <stdio.h>
