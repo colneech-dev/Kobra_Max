@@ -87,7 +87,7 @@
 #endif
 
 #ifdef PANIC_ENABLE
-  #if defined(PANIC_USART1_TX_PIN) || defined(PANIC_USART2_TX_PIN) || defined(PANIC_USART3_TX_PIN) || defined(PANIC_USART3_TX_PIN)
+  #if defined(PANIC_USART1_TX_PIN) || defined(PANIC_USART2_TX_PIN) || defined(PANIC_USART3_TX_PIN) || defined(PANIC_USART4_TX_PIN)
     #error "HC32 HAL uses a custom panic handler. Do not define PANIC_USARTx_TX_PIN."
   #endif
 #endif

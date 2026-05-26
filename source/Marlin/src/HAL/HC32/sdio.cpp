@@ -142,7 +142,7 @@ uint32_t SDIO_GetCardSize() {
   const uint64_t cardSizeBytes = uint64_t(handle->stcSdCardInfo.u32LogBlockNbr) * uint64_t(handle->stcSdCardInfo.u32LogBlockSize);
 
   // If the card is bigger than ~4Gb (maximum a 32bit integer can hold), clamp to the maximum value of a 32 bit integer
-  return _MAX(cardSizeBytes, UINT32_MAX);
+  return _MIN(cardSizeBytes, UINT32_MAX);
 }
 
 #endif // ARDUINO_ARCH_HC32
