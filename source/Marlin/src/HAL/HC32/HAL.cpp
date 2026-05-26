@@ -58,9 +58,19 @@ extern "C" void core_hook_usart_rx_irq(uint8_t ch, uint8_t usart) {
     return;
   }
 
-  // Submit character to emergency parser
-  if (MYSERIAL1.emergency_parser_enabled())
-    emergency_parser.update(MYSERIAL1.emergency_state, ch);
+  // Submit character to the emergency parser of the matching serial instance
+  #ifdef SERIAL_PORT
+    if (usart == SERIAL_PORT && MYSERIAL1.emergency_parser_enabled())
+      emergency_parser.update(MYSERIAL1.emergency_state, ch);
+  #endif
+  #ifdef SERIAL_PORT_2
+    if (usart == SERIAL_PORT_2 && MYSERIAL2.emergency_parser_enabled())
+      emergency_parser.update(MYSERIAL2.emergency_state, ch);
+  #endif
+  #ifdef SERIAL_PORT_3
+    if (usart == SERIAL_PORT_3 && MYSERIAL3.emergency_parser_enabled())
+      emergency_parser.update(MYSERIAL3.emergency_state, ch);
+  #endif
 }
 
 #endif // EMERGENCY_PARSER

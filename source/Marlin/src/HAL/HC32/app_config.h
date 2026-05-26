@@ -29,8 +29,6 @@
 
 // force-enable panic handler so that we can use our custom one (in MinSerial)
 #define PANIC_ENABLE 1
-// Also define USART2 TX pin so PANIC_OUTPUT_AVAILABLE is true (required for some GCC versions)
-#define PANIC_USART2_TX_PIN PA2
 // Hang on panic instead of resetting — breaks reset loops, makes hangs observable
 #define HANG_ON_PANIC 1
 

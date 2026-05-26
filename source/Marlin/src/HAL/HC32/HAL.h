@@ -52,10 +52,6 @@ inline void HAL_watchdog_refresh();
 //
 // Emergency Parser
 //
-#if ENABLED(EMERGENCY_PARSER)
-  extern "C" void usart_rx_irq_hook(uint8_t ch, uint8_t usart);
-#endif
-
 //
 // Misc. Defines
 //

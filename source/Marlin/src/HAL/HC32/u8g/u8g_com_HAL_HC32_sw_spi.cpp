@@ -39,7 +39,7 @@
 static uint8_t SPI_speed = LCD_SPI_SPEED;
 
 static inline uint8_t swSpiTransfer_mode_0(uint8_t b, const uint8_t spi_speed, const pin_t miso_pin=-1) {
-  for (i = 0; i < 8; ++i) {
+  for (uint8_t i = 0; i < 8; ++i) {
     if (spi_speed == 0) {
       WRITE(DOGLCD_MOSI, !!(b & 0x80));
       WRITE(DOGLCD_SCK, HIGH);
@@ -49,20 +49,20 @@ static inline uint8_t swSpiTransfer_mode_0(uint8_t b, const uint8_t spi_speed, c
     }
     else {
       const uint8_t state = (b & 0x80) ? HIGH : LOW;
-      for (j = 0; j < spi_speed; ++j) WRITE(DOGLCD_MOSI, state);
-      for (j = 0; j < spi_speed + (miso_pin >= 0 ? 0 : 1; ++j)) WRITE(DOGLCD_SCK, HIGH);
+      for (uint8_t j = 0; j < spi_speed; ++j) WRITE(DOGLCD_MOSI, state);
+      for (uint8_t j = 0; j < spi_speed + (miso_pin >= 0 ? 0 : 1); ++j) WRITE(DOGLCD_SCK, HIGH);
 
       b <<= 1;
       if (miso_pin >= 0 && READ(miso_pin)) b |= 1;
 
-      for (j = 0; j < spi_speed; ++j) WRITE(DOGLCD_SCK, LOW);
+      for (uint8_t j = 0; j < spi_speed; ++j) WRITE(DOGLCD_SCK, LOW);
     }
   }
   return b;
 }
 
 static inline uint8_t swSpiTransfer_mode_3(uint8_t b, const uint8_t spi_speed, const pin_t miso_pin=-1) {
-  for (i = 0; i < 8; ++i) {
+  for (uint8_t i = 0; i < 8; ++i) {
     const uint8_t state = (b & 0x80) ? HIGH : LOW;
     if (spi_speed == 0) {
       WRITE(DOGLCD_SCK, LOW);
@@ -71,9 +71,9 @@ static inline uint8_t swSpiTransfer_mode_3(uint8_t b, const uint8_t spi_speed, c
       WRITE(DOGLCD_SCK, HIGH);
     }
     else {
-      for (j = 0; j < spi_speed + (miso_pin >= 0 ? 0 : 1); ++j) WRITE(DOGLCD_SCK, LOW);
-      for (j = 0; j < spi_speed; ++j) WRITE(DOGLCD_MOSI, state);
-      for (j = 0; j < spi_speed; ++j) WRITE(DOGLCD_SCK, HIGH);
+      for (uint8_t j = 0; j < spi_speed + (miso_pin >= 0 ? 0 : 1); ++j) WRITE(DOGLCD_SCK, LOW);
+      for (uint8_t j = 0; j < spi_speed; ++j) WRITE(DOGLCD_MOSI, state);
+      for (uint8_t j = 0; j < spi_speed; ++j) WRITE(DOGLCD_SCK, HIGH);
     }
     b <<= 1;
     if (miso_pin >= 0 && READ(miso_pin)) b |= 1;

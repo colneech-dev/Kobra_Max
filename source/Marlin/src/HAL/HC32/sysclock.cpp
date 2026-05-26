@@ -148,18 +148,6 @@ void validate_system_clocks() {
  * sysclock_configure_mpll() when the XTAL startup timeout is silently ignored.
  */
 void core_hook_sysclock_init() {
-  // DIAG-BEEP-1: ~0.5 s at ~4 kHz on PB5 (BEEPER_PIN) at MRC 8 MHz — before any clock change.
-  // Hear this → hook runs. Hear only this → hang is inside clock init.
-  PORT_Unlock();
-  PORT_OE(PortB, Pin05, Enable);
-  PORT_Lock();
-  for (int _r = 0; _r < 2000; _r++) {
-    PORT_SetBits(PortB, Pin05);
-    for (volatile int _d = 0; _d < 250; _d++) {}
-    PORT_ResetBits(PortB, Pin05);
-    for (volatile int _d = 0; _d < 250; _d++) {}
-  }
-
   // Set wait cycles, as we are about to switch to 200 MHz HCLK
   sysclock_configure_flash_wait_cycles();
   sysclock_configure_sram_wait_cycles();
@@ -234,15 +222,6 @@ void core_hook_sysclock_init() {
     >();
   #endif
 
-  // DIAG-BEEP-2: ~0.5 s at ~4 kHz on PB5 at HCLK 168 MHz — clock init completed.
-  // Hear beep-1 + beep-2 → clock is up, hang is somewhere after this function returns.
-  // Inner loop scaled for 168 MHz: 250 * (168/8) = 5250 per half-period.
-  for (int _r = 0; _r < 2000; _r++) {
-    PORT_SetBits(PortB, Pin05);
-    for (volatile int _d = 0; _d < 5250; _d++) {}
-    PORT_ResetBits(PortB, Pin05);
-    for (volatile int _d = 0; _d < 5250; _d++) {}
-  }
 }
 
 #endif // ARDUINO_ARCH_HC32

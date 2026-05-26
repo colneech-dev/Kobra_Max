@@ -74,7 +74,7 @@ static void minserial_begin() {
 }
 
 static void minserial_putc(char c) {
-  #if WITHIN(SERIAL_PORT, 1, 3)
+  #if WITHIN(SERIAL_PORT, 1, 4)
     #define __USART_SYNC_PUTC(port_no, ch) usart_sync_putc(M4_USART##port_no, ch);
     #define USART_SYNC_PUTC(port_no, ch) __USART_SYNC_PUTC(port_no, ch)
 
