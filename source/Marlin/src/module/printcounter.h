@@ -24,7 +24,7 @@
 #include "../libs/stopwatch.h"
 #include "../libs/duration_t.h"
 #include "../inc/MarlinConfig.h"
-#include "../../../MarlinCore.h"// MEL_MOD
+#include "../MarlinCore.h"
 
 // Print debug messages with M111 S2
 //#define DEBUG_PRINTCOUNTER

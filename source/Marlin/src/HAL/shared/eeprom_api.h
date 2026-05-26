@@ -26,22 +26,25 @@
 #include <stdint.h>
 
 #include "../../libs/crc16.h"
-#include "../../cores/flash.h"
+#ifndef ARDUINO_ARCH_HC32
+  #include "../../cores/flash.h"
 
-
-enum 
-{
-  FLASHIF_OK = 0,
-  FLASHIF_ERASEKO,
-  FLASHIF_WRITINGCTRL_ERROR,
-  FLASHIF_WRITING_ERROR,
-  FLASHIF_PROTECTION_ERRROR
-};
+  enum
+  {
+    FLASHIF_OK = 0,
+    FLASHIF_ERASEKO,
+    FLASHIF_WRITINGCTRL_ERROR,
+    FLASHIF_WRITING_ERROR,
+    FLASHIF_PROTECTION_ERRROR
+  };
+#endif
 
 
 
 class PersistentStore {
 public:
+  // 2.1.x: reserved bytes excluded from EEPROM capacity (0 for all current backends)
+  static constexpr int eeprom_exclude_size = 0;
 
   // Total available persistent storage space (in bytes)
   static size_t capacity();
@@ -80,9 +83,10 @@ public:
     return read_data(data_pos, value, size, &crc);
   }
 
+#ifndef ARDUINO_ARCH_HC32
   static uint32_t FLASH_If_Erase(uint32_t addr_start, uint32_t addr_end);
-
   static uint32_t FLASH_If_Write(uint32_t destination, const void *p_source, uint32_t length);
+#endif
 };
 
 extern PersistentStore persistentStore;

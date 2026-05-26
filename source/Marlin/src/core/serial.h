@@ -61,8 +61,8 @@ extern uint8_t marlin_debug_flags;
   #else
     #define SERIAL_OUT(WHAT, V...) do{ \
       const bool port2_open = TERN1(HAS_ETHERNET, ethernet.have_telnet_client); \
-      if ( serial_port_index == 0 || serial_port_index == SERIAL_BOTH)                (void)MYSERIAL0.WHAT(V); \
-      if ((serial_port_index == 1 || serial_port_index == SERIAL_BOTH) && port2_open) (void)MYSERIAL1.WHAT(V); \
+      if ( serial_port_index == 0 || serial_port_index == SERIAL_BOTH)                (void)MYSERIAL1.WHAT(V); \
+      if ((serial_port_index == 1 || serial_port_index == SERIAL_BOTH) && port2_open) (void)MYSERIAL2.WHAT(V); \
     }while(0)
   #endif
 
@@ -70,7 +70,7 @@ extern uint8_t marlin_debug_flags;
 #else
   #define _PORT_REDIRECT(n,p)   NOOP
   #define _PORT_RESTORE(n)      NOOP
-  #define SERIAL_OUT(WHAT, V...) (void)MYSERIAL0.WHAT(V)
+  #define SERIAL_OUT(WHAT, V...) (void)MYSERIAL1.WHAT(V)
   #define SERIAL_ASSERT(P)      NOOP
 #endif
 

@@ -20,7 +20,7 @@
  *
  */
 
-#include "../../../inc/MarlinConfig.h"
+#include "../../inc/MarlinConfig.h"
 
 #if ENABLED(CASE_LIGHT_ENABLE)
 

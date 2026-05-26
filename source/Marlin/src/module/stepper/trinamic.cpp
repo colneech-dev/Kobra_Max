@@ -32,9 +32,9 @@
 #include "trinamic.h"
 #include "../stepper.h"
 
-#include "HardwareSerial.h"
+#include <HardwareSerial.h>
 #include "SPI.h"
-#include "../pins/pins.h"
+#include "../../pins/pins.h"
 
 enum StealthIndex : uint8_t { STEALTH_AXIS_XY, STEALTH_AXIS_Z, STEALTH_AXIS_E };
 #define TMC_INIT(ST, STEALTH_INDEX) tmc_init(stepper##ST, ST##_CURRENT, ST##_MICROSTEPS, ST##_HYBRID_THRESHOLD, stealthchop_by_axis[STEALTH_INDEX], chopper_timing_##ST, ST##_INTERPOLATE)

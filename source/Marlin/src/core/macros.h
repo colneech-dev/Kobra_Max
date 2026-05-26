@@ -162,6 +162,10 @@
 #define _DO_12(W,C,A,V...) (_##W##_1(A) C _DO_11(W,C,V))
 #define _DO_13(W,C,A,V...) (_##W##_1(A) C _DO_12(W,C,V))
 #define _DO_14(W,C,A,V...) (_##W##_1(A) C _DO_13(W,C,V))
+#define _DO_15(W,C,A,V...) (_##W##_1(A) C _DO_14(W,C,V))
+#define _DO_16(W,C,A,V...) (_##W##_1(A) C _DO_15(W,C,V))
+#define _DO_17(W,C,A,V...) (_##W##_1(A) C _DO_16(W,C,V))
+#define _DO_18(W,C,A,V...) (_##W##_1(A) C _DO_17(W,C,V))
 #define __DO_N(W,C,N,V...) _DO_##N(W,C,V)
 #define _DO_N(W,C,N,V...)  __DO_N(W,C,N,V)
 #define DO(W,C,V...)       (_DO_N(W,C,NUM_ARGS(V),V))
@@ -515,3 +519,77 @@
 #define MAP0(f, x, peek, ...) f(x) MAP_NEXT (peek, MAP1) (f, peek, __VA_ARGS__)
 #define MAP1(f, x, peek, ...) f(x) MAP_NEXT (peek, MAP0) (f, peek, __VA_ARGS__)
 #define MAP(f, ...) EVAL512 (MAP1 (f, __VA_ARGS__, (), 0))
+
+// Additions from Marlin 2.1.x required by the HC32F460 HAL serial infrastructure
+
+#ifndef NO_INLINE
+  #define NO_INLINE __attribute__((noinline))
+#endif
+
+// Allow manipulating enumeration value like flags without ugly cast everywhere
+#define ENUM_FLAGS(T) \
+  FORCE_INLINE constexpr T operator&(T x, T y) { return static_cast<T>(static_cast<int>(x) & static_cast<int>(y)); } \
+  FORCE_INLINE constexpr T operator|(T x, T y) { return static_cast<T>(static_cast<int>(x) | static_cast<int>(y)); } \
+  FORCE_INLINE constexpr T operator^(T x, T y) { return static_cast<T>(static_cast<int>(x) ^ static_cast<int>(y)); } \
+  FORCE_INLINE constexpr T operator~(T x)      { return static_cast<T>(~static_cast<int>(x)); } \
+  FORCE_INLINE T & operator&=(T &x, T y) { x = x & y; return x; } \
+  FORCE_INLINE T & operator|=(T &x, T y) { x = x | y; return x; } \
+  FORCE_INLINE T & operator^=(T &x, T y) { x = x ^ y; return x; }
+
+// C++11 type traits used by serial_base.h / serial_hook.h
+namespace Private {
+  template<bool, typename _Tp = void> struct enable_if { };
+  template<typename _Tp>              struct enable_if<true, _Tp> { typedef _Tp type; };
+
+  template<typename T, typename U> struct is_same { enum { value = false }; };
+  template<typename T> struct is_same<T, T> { enum { value = true }; };
+
+  template <typename T, typename ... Args> struct first_type_of { typedef T type; };
+  template <typename T> struct first_type_of<T> { typedef T type; };
+
+  template<typename T> struct remove_const          { typedef T type; };
+  template<typename T> struct remove_const<T const> { typedef T type; };
+
+  template<typename T> struct remove_volatile             { typedef T type; };
+  template<typename T> struct remove_volatile<T volatile> { typedef T type; };
+
+  template<typename T> struct remove_cv { typedef typename remove_const<typename remove_volatile<T>::type>::type type; };
+
+  template<typename>  struct _is_integral                    { enum { value = false }; };
+  template<>          struct _is_integral<unsigned char>     { enum { value = true }; };
+  template<>          struct _is_integral<unsigned short>    { enum { value = true }; };
+  template<>          struct _is_integral<unsigned int>      { enum { value = true }; };
+  template<>          struct _is_integral<unsigned long>     { enum { value = true }; };
+  template<>          struct _is_integral<unsigned long long>{ enum { value = true }; };
+  template<>          struct _is_integral<char>              { enum { value = true }; };
+  template<>          struct _is_integral<short>             { enum { value = true }; };
+  template<>          struct _is_integral<int>               { enum { value = true }; };
+  template<>          struct _is_integral<long>              { enum { value = true }; };
+  template<>          struct _is_integral<long long>         { enum { value = true }; };
+  template<typename T> struct is_integral : public _is_integral<typename remove_cv<T>::type> {};
+}
+
+namespace Private {
+  template<typename T> struct is_enum { enum { value = __is_enum(T) }; };
+  template<typename T, bool = is_enum<T>::value> struct _underlying_type { using type = __underlying_type(T); };
+  template<typename T>                           struct _underlying_type<T, false> { };
+  template<typename T> struct underlying_type : public _underlying_type<T> { };
+}
+
+// SFINAE member detection — used by serial_base.h CALL_IF_EXISTS_IMPL
+#define HAS_MEMBER_IMPL(Member) \
+  namespace Private { \
+    template <typename Type, typename Yes=char, typename No=long> struct HasMember_ ## Member { \
+      template <typename C> static Yes& test( decltype(&C::Member) ) ; \
+      template <typename C> static No& test(...); \
+      enum { value = sizeof(test<Type>(0)) == sizeof(Yes) }; }; \
+  }
+
+#define CALL_IF_EXISTS_IMPL(Return, Method, ...) \
+  HAS_MEMBER_IMPL(Method) \
+  namespace Private { \
+    template <typename T, typename ... Args> FORCE_INLINE typename enable_if<HasMember_ ## Method <T>::value, Return>::type Call_ ## Method(T * t, Args... a) { return static_cast<Return>(t->Method(a...)); } \
+    _UNUSED static Return Call_ ## Method(...) { return __VA_ARGS__; } \
+  }
+#define CALL_IF_EXISTS(Return, That, Method, ...) \
+  static_cast<Return>(Private::Call_ ## Method(That, ##__VA_ARGS__))

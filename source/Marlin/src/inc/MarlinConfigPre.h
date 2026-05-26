@@ -29,7 +29,9 @@
 // Prefix header to acquire configurations
 //
 #include <stdint.h>
-#include "../board/startup.h"
+#ifndef ARDUINO_ARCH_HC32
+  #include "../board/startup.h"
+#endif
 
 #ifndef __MARLIN_DEPS__
   #include "../HAL/platforms.h"

@@ -43,6 +43,9 @@
 
 #include "SdFile.h"
 
+// 2.1.x renamed SdFile to MediaFile; bridge for HC32 HAL EEPROM backend
+typedef SdFile MediaFile;
+
 typedef struct {
   bool saving:1,
        logging:1,

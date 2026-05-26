@@ -327,21 +327,21 @@ void GCodeQueue::flush_and_request_resend() {
 
 inline bool serial_data_available() {
   byte data_available = 0;
-  if (MYSERIAL0.available()) data_available++;
+  if (MYSERIAL1.available()) data_available++;
   #ifdef SERIAL_PORT_2
     const bool port2_open = TERN1(HAS_ETHERNET, ethernet.have_telnet_client);
-    if (port2_open && MYSERIAL1.available()) data_available++;
+    if (port2_open && MYSERIAL2.available()) data_available++;
   #endif
   return data_available > 0;
 }
 
 inline int read_serial(const uint8_t index) {
   switch (index) {
-    case 0: return MYSERIAL0.read();
+    case 0: return MYSERIAL1.read();
     case 1: {
       #if HAS_MULTI_SERIAL
         const bool port2_open = TERN1(HAS_ETHERNET, ethernet.have_telnet_client);
-        if (port2_open) return MYSERIAL1.read();
+        if (port2_open) return MYSERIAL2.read();
       #endif
     }
     default: return -1;
@@ -660,10 +660,10 @@ void GCodeQueue::advance() {
 
         #if !defined(__AVR__) || !defined(USBCON)
           #if ENABLED(SERIAL_STATS_DROPPED_RX)
-            SERIAL_ECHOLNPAIR("Dropped bytes: ", MYSERIAL0.dropped());
+            SERIAL_ECHOLNPAIR("Dropped bytes: ", MYSERIAL1.dropped());
           #endif
           #if ENABLED(SERIAL_STATS_MAX_RX_QUEUED)
-            SERIAL_ECHOLNPAIR("Max RX Queue Size: ", MYSERIAL0.rxMaxEnqueued());
+            SERIAL_ECHOLNPAIR("Max RX Queue Size: ", MYSERIAL1.rxMaxEnqueued());
           #endif
         #endif
 

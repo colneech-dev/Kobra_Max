@@ -21,7 +21,9 @@
  */
 #pragma once
 
-#include "../board/startup.h"
+#ifndef ARDUINO_ARCH_HC32
+  #include "../board/startup.h"
+#endif
 #include "../core/boards.h"
 #include "../../Configuration.h"
 /**
