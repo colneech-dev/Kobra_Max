@@ -222,13 +222,19 @@ void DgusTFT::ParamInit() {
   SERIAL_ECHOLN(page_index_now);
 #endif
 
-  // Navigate the display to our expected start page so MCU and display are in sync.
-  // Without this, the display boots to its own default (usually CHS page 1) while the
-  // MCU may be in ENG mode (page 121), causing all touch key values to be mismatched.
-  ChangePageOfTFT(page_index_now);
+  // Page sync is deferred to IdleLoop() after the display animation completes.
+  // Sending ChangePageOfTFT here (at firmware init) interrupts the boot animation.
 }
 
 void DgusTFT::IdleLoop()  {
+  // One-shot: after 6 s the display animation has finished. Navigate to the
+  // language home page so the MCU's page_index_now matches the live display page.
+  static bool startup_sync_done = false;
+  if (!startup_sync_done && millis() > 6000) {
+    ChangePageOfTFT(page_index_now);
+    startup_sync_done = true;
+  }
+
   #if ACDEBUG(AC_MARLIN)
     // Raw RX counter: prints whenever the LCD serial port has unread bytes.
     // Lets us verify USART4 RX is actually receiving data from the display.
