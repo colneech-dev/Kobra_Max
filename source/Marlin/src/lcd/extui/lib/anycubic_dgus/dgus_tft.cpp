@@ -218,12 +218,32 @@ void DgusTFT::ParamInit() {
   } else if (lcd_info.audio == ExtUI::OFF) {
     SERIAL_ECHOLN("lcd audio: OFF");
   }
+  SERIAL_ECHOPGM("ParamInit: page_index_now=");
+  SERIAL_ECHOLN(page_index_now);
 #endif
 
-  RequestValueFromTFT(0x14);  // get page ID
+  // Navigate the display to our expected start page so MCU and display are in sync.
+  // Without this, the display boots to its own default (usually CHS page 1) while the
+  // MCU may be in ENG mode (page 121), causing all touch key values to be mismatched.
+  ChangePageOfTFT(page_index_now);
 }
 
 void DgusTFT::IdleLoop()  {
+  #if ACDEBUG(AC_MARLIN)
+    // Raw RX counter: prints whenever the LCD serial port has unread bytes.
+    // Lets us verify USART4 RX is actually receiving data from the display.
+    static uint32_t _lcd_rx_last_ms = 0;
+    static uint32_t _lcd_rx_bytes = 0;
+    if (TFTSer.available()) {
+      _lcd_rx_bytes++;
+      if (millis() - _lcd_rx_last_ms > 2000) {
+        _lcd_rx_last_ms = millis();
+        SERIAL_ECHOPGM("LCD_RX bytes=");
+        SERIAL_ECHOLN(_lcd_rx_bytes);
+      }
+    }
+  #endif
+
   if (ReadTFTCommand()) {
     ProcessPanelRequest();
     command_len = 0;

@@ -2333,7 +2333,7 @@
 #define ANYCUBIC_LCD_DGUS
 #if ANY(ANYCUBIC_LCD_I3MEGA, ANYCUBIC_LCD_CHIRON, ANYCUBIC_LCD_DGUS)
   #define LCD_SERIAL_PORT 4  // Default is 3 for Anycubic
-  //#define ANYCUBIC_LCD_DEBUG
+  #define ANYCUBIC_LCD_DEBUG
 #endif
 
 //
