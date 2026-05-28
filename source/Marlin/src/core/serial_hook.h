@@ -266,8 +266,8 @@ struct MultiSerial : public SerialBase< MultiSerial< REPEAT(NUM_SERIAL, _S_NAME)
     #undef _S_END
   }
   bool connected() {
-    bool ret = true;
-    #define _S_CONNECTED(N) if (portMask.enabled(output[N]) && !CALL_IF_EXISTS(bool, &serial##N, connected)) ret = false;
+    bool ret = false;
+    #define _S_CONNECTED(N) if (portMask.enabled(output[N]) && CALL_IF_EXISTS(bool, &serial##N, connected)) ret = true;
     REPEAT(NUM_SERIAL, _S_CONNECTED);
     #undef _S_CONNECTED
     return ret;
@@ -283,7 +283,7 @@ struct MultiSerial : public SerialBase< MultiSerial< REPEAT(NUM_SERIAL, _S_NAME)
     #undef _S_FLUSH
   }
   NO_INLINE void flushTX() {
-    #define _S_FLUSHTX(N) if (portMask.enabled(output[N])) CALL_IF_EXISTS(void, &serial0, flushTX);
+    #define _S_FLUSHTX(N) if (portMask.enabled(output[N])) CALL_IF_EXISTS(void, &serial##N, flushTX);
     REPEAT(NUM_SERIAL, _S_FLUSHTX);
     #undef _S_FLUSHTX
   }

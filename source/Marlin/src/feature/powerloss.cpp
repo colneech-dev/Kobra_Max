@@ -148,9 +148,19 @@ void PrintJobRecovery::purge() {
  */
 void PrintJobRecovery::load() {
   #ifndef ARDUINO_ARCH_HC32
-     memcpy(&info, (uint8_t *)(FLASH_OUTAGE_DATA_ADDR), sizeof(info));
+    memcpy(&info, (uint8_t *)(FLASH_OUTAGE_DATA_ADDR), sizeof(info));
   #else
-     memset(&info, 0, sizeof(info)); // HC32: flash-direct PLR not available; info cleared on load
+    // HC32: read from SD file written by write()
+    if (card.isMounted()) {
+      open(true);
+      if (file.isOpen()) {
+        file.seekSet(0);
+        file.read(&info, sizeof(info));
+        file.close();
+        return;
+      }
+    }
+    memset(&info, 0, sizeof(info));
   #endif
 }
 
@@ -378,13 +388,11 @@ void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=0*/
 void PrintJobRecovery::write() {
 
 
-  #if 0
   open(false);
   file.seekSet(0);
   const int16_t ret = file.write(&info, sizeof(info));
   if (ret == -1) DEBUG_ECHOLNPGM("Power-loss file write failed.");
   if (!file.close()) DEBUG_ECHOLNPGM("Power-loss file close failed.");
-#endif
 /*
   if(persistentStore.FLASH_If_Erase(FLASH_OUTAGE_DATA_ADDR, FLASH_OUTAGE_DATA_ADDR+0x400) != FLASHIF_OK) {
     return;
