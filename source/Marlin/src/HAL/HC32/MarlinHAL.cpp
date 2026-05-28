@@ -99,10 +99,10 @@ extern "C" char *_sbrk(int incr);
 // MarlinHAL class implementation
 //
 
-pin_t MarlinHAL::last_adc_pin;
+volatile pin_t MarlinHAL::last_adc_pin;
 
 #if TEMP_SENSOR_SOC
-  float MarlinHAL::soc_temp = 0;
+  volatile float MarlinHAL::soc_temp = 0;
 #endif
 
 MarlinHAL::MarlinHAL() {}
@@ -314,8 +314,9 @@ void MarlinHAL::set_pwm_duty(const pin_t pin, const uint16_t value, const uint16
 }
 
 void MarlinHAL::set_pwm_frequency(const pin_t pin, const uint16_t f_desired) {
-  // TODO set_pwm_frequency is not implemented yet
-  panic("set_pwm_frequency is not implemented yet\n");
+  // HC32 framework does not expose a per-pin PWM frequency API.
+  // FAST_PWM_FAN is disabled in Configuration.h so this is never called.
+  UNUSED(pin); UNUSED(f_desired);
 }
 
 void flashFirmware(const int16_t) { MarlinHAL::reboot(); }

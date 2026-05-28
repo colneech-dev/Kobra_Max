@@ -56,14 +56,14 @@ extern Timer0 step_timer;
 // Temperature timer
 #define MF_TIMER_TEMP         (&temp_timer)
 #define TEMP_TIMER_PRIORITY   DDL_IRQ_PRIORITY_02
-#define TEMP_TIMER_PRESCALE   16UL            // 12.5MHz
+#define TEMP_TIMER_PRESCALE   16UL            // 3.125MHz (50MHz PCLK1 / 16)
 #define TEMP_TIMER_RATE       1000            // 1kHz
 #define TEMP_TIMER_FREQUENCY  TEMP_TIMER_RATE // 1kHz also
 
 // Stepper timer
 #define MF_TIMER_STEP          (&step_timer)
 #define STEP_TIMER_PRIORITY    DDL_IRQ_PRIORITY_00  // Top priority, nothing else uses it
-#define STEPPER_TIMER_PRESCALE 16UL                 // 12.5MHz
+#define STEPPER_TIMER_PRESCALE 16UL                 // 3.125MHz (50MHz PCLK1 / 16)
 
 #define STEPPER_TIMER_RATE          (HAL_TIMER_RATE / STEPPER_TIMER_PRESCALE) // 50MHz / 16 = 3.125MHz
 #define STEPPER_TIMER_TICKS_PER_US  ((STEPPER_TIMER_RATE) / 1000000UL)        // Integer 3
@@ -90,7 +90,7 @@ MARLIN_HAL_TIMER_INLINE_ATTR void HAL_timer_disable_interrupt(const timer_channe
 }
 
 MARLIN_HAL_TIMER_INLINE_ATTR bool HAL_timer_interrupt_enabled(const timer_channel_t timer_ch) {
-  return timer_ch->isPaused();
+  return !timer_ch->isPaused();
 }
 
 MARLIN_HAL_TIMER_INLINE_ATTR void HAL_timer_set_compare(const timer_channel_t timer_ch, const hal_timer_t compare) {
@@ -115,7 +115,7 @@ inline void HAL_timer_isr_epilogue(const timer_channel_t) {}
 #define STEPPER_ISR_ENABLED()               HAL_timer_interrupt_enabled(MF_TIMER_STEP)
 
 #define ENABLE_TEMPERATURE_INTERRUPT()  HAL_timer_enable_interrupt(MF_TIMER_TEMP)
-#define DISABLE_TEMPERATURE_INTERRUPT() HAL_timer_disable_interrupt(MF_TIMER_TEMP);
+#define DISABLE_TEMPERATURE_INTERRUPT() HAL_timer_disable_interrupt(MF_TIMER_TEMP)
 
 //
 // HAL ISR callbacks

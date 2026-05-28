@@ -95,11 +95,17 @@ bool SDIO_Init() {
   handle->SDIOCx = SDIO_PERIPHERAL;
   handle->enDevMode = SdCardDmaMode;
   handle->pstcDmaInitCfg = dmaConf;
-  //handle->pstcCardInitCfg = cardConf; // assigned in SDCARD_Init
+  handle->pstcCardInitCfg = cardConf;
 
   // Initialize sd card
   en_result_t rc = SDCARD_Init(handle, cardConf);
-  if (rc != Ok) printf("SDIO_Init() error (rc=%u)\n", rc);
+  if (rc != Ok) {
+    printf("SDIO_Init() error (rc=%u)\n", rc);
+    delete handle->pstcDmaInitCfg;
+    delete handle->pstcCardInitCfg;
+    delete handle;
+    handle = nullptr;
+  }
 
   return rc == Ok;
 }

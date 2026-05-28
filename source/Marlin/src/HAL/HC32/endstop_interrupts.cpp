@@ -62,6 +62,7 @@ void endstopIRQHandler() {
   CHECK(Z4_MIN);
 
   CHECK(Z_MIN_PROBE);
+  CHECK(CALIBRATION);
 
   // Update endstops
   if (flag) endstops.update();

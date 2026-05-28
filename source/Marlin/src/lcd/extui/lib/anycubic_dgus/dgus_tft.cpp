@@ -227,12 +227,16 @@ void DgusTFT::ParamInit() {
 }
 
 void DgusTFT::IdleLoop()  {
-  // One-shot: after 6 s the display animation has finished. Navigate to the
-  // language home page so the MCU's page_index_now matches the live display page.
+  // One-shot: 6 s after first IdleLoop call the display animation has finished.
+  // Navigate to the language home page so page_index_now matches the live display page.
   static bool startup_sync_done = false;
-  if (!startup_sync_done && millis() > 6000) {
-    ChangePageOfTFT(page_index_now);
-    startup_sync_done = true;
+  static uint32_t startup_ms = 0;
+  if (!startup_sync_done) {
+    if (startup_ms == 0) startup_ms = millis() ?: 1; // capture first-entry timestamp
+    if (millis() - startup_ms > 6000) {
+      ChangePageOfTFT(page_index_now);
+      startup_sync_done = true;
+    }
   }
 
   #if ACDEBUG(AC_MARLIN)
@@ -266,7 +270,7 @@ void DgusTFT::IdleLoop()  {
   if (millis() - milli_last > 1500) {
     milli_last = millis();
 
-    char str_buf[10];
+    char str_buf[14]; // "65535/65535\0" = 12 chars; 14 gives safe margin
     sprintf(str_buf, "%u/%u", (uint16_t)getActualTemp_celsius(E0), (uint16_t)getTargetTemp_celsius(E0));
     SendTxtToTFT(str_buf, TXT_MAIN_HOTEND);
 

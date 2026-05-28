@@ -114,13 +114,13 @@ private:
   /**
    * Pin number of the last pin that was used with adc_start()
    */
-  static pin_t last_adc_pin;
+  static volatile pin_t last_adc_pin;
 
   #if TEMP_SENSOR_SOC
     /**
      * On-chip temperature sensor value
      */
-    static float soc_temp;
+    static volatile float soc_temp;
   #endif
 };
 
