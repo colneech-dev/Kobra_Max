@@ -31,7 +31,12 @@
 #pragma once
 #include "../../../../inc/MarlinConfigPre.h"
 
-#define ACDEBUGLEVEL 0
+// Hotend temperature the Thermal Tuning page autotunes at (keep equal to
+// PID_HOTEND_TUNE_TEMP in tools/ui_features.py, which the screen text quotes).
+#define AC_PID_HOTEND_TUNE_TEMP 200
+#define AC_PID_BED_TUNE_TEMP    60
+
+#define ACDEBUGLEVEL 0   // set to 16 (AC_MARLIN) to trace pages/keys/VP traffic on the host serial port
 
 #if ACDEBUGLEVEL
   // Bit-masks for selective debug:

@@ -35,25 +35,26 @@
 #include "../../../../inc/MarlinConfigPre.h"
 #include "../../ui_api.h"
 
-#define DEVICE_NAME             "Dudley Do-Right"
+#define DEVICE_NAME             "KobraMax-HC32"
 //#define FIRMWARE_VER            "Marlin V2.0.8.1"
 #if ENABLED(CLASSIC_JERK)
-#define FIRMWARE_VER            "WabbitWare 1.8.4CJ"
 #if ENABLED(LIN_ADVANCE)
-#define FIRMWARE_VER            "WabbitWare 1.8.4LACJ"
+#define FIRMWARE_VER            "KobraMax-HC32 1.8.4LACJ"
 #else
-#define FIRMWARE_VER            "WabbitWare 1.8.4CJ"
+#define FIRMWARE_VER            "KobraMax-HC32 1.8.4CJ"
 #endif
 #else
 #if ENABLED(LIN_ADVANCE)
-#define FIRMWARE_VER            "WabbitWare 1.8.4LAJD"
+#define FIRMWARE_VER            "KobraMax-HC32 1.8.4LAJD"
 #else
-#define FIRMWARE_VER            "WabbitWare 1.8.3JD"
+#define FIRMWARE_VER            "KobraMax-HC32 1.8.3JD"
 #endif
 #endif
 
 #define BUILD_VOLUME            "400*400*450 (mm)"
 #define TECH_SUPPORT            "https://www.anycubic.com"
+
+#define DATA_BUF_SIZE           64
 
 /****************** PAGE INDEX***********************/
 #define PAGE_OFFSET        0
@@ -148,6 +149,13 @@
 #define PAGE_CHS_PRINTING_SETTING               (211+PAGE_OFFSET)
 #define PAGE_ENG_PRINTING_SETTING               (212+PAGE_OFFSET)
 
+// Single-language pages: same layout shown regardless of lcd_info.language,
+// so ChangePageOfTFT/FakeChangePageOfTFT must NOT apply the ENG+120 mirror.
+#define PAGE_THUMBNAIL                           (214+PAGE_OFFSET)
+#define PAGE_TERMINAL                             (215+PAGE_OFFSET)
+#define PAGE_THERMAL_TUNING                       (216+PAGE_OFFSET)
+#define PAGE_FACTORY_RESET                        (217+PAGE_OFFSET)
+
 
 
 /****************** Lcd control **************************/
@@ -157,7 +165,12 @@
 /****************** TXT **************************/
 
 // MIAN PAGE TXT
-#define TXT_MAIN_BED        0x2000
+// TXT_MAIN_BED was 0x2000 — relocated 2026-07-26, that address never
+// rendered on hardware despite firmware correctly sending to it (confirmed
+// via live serial trace) while every other status-bar VP worked. Moved to
+// an address in the genuinely-free gap between TXT_STATS_PRINTS_FILAMENT
+// (0x2830) and TXT_TERM_L0 (0x2920) — must match tools/patch_14showfile.py.
+#define TXT_MAIN_BED        0x2880
 #define TXT_MAIN_HOTEND     0x2030
 #define TXT_MAIN_MESSAGE    0x2060
 
@@ -253,6 +266,33 @@
 #define TXT_STATS_PRINTS_TIME    0x2790
 #define TXT_STATS_PRINTS_LONGEST 0x2810
 #define TXT_STATS_PRINTS_FILAMENT 0x2830
+
+// Live status line on the "please wait" pages (homing, leveling, pausing, ...). The baked-in
+// spinner cannot be animated by the firmware, so progress is written here as text instead.
+// Must match tools/patch_14showfile.py (checked by tools/cross_check_display.py).
+#define TXT_WAIT_STATUS  0x2A80
+
+// Start/stop value for an Animation Icon on the "please wait" pages (plain 16-bit value, not text):
+// the display plays the animation while this VP holds 1 and shows its stop icon otherwise (DWIN T5L
+// DGUS II guide 7.3). Harmless when the loaded display files contain no animation record.
+// Must match tools/patch_14showfile.py.
+#define TXT_WAIT_ANIM    0x2B00
+
+// Integer VPs (0-100 %) that drive the display's Process Bar controls (DWIN guide 7.23).
+// Must match tools/patch_14showfile.py.
+#define TXT_PRINT_BAR    0x2B20   // print progress on the Printing / Paused pages
+#define TXT_WAIT_BAR     0x2B30   // probe points done on the Leveling page
+
+// Move Axes page: the selected step size ("0.1 mm" / "1.0 mm" / "10 mm"), shown as text.
+#define TXT_MOVE_STEP    0x2AB0
+
+// Terminal page (215) rolling 5-line log — addresses must match
+// tools/patch_14showfile.py's TXT_TERM_L0-L4 exactly.
+#define TXT_TERM_L0    0x2920
+#define TXT_TERM_L1    0x2950
+#define TXT_TERM_L2    0x2980
+#define TXT_TERM_L3    0x29B0
+#define TXT_TERM_L4    0x29E0
 
 
 /*********************** KEY VALUE **************************/
@@ -401,7 +441,8 @@ namespace Anycubic {
     static float            live_Zoffset;
     static file_menu_t      file_menu;
     static bool             data_received;
-    static uint8_t          data_buf[64];
+    static bool             lcd_boot_synced;
+    static uint8_t          data_buf[DATA_BUF_SIZE];
     static uint8_t          data_index;
     static uint32_t         page_index_last;
     static uint32_t         page_index_last_2;
@@ -498,6 +539,11 @@ namespace Anycubic {
 
       static void page211_212_handle(void);
 			static void page213_handle(void);// MEL_MOD printer stats page (213)
+      static void page214_handle(void);
+      static void page215_handle(void);
+      static void page216_handle(void);
+      static void page217_handle(void);
+
       static void pop_up_manager(void);
 			static void printerStatsToTFT(void);//MEL_MOD
 
@@ -520,8 +566,18 @@ namespace Anycubic {
       static void SendColorToTFT(uint32_t color, uint32_t address);
       static void SendReadNumOfTxtToTFT(uint8_t number, uint32_t address);
       static void ChangePageOfTFT(uint32_t page_index);
+      static void ChangePageOfTFT_DevicePage(uint32_t device_page);
       static void FakeChangePageOfTFT(uint32_t page_index);
+      static uint32_t TranslatePage(uint32_t page_index);   // CHS page -> device page for lcd_info.language
+      static void GoToolsPage();          // Tools page whose art matches the case-light state (207 off / 209 on)
+      static void GoPrintSettingsPage();  // Print Settings page matching the case-light state (211 off / 212 on)
+      static void GoSystemPage();         // System page for the current language + audio setting
+      static void GoMovePage();           // Move Axes, with the selected step size shown
+      static void SendMoveStepText();
+      static void WaitStatus();           // live progress text on the "please wait" pages
+      static bool BlockedWhilePrinting(); // shows the NOT ALLOWED page and returns true if a print is active
       static void LcdAudioSet(ExtUI::audio_t audio);
+      static void SetLcdBrightness();
 			
     private:
     

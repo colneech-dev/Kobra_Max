@@ -32,6 +32,9 @@
 // Hang on panic instead of resetting — breaks reset loops, makes hangs observable
 #define HANG_ON_PANIC 1
 
+// NOTE: runtime clock validation (ALWAYS_VALIDATE_CLOCKS) is already hard-enabled
+// in sysclock.h — do not redefine it here (redefinition warning, no effect).
+
 // use short filenames in ddl debug and core panic output
 #define __DEBUG_SHORT_FILENAMES 1
 #define __PANIC_SHORT_FILENAMES 1

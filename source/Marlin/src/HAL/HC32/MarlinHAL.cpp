@@ -108,7 +108,10 @@ volatile pin_t MarlinHAL::last_adc_pin;
 MarlinHAL::MarlinHAL() {}
 
 void MarlinHAL::watchdog_init() {
-  TERN_(USE_WATCHDOG, WDT.begin(5000)); // Reset on 5 second timeout
+  // Target 8000ms → configure_wdt_counter selects count=65536/divider=8192 → ~21.5s actual.
+  // The only available timeouts at PCLK3=25MHz are ~5.4s and ~21.5s (integer truncation gap).
+  // 5.4s was too short: setup() after watchdog_init() + first idle() path takes ~5-6s total.
+  TERN_(USE_WATCHDOG, WDT.begin(8000));
 }
 
 void MarlinHAL::watchdog_refresh() {
@@ -253,14 +256,28 @@ void MarlinHAL::adc_init() {
 void MarlinHAL::adc_enable(const pin_t pin) {
   #if TEMP_SENSOR_SOC
     if (pin == TEMP_SOC_PIN) {
-      // Start OTS, min. 1s between reads
-      ChipTemperature.begin();
-      ChipTemperature.setMinimumReadDeltaMillis(1000);
+      static bool soc_enabled = false;
+      if (!soc_enabled) {
+        soc_enabled = true;
+        ChipTemperature.begin();
+        ChipTemperature.setMinimumReadDeltaMillis(1000);
+      }
       return;
     }
   #endif
 
-  // Just set pin mode to analog
+  // Runtime guard, not just CORE_ASSERT: the assert is compiled out in release
+  // builds, and an out-of-range pin would index past enabled[] below.
+  if (pin < 0 || pin > 127) return;
+
+  // Only call pinMode once per pin — HAL_START_ADC fires at ~1 kHz per sensor,
+  // so without this guard it wastes thousands of redundant GPIO peripheral writes per second.
+  // Covers pins 0–127 (HC32F460: 8 ports × 16 pins = 128 max).
+  static uint64_t enabled[2] = { 0, 0 };
+  const uint8_t p = uint8_t(pin);
+  if (enabled[p >> 6] & (1ULL << (p & 63u))) return;
+  enabled[p >> 6] |= (1ULL << (p & 63u));
+
   pinMode(pin, INPUT_ANALOG);
 }
 
@@ -305,11 +322,9 @@ uint16_t MarlinHAL::adc_value() {
 }
 
 void MarlinHAL::set_pwm_duty(const pin_t pin, const uint16_t value, const uint16_t scale, const bool invert) {
-  // Invert value if requested
-  const uint16_t val = invert ? scale - value : value;
-
-  // AnalogWrite the value, core handles the rest
-  // Pin mode should be set by Marlin by calling SET_PWM() before calling this function
+  // Clamp value to scale to prevent uint16_t underflow when inverting
+  const uint16_t safe = (value <= scale) ? value : scale;
+  const uint16_t val = invert ? scale - safe : safe;
   analogWriteScaled(pin, val, scale);
 }
 

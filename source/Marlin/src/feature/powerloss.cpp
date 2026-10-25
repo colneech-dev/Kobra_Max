@@ -155,9 +155,9 @@ void PrintJobRecovery::load() {
       open(true);
       if (file.isOpen()) {
         file.seekSet(0);
-        file.read(&info, sizeof(info));
+        const int16_t bytes_read = file.read(&info, sizeof(info));
         file.close();
-        return;
+        if (bytes_read == sizeof(info)) return;
       }
     }
     memset(&info, 0, sizeof(info));

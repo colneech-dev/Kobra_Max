@@ -43,6 +43,7 @@ namespace Anycubic {
       
       void   reset();
       void   getFiles(uint16_t);
+      void   sendRows(uint8_t selected = 0);   // (re)send the 5 visible rows; row 1-5 'selected' gets a '> ' marker
       void   upDIR();
       void   changeDIR(char *);
       void   sendFile();

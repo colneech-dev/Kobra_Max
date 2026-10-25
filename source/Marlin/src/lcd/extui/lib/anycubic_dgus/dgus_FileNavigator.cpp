@@ -85,31 +85,27 @@ namespace Anycubic {
       SERIAL_ECHOLNPAIR("index=", index, " currentindex=", currentindex, " lastindex=", lastindex);
     #endif
 
-    uint8_t file_num=0;
+    sendRows(0);
+  }
+
+  // Send the five rows starting at currentindex. The display's file-name boxes cannot recolour the
+  // selected row (their text records have no description pointer), so the selection is shown by
+  // prefixing that row with '> ' instead.
+  void FileNavigator::sendRows(uint8_t selected) {
+    const uint8_t files = 5;
+    char name[MAX_PATH_LEN + 4];
+    uint8_t file_num = 0;
     for (uint16_t _seek = currentindex; _seek < currentindex + files; _seek++) {
-
-      #if ACDEBUG(AC_FILE)
-        SERIAL_ECHOLNPAIR("_seek: ", _seek, " currentindex: ", currentindex, " files: ", files);
-      #endif
-
       if (filelist.seek(_seek)) {
-//        sendFile();
-
-          DgusTFT::SendTxtToTFT(filelist.longFilename(), TXT_FILE_0 + file_num*0x30);
-
-        #if ACDEBUG(AC_FILE)
-          SERIAL_ECHOLNPAIR("seek: ", _seek, " '", filelist.longFilename(), "' '", currentfoldername, "", filelist.shortFilename(), "'\n");
-        #endif
-
-      } else {
-
-        #if ACDEBUG(AC_FILE)
-          SERIAL_ECHOLNPAIR("over seek: ", _seek);
-        #endif
-
-          DgusTFT::SendTxtToTFT("\0", TXT_FILE_0 + file_num*0x30);
+        if (selected && selected == file_num + 1) {
+          snprintf(name, sizeof(name), "> %s", filelist.longFilename());
+          DgusTFT::SendTxtToTFT(name, TXT_FILE_0 + file_num * 0x30);
+        }
+        else
+          DgusTFT::SendTxtToTFT(filelist.longFilename(), TXT_FILE_0 + file_num * 0x30);
       }
-
+      else
+        DgusTFT::SendTxtToTFT("", TXT_FILE_0 + file_num * 0x30);
       file_num++;
     }
   }
