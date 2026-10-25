@@ -88,3 +88,25 @@ project/*.bin
 /SI/*
 *.si4project/
 
+
+# PlatformIO / build output
+.pio/
+.vscode/
+__pycache__/
+*.pyc
+
+# Claude Code local state
+.claude/
+
+# Local reference trees and vendor dumps (hundreds of MB)
+DGUS/
+_marlin_upstream/
+
+# Generated release packages (rebuild with tools/build_release.py)
+release/
+release_anim_test/
+release_v2/
+
+# Script-generated display artefacts (rebuild with tools/build_icl.py / generate_spinner_icons.py)
+DWIN_SET/auto_icl/
+DWIN_SET/spinner_icons/
