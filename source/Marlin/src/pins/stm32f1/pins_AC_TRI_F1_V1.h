@@ -212,6 +212,6 @@
 #define BOARD_USART3_TX_PIN     PB4     // MOTO
 #define BOARD_USART3_RX_PIN     PB3
 
-#define BOARD_USART4_TX_PIN     PB10    // LCD
-#define BOARD_USART4_RX_PIN     PH2
+#define BOARD_USART4_TX_PIN     PB10    // LCD (stock firmware: bsp_init.h USART4_TX_PORT=PortB Pin10)
+#define BOARD_USART4_RX_PIN     PH2     // LCD (stock firmware: bsp_init.h USART4_RX_PORT=PortH Pin02)
 

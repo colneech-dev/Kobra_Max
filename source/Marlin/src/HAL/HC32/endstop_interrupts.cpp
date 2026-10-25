@@ -74,7 +74,21 @@ void endstopIRQHandler() {
 // HAL functions
 //
 void setup_endstop_interrupts() {
-  #define SETUP(name) TERN_(USE_##name, attachInterrupt(name##_PIN, endstopIRQHandler, CHANGE); setInterruptPriority(name##_PIN, ENDSTOP_IRQ_PRIORITY))
+  // attachInterrupt must run before setInterruptPriority — the priority call looks up
+  // the IRQ number from the mapping created by attachInterrupt.
+  //
+  // Deliberately NO critical section around the pair: with __CORE_DEBUG the
+  // framework's attachInterrupt() printf-logs through the host UART, whose TX
+  // ring only drains via interrupt — printing inside a masked section can spin
+  // forever on a full ring (watchdog boot loop). The unguarded window is
+  // benign: at worst the endstop ISR fires once at the framework's default
+  // priority before setInterruptPriority takes effect, and endstopIRQHandler
+  // only samples pins and sets flags.
+  #define SETUP(name) TERN_(USE_##name, \
+    do { \
+      attachInterrupt(name##_PIN, endstopIRQHandler, CHANGE); \
+      setInterruptPriority(name##_PIN, ENDSTOP_IRQ_PRIORITY); \
+    } while(0))
 
   SETUP(X_MAX);
   SETUP(X_MIN);

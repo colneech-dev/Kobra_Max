@@ -37,7 +37,7 @@ static_assert(COUNT(servoDelays) == NUM_SERVOS, "SERVO_DELAY must be an array NU
 //
 // MarlinServo impl
 //
-MarlinServo::MarlinServo() {
+MarlinServo::MarlinServo() : pin(-1), angle(0) {
   this->channel = servoCount++;
   servos[this->channel] = this;
 }
@@ -45,6 +45,9 @@ MarlinServo::MarlinServo() {
 int8_t MarlinServo::attach(const pin_t apin) {
   // Use last pin if pin not given
   if (apin >= 0) this->pin = apin;
+
+  // No pin has ever been assigned — cannot attach
+  if (this->pin < 0) return -1;
 
   // If attached, do nothing but no fail
   if (this->servo.attached()) return 0;

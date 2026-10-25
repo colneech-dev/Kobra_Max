@@ -46,7 +46,7 @@ struct MarlinSerial : public Usart {
     , M4_DMA_TypeDef *dma_unit = nullptr,
     en_dma_channel_t rx_dma_channel = DmaCh0
     #endif
-  ) : Usart(usart_device, tx_pin, rx_pin), _tx_pin(tx_pin), _rx_pin(rx_pin) {
+  ) : Usart(usart_device, tx_pin, rx_pin) {
     #if ENABLED(SERIAL_DMA)
       if (dma_unit != nullptr) {
         enableRxDma(dma_unit, rx_dma_channel);
@@ -54,21 +54,25 @@ struct MarlinSerial : public Usart {
     #endif
   }
 
+  // NOTE: do NOT set the pin SubFunction bit (BFE) here. On the HC32F460 the
+  // function code in PFSR.FSEL selects the peripheral per pin group (e.g.
+  // FSEL=37 is USART2_RX on PA3 but USART4_RX on PH2). BFE=1 would instead
+  // switch the pin to the GLOBAL sub-function in PCCR.BFSEL (default 0 = GPIO),
+  // disconnecting it from the USART. The stock Anycubic firmware configures
+  // these pins with the sub-function disabled (PORT_SetFunc(..., Disable)),
+  // which is also what Usart::begin() does.
   void begin(uint32_t baud) {
     Usart::begin(baud);
-    applySubfunc();
     TERN_(HAS_USART_IRQ_PRIO, setPriority());
   }
 
   void begin(uint32_t baud, uint8_t config) {
     Usart::begin(baud, config);
-    applySubfunc();
     TERN_(HAS_USART_IRQ_PRIO, setPriority());
   }
 
   void begin(uint32_t baud, const stc_usart_uart_init_t *config, const bool rxNoiseFilter = true) {
     Usart::begin(baud, config, rxNoiseFilter);
-    applySubfunc();
     TERN_(HAS_USART_IRQ_PRIO, setPriority());
   }
 
@@ -90,21 +94,6 @@ struct MarlinSerial : public Usart {
       #endif
     }
   #endif // UART_RX_IRQ_PRIO || UART_TX_IRQ_PRIO || UART_RX_DMA_IRQ_PRIO
-
-private:
-  gpio_pin_t _tx_pin, _rx_pin;
-
-  // USART3 and USART4 share GPIO function codes with USART1 and USART2 respectively.
-  // The SubFunction bit (BFE) in the pin's PFSR register must be set (Enable) so
-  // the RX/TX pin signals are routed to USART3/4, not to USART1/2.
-  // Called after every Usart::begin() to re-apply the correct routing.
-  void applySubfunc() {
-    if (c_dev()->peripheral.register_base == M4_USART3 ||
-        c_dev()->peripheral.register_base == M4_USART4) {
-      GPIO_SetFunc(_tx_pin, c_dev()->peripheral.tx_pin_function, Enable);
-      GPIO_SetFunc(_rx_pin, c_dev()->peripheral.rx_pin_function, Enable);
-    }
-  }
 };
 
 typedef Serial1Class<MarlinSerial> MSerialT;

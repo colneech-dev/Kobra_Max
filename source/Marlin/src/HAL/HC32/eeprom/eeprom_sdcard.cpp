@@ -67,6 +67,7 @@ bool PersistentStore::access_finish() {
   int bytes_written = 0;
   if (file.open(&root, EEPROM_FILENAME, O_CREAT | O_WRITE | O_TRUNC)) {
     bytes_written = file.write(HAL_eeprom_data, MARLIN_EEPROM_SIZE);
+    file.sync();
     file.close();
   }
 

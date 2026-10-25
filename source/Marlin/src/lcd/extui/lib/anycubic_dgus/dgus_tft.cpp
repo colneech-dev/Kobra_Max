@@ -106,6 +106,49 @@ DgusTFT::p_fun fun_array[] = {
 };
 
 
+// Probing progress (G29 grid points reached). File scope so WaitStatus() can show it.
+static uint8_t probe_cnt = 0;
+// When the probe pre-check last failed; page203_handle returns to the Leveling menu after a timeout.
+static millis_t probe_failed_ms = 0;
+// Selected Move Axes step (mm); file scope so the step text can be re-sent when the page opens.
+static float move_dis = 1.0f;
+
+// Z offset (probe.offset.z) at the moment a leveling run starts. A run zeroes it (M851 Z0) so the
+// mesh is probed at nozzle contact; the user's tuned value has to come back afterwards — on success
+// AND on failure. (It used to be overwritten with 0.05 on every success and left at 0 on failure.)
+static float zoffset_before_level = 0.05f;
+
+// The offset Marlin boots with before anybody has tuned anything (Configuration.h).
+static float untuned_zoffset() {
+#ifdef NOZZLE_TO_PROBE_OFFSET
+  static const float d[] = NOZZLE_TO_PROBE_OFFSET;
+  return d[Z_AXIS];
+#else
+  return 0;
+#endif
+}
+
+// Offset to apply after a successful run: the tuned value, or Anycubic's stock 0.05 if it was never tuned.
+static float zoffset_after_leveling() {
+  return fabsf(zoffset_before_level - untuned_zoffset()) < 0.001f ? 0.05f : zoffset_before_level;
+}
+
+// Values shown when the Print Settings page opens. The page has no read-back: its - / + buttons apply
+// each change immediately and update these values themselves (see page211_212_handle).
+static void send_print_setting_values() {
+  DgusTFT::SendTxtToTFT(ftostr(getZOffset_mm()), TXT_LEVEL_OFFSET);
+  DgusTFT::SendValueToTFT((uint16_t)getTargetTemp_celsius(E0), TXT_ADJUST_HOTEND);
+  DgusTFT::SendValueToTFT((uint16_t)getTargetTemp_celsius(BED), TXT_ADJUST_BED);
+  DgusTFT::SendValueToTFT((uint16_t)getFeedrate_percent(), TXT_ADJUST_SPEED);
+  DgusTFT::SendValueToTFT((uint16_t)getTargetFan_percent(FAN0), TXT_FAN_SPEED_TARGET);
+}
+
+static void start_leveling_run() {
+  zoffset_before_level = getZOffset_mm();
+  injectCommands_P(PSTR("M851 Z0\nG28\nG29"));
+  probe_cnt = 0;
+}
+
 printer_state_t  DgusTFT::printer_state;
 paused_state_t   DgusTFT::pause_state;
 heater_state_t   DgusTFT::hotend_state;
@@ -118,6 +161,7 @@ float            DgusTFT::live_Zoffset;
 file_menu_t      DgusTFT::file_menu;
 
 bool             DgusTFT::data_received;
+bool             DgusTFT::lcd_boot_synced;
 uint8_t          DgusTFT::data_buf[64];
 uint8_t          DgusTFT::data_index;
 uint32_t         DgusTFT::page_index_last;
@@ -177,7 +221,25 @@ void DgusTFT::Startup() {
   // opt_set    FIL_RUNOUT_STATE HIGH  // Pin state indicating that filament is NOT present.
   // opt_enable FIL_RUNOUT_PULLUP
 
-  TFTSer.begin(115200);
+  // Initialize USART4 for the LCD display with explicit config:
+  // 16x oversampling, no hardware flow control, no noise filter (NFE=0).
+  // NFE=0 matches the stock Anycubic firmware (source/board/bsp_init.cpp
+  // never enables the noise filter on any UART). Note the framework default
+  // (plain begin(baud)) enables NFE deliberately for noise immunity and the
+  // upstream Vyper driver ships that way on the same silicon — if RX proves
+  // reliable on hardware, plain begin(115200) is worth A/B testing here.
+  static const stc_usart_uart_init_t LCD_UART_CFG = {
+    .enClkMode    = UsartIntClkCkNoOutput,
+    .enClkDiv     = UsartClkDiv_1,
+    .enDataLength = UsartDataBits8,
+    .enDirection  = UsartDataLsbFirst,
+    .enStopBit    = UsartOneStopBit,
+    .enParity     = UsartParityNone,
+    .enSampleMode = UsartSampleBit16,
+    .enDetectMode = UsartStartBitFallEdge,
+    .enHwFlow     = UsartRtsEnable,
+  };
+  TFTSer.begin(115200, &LCD_UART_CFG, false);
 
   // Signal Board has reset
   //    SendtoTFTLN(AC_msg_main_board_has_reset);
@@ -205,6 +267,7 @@ void DgusTFT::ParamInit() {
   }
 
   LcdAudioSet(lcd_info.audio);
+  SetLcdBrightness();
 
 #if ACDEBUG(AC_MARLIN)
   if (lcd_info.language == ExtUI::CHS) {
@@ -222,37 +285,63 @@ void DgusTFT::ParamInit() {
   SERIAL_ECHOLN(page_index_now);
 #endif
 
-  // Page sync is deferred to IdleLoop() after the display animation completes.
-  // Sending ChangePageOfTFT here (at firmware init) interrupts the boot animation.
+  // Do NOT push ChangePageOfTFT here: commit 2e912ec found (on real hardware,
+  // before the BFE transport bug existed) that a page-change command sent
+  // while the DGUS boot animation is still playing freezes the display.
+  // Instead, poll the display's boot state — matches the upstream Vyper driver.
+  // The reply arrives as REG_LCD_READY via ProcessPanelRequest: 0x010000 while
+  // the animation runs (plays power-on tune), 0x010072 once it has actually
+  // finished — only then is it safe to call ChangePageOfTFT(PAGE_MAIN).
+  RequestValueFromTFT(REG_LCD_READY);
 }
 
 void DgusTFT::IdleLoop()  {
-  // One-shot: 6 s after first IdleLoop call the display animation has finished.
-  // Navigate to the language home page so page_index_now matches the live display page.
-  static bool startup_sync_done = false;
-  static uint32_t startup_ms = 0;
-  if (!startup_sync_done) {
-    if (startup_ms == 0) startup_ms = millis() ?: 1; // capture first-entry timestamp
-    if (millis() - startup_ms > 6000) {
-      ChangePageOfTFT(page_index_now);
-      startup_sync_done = true;
-    }
+  HAL_watchdog_refresh(); // prevent WDT fire during DGUS packet processing
+
+  // One-shot diagnostics on first entry (debug builds only; it printed on every boot before).
+  static bool diag_done = false;
+  if (!diag_done) {
+    diag_done = true;
+#if ACDEBUG(AC_MARLIN)
+    // Expected: PH2 FSEL=37 BFE=0 (USART4 RX), PB10 FSEL=36 BFE=0 (USART4 TX).
+    // BFE MUST be 0 — BFE=1 switches the pin to the global PCCR.BFSEL function
+    // (GPIO), disconnecting it from the USART.
+    // PH2 (USART4 RX): Port H = port-index 5, pin 2
+    const uint16_t pfsr_ph2 = *(volatile uint16_t*)((uint32_t)(&M4_PORT->PFSRA0) + 0x40u * 5u + 0x4u * 2u);
+    // PB10 (USART4 TX): Port B = port-index 1, pin 10
+    const uint16_t pfsr_pb10 = *(volatile uint16_t*)((uint32_t)(&M4_PORT->PFSRA0) + 0x40u * 1u + 0x4u * 10u);
+    SERIAL_ECHOPGM("PH2_PFSR=");  SERIAL_ECHO((unsigned)pfsr_ph2);
+    SERIAL_ECHOPGM(" FSEL=");     SERIAL_ECHO((int)(pfsr_ph2 & 0x3F));
+    SERIAL_ECHOPGM(" BFE=");      SERIAL_ECHOLN((int)((pfsr_ph2 >> 8) & 1));
+    SERIAL_ECHOPGM("PB10_PFSR="); SERIAL_ECHO((unsigned)pfsr_pb10);
+    SERIAL_ECHOPGM(" FSEL=");     SERIAL_ECHO((int)(pfsr_pb10 & 0x3F));
+    SERIAL_ECHOPGM(" BFE=");      SERIAL_ECHOLN((int)((pfsr_pb10 >> 8) & 1));
+    SERIAL_ECHOPGM("lang="); SERIAL_ECHO((int)lcd_info.language);
+    SERIAL_ECHOPGM(" page_now="); SERIAL_ECHOLN((uint32_t)page_index_now);
+#endif
   }
 
-  #if ACDEBUG(AC_MARLIN)
-    // Raw RX counter: prints whenever the LCD serial port has unread bytes.
-    // Lets us verify USART4 RX is actually receiving data from the display.
-    static uint32_t _lcd_rx_last_ms = 0;
-    static uint32_t _lcd_rx_bytes = 0;
-    if (TFTSer.available()) {
-      _lcd_rx_bytes++;
-      if (millis() - _lcd_rx_last_ms > 2000) {
-        _lcd_rx_last_ms = millis();
-        SERIAL_ECHOPGM("LCD_RX bytes=");
-        SERIAL_ECHOLN(_lcd_rx_bytes);
-      }
+  // Boot-sync retry: ParamInit's single RequestValueFromTFT(REG_LCD_READY)
+  // can be dropped (USART4 was reinitialized moments earlier; display RX may
+  // not be stable yet). Without a retry, a dropped request leaves the display
+  // frozen on the boot animation forever. Re-poll every 3s until any reply
+  // sets lcd_boot_synced (in ProcessPanelRequest). This only ever sends a VP
+  // read — never a page-change write — so it's safe even while the animation
+  // is still playing (2e912ec's freeze was specifically caused by page pushes).
+  if (!lcd_boot_synced) {
+    static uint32_t last_poll_ms = 0;
+    static bool first_idle_entry = true;
+    if (first_idle_entry) {
+      // ParamInit already sent one request moments ago (IdleLoop's first call
+      // lands several seconds into boot) — seed the timer instead of firing
+      // an immediate second request right on top of it.
+      first_idle_entry = false;
+      last_poll_ms = millis();
+    } else if (millis() - last_poll_ms > 3000) {
+      last_poll_ms = millis();
+      RequestValueFromTFT(REG_LCD_READY);
     }
-  #endif
+  }
 
   if (ReadTFTCommand()) {
     ProcessPanelRequest();
@@ -266,15 +355,31 @@ void DgusTFT::IdleLoop()  {
   }
 #endif
 
+  // Periodically update the status bar (hotend/bed temps), like the upstream
+  // Vyper driver. Every page's background includes the same status bar VP
+  // boxes (TXT_MAIN_HOTEND/TXT_MAIN_BED), so this isn't gated to a specific
+  // page — writing to a VP that the current page doesn't display is harmless,
+  // and this keeps the status bar live everywhere instead of just Main Menu.
   static uint32_t milli_last = 0;
-  if (millis() - milli_last > 1500) {
+  if (millis() - milli_last > 500) {
     milli_last = millis();
 
     char str_buf[14]; // "65535/65535\0" = 12 chars; 14 gives safe margin
+
     sprintf(str_buf, "%u/%u", (uint16_t)getActualTemp_celsius(E0), (uint16_t)getTargetTemp_celsius(E0));
+#if ACDEBUG(AC_MARLIN)
+    SERIAL_ECHOPGM("StatusBar HOTEND vp=0x"); SERIAL_PRINT((uint32_t)TXT_MAIN_HOTEND, HEX);
+    SERIAL_ECHOPGM(" page="); SERIAL_ECHO(page_index_now);
+    SERIAL_ECHOPGM(" str="); SERIAL_ECHOLN(str_buf);
+#endif
     SendTxtToTFT(str_buf, TXT_MAIN_HOTEND);
 
     sprintf(str_buf, "%u/%u", (uint16_t)getActualTemp_celsius(BED), (uint16_t)getTargetTemp_celsius(BED));
+#if ACDEBUG(AC_MARLIN)
+    SERIAL_ECHOPGM("StatusBar BED    vp=0x"); SERIAL_PRINT((uint32_t)TXT_MAIN_BED, HEX);
+    SERIAL_ECHOPGM(" page="); SERIAL_ECHO(page_index_now);
+    SERIAL_ECHOPGM(" str="); SERIAL_ECHOLN(str_buf);
+#endif
     SendTxtToTFT(str_buf, TXT_MAIN_BED);
   }
 
@@ -292,13 +397,13 @@ void DgusTFT::IdleLoop()  {
     page175_handle();
   } else if (page_index_now == 176) {
     page176_handle();
-  } else if (177 <= page_index_now && page_index_now <= 198) {
+  } else if (177 <= page_index_now && page_index_now <= 198 && page_index_now != 187 && page_index_now != 188) {
 #if 0 // ACDEBUG(AC_MARLIN)
     SERIAL_ECHOLNPAIR("line: ", __LINE__);
     SERIAL_ECHOLNPAIR("func: ", page_index_now);
 #endif
     //      page177_to_198_handle();
-  } else if (199 == page_index_now || page_index_now == 200) {
+  } else if (187 == page_index_now || 188 == page_index_now || 199 == page_index_now || page_index_now == 200) {
 #if 0 // ACDEBUG(AC_MARLIN)
     SERIAL_ECHOLNPAIR("line: ", __LINE__);
     SERIAL_ECHOLNPAIR("func: ", page_index_now);
@@ -324,14 +429,32 @@ void DgusTFT::IdleLoop()  {
 
     page211_212_handle();
 		
-	} else if (page_index_now == 213) {
+	} else if (page_index_now == 213 || page_index_now == PAGE_PRINTERSTATS) {
 
     page213_handle();// MEL_MOD for printer stats
 
+  } else if (page_index_now == PAGE_THUMBNAIL) {
+
+    page214_handle();
+
+  } else if (page_index_now == PAGE_TERMINAL) {
+
+    page215_handle();
+
+  } else if (page_index_now == PAGE_THERMAL_TUNING) {
+
+    page216_handle();
+
+  } else if (page_index_now == PAGE_FACTORY_RESET) {
+
+    page217_handle();
+
   } else {
 
+    // Bounds must match fun_array exactly (34 entries, pages 1..34 CHS / 121..154 ENG).
+    // An index past the array end calls a garbage function pointer.
     if (lcd_info.language == ExtUI::CHS) {
-      if (0 < page_index_now && page_index_now < 36) {
+      if (WITHIN(page_index_now, 1, COUNT(fun_array))) {
         fun_array[page_index_now - 1]();
       } else {
 #if ACDEBUG(AC_MARLIN)
@@ -340,7 +463,7 @@ void DgusTFT::IdleLoop()  {
 #endif
       }
     } else if (lcd_info.language == ExtUI::ENG) {
-      if (120 < page_index_now && page_index_now < 156) {
+      if (WITHIN(page_index_now, 121, 120 + COUNT(fun_array))) {
         fun_array[page_index_now - 1 - 120](); // ENG page_index is 120 more than CHS
       } else {
 #if ACDEBUG(AC_MARLIN)
@@ -353,6 +476,7 @@ void DgusTFT::IdleLoop()  {
 
   }
 
+  WaitStatus();
   pop_up_manager();
   key_value = 0;
 
@@ -370,7 +494,7 @@ void DgusTFT::PrinterKilled(PGM_P error, PGM_P component)  {
     if (strncmp(component, "Bed", strlen("Bed")) == 0) {
       ChangePageOfTFT(PAGE_CHS_ABNORMAL_BED_HEATER);
       SERIAL_ECHOLNPAIR("Check Bed heater");
-    } else if (strncmp(component, "E1", strlen("E1")) == 0) {
+    } else if (strncmp(component, "E", 1) == 0) {
       ChangePageOfTFT(PAGE_CHS_ABNORMAL_HOTEND_HEATER);
       SERIAL_ECHOLNPAIR("Check E1 heater");
     }
@@ -380,7 +504,7 @@ void DgusTFT::PrinterKilled(PGM_P error, PGM_P component)  {
     if (strncmp(component, "Bed", strlen("Bed")) == 0) {
       ChangePageOfTFT(PAGE_CHS_ABNORMAL_BED_NTC);
       SERIAL_ECHOLNPAIR("Check Bed thermistor");
-    } else if (strncmp(component, "E1", strlen("E1")) == 0) {
+    } else if (strncmp(component, "E", 1) == 0) {
       ChangePageOfTFT(PAGE_CHS_ABNORMAL_HOTEND_NTC);
       SERIAL_ECHOLNPAIR("Check E1 thermistor");
     }
@@ -389,7 +513,7 @@ void DgusTFT::PrinterKilled(PGM_P error, PGM_P component)  {
     if (strncmp(component, "Bed", strlen("Bed")) == 0) {
       ChangePageOfTFT(PAGE_CHS_ABNORMAL_BED_NTC);
       SERIAL_ECHOLNPAIR("Check Bed thermistor");
-    } else if (strncmp(component, "E1", strlen("E1")) == 0) {
+    } else if (strncmp(component, "E", 1) == 0) {
       ChangePageOfTFT(PAGE_CHS_ABNORMAL_HOTEND_NTC);
       SERIAL_ECHOLNPAIR("Check E1 thermistor");
     }
@@ -398,7 +522,7 @@ void DgusTFT::PrinterKilled(PGM_P error, PGM_P component)  {
     if (strncmp(component, "Bed", strlen("Bed")) == 0) {
       ChangePageOfTFT(PAGE_CHS_ABNORMAL_BED_HEATER);
       SERIAL_ECHOLNPAIR("Check Bed thermal runaway");
-    } else if (strncmp(component, "E1", strlen("E1")) == 0) {
+    } else if (strncmp(component, "E", 1) == 0) {
       ChangePageOfTFT(PAGE_CHS_ABNORMAL_HOTEND_HEATER);
       SERIAL_ECHOLNPAIR("Check E1 thermal runaway");
     }
@@ -596,7 +720,6 @@ void DgusTFT::StatusChange(const char * const msg)  {
   SERIAL_ECHOLNPAIR("pause_state:", pause_state);
 #endif
   bool msg_matched = false;
-  static uint8_t probe_cnt = 0;
   // The only way to get printer status is to parse messages
   // Use the state to minimise the work we do here.
   switch (printer_state) {
@@ -611,7 +734,7 @@ void DgusTFT::StatusChange(const char * const msg)  {
         if (strcmp_P(msg + strlen(CUSTOM_MACHINE_NAME), MARLIN_msg_ready) == 0) {
           if (probe_cnt == GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y) {
             probe_cnt = 0;
-            setZOffset_mm(0.05);
+            setZOffset_mm(zoffset_after_leveling());
             injectCommands_P(PSTR("M500"));
             FakeChangePageOfTFT(PAGE_PreLEVEL); // this avoid a overquick UI fresh when probing done
             printer_state = AC_printer_idle;
@@ -622,6 +745,8 @@ void DgusTFT::StatusChange(const char * const msg)  {
         // If probing fails dont save the mesh raise the probe above the bad point
         if (strcmp_P(msg, MARLIN_msg_probing_failed) == 0) {
           PlayTune(BEEPER_PIN, BeepBeepBeeep, 1);
+          probe_cnt = 0;   // a failed run must not leave the next run's point count off
+          setZOffset_mm(zoffset_before_level);   // M851 Z0 zeroed it; give the user's value back (not saved: the saved one was never changed)
           injectCommands_P(PSTR("G1 Z50 F500"));
           ChangePageOfTFT(PAGE_CHS_ABNORMAL_LEVELING_SENSOR);
           //          SendtoTFTLN(AC_msg_probing_complete);
@@ -731,19 +856,17 @@ void DgusTFT::HomingStart() {
 }
 
 void DgusTFT::HomingComplete() {
-  if (lcd_info.language == ExtUI::ENG) {
-    if (page_index_last > 120) {
-      page_index_last -= 120;
-    }
-  }
-
+  // page_index_last is already a DEVICE page (ChangePageOfTFT stores it
+  // post-translation), so it must NOT be shifted by 120 here: doing so sent a CHS
+  // page number while in ENG mode, leaving page_index_now outside the ENG
+  // dispatch range (dead touch) or on a page with no assets (Terminal G28 -> 95).
 #if ACDEBUG(AC_MARLIN)
   SERIAL_ECHOLNPAIR("HomingComplete, line: ", __LINE__);
   SERIAL_ECHOLNPAIR("page_index_last: ", page_index_last);
 #endif
 
   if (!isPrintingFromMedia()) {
-    ChangePageOfTFT(page_index_last);
+    ChangePageOfTFT_DevicePage(page_index_last);
   }
 }
 
@@ -804,10 +927,13 @@ void DgusTFT::SendTxtToTFT(const char *pdata, uint32_t address) {
 
   char data_buf[128] = {0};
   uint8_t data_index = 0;
-  uint8_t data_len = 0;
+  size_t data_len = 0;
 
   uint8_t *p_u8 =  (uint8_t *)(&address) + 1 ;
   data_len = strlen(pdata);
+  // Clamp to buffer capacity: 6 header bytes + text + 2 terminator bytes.
+  // A longer string (e.g. a long SD filename) would smash the stack.
+  NOMORE(data_len, sizeof(data_buf) - 8);
 
   data_buf[data_index++] = 0x5A;
   data_buf[data_index++] = 0xA5;
@@ -873,6 +999,25 @@ void DgusTFT::SendReadNumOfTxtToTFT(uint8_t number, uint32_t address) {
   }
 }
 
+// Map a CHS-domain page number to the page actually shown for the current language.
+// Single-language pages and the few pages with irregular ENG numbers are listed explicitly;
+// every other page is mirrored at +120. Shared by ChangePageOfTFT and FakeChangePageOfTFT so
+// the two can never disagree again.
+uint32_t DgusTFT::TranslatePage(uint32_t page_index) {
+  if (lcd_info.language == ExtUI::CHS) return page_index;
+
+  if (PAGE_OUTAGE_RECOVERY == page_index)       return PAGE_ENG_OUTAGE_RECOVERY;
+  if (PAGE_CHS_PROBE_PREHEATING == page_index)  return PAGE_ENG_PROBE_PREHEATING;
+  if (PAGE_CHS_HOMING <= page_index && page_index <= PAGE_CHS_LEVELING_FAILED) return page_index + 12;
+  if (PAGE_CHS_PROBE_PRECHECK <= page_index && page_index <= PAGE_CHS_PROBE_PRECHECK_FAILED) return page_index + 3;
+  if (PAGE_CHS_TOOL_CASELIGHT == page_index)    return page_index + 2;
+  if (PAGE_CHS_PRINTING_SETTING == page_index)  return page_index + 1;
+  if (page_index == PAGE_THUMBNAIL || page_index == PAGE_TERMINAL ||
+      page_index == PAGE_THERMAL_TUNING || page_index == PAGE_FACTORY_RESET ||
+      page_index == PAGE_AUTO_OFFSET)           return page_index;  // single-language pages, no ENG mirror
+  return page_index + 120;
+}
+
 void DgusTFT::ChangePageOfTFT(uint32_t page_index) {
 
 #if ACDEBUG(AC_MARLIN)
@@ -883,28 +1028,69 @@ void DgusTFT::ChangePageOfTFT(uint32_t page_index) {
   uint8_t data_index = 0;
   uint32_t data_temp = 0;
 
-  if (lcd_info.language == ExtUI::CHS) {
-    data_temp = page_index;
+  data_temp = TranslatePage(page_index);
 
-  } else if (lcd_info.language == ExtUI::ENG) {
-    if (PAGE_OUTAGE_RECOVERY == page_index) {
-      data_temp = PAGE_ENG_OUTAGE_RECOVERY;
-    } else if (PAGE_CHS_PROBE_PREHEATING == page_index) {
-      data_temp = PAGE_ENG_PROBE_PREHEATING;
-    } else if (PAGE_CHS_HOMING <= page_index && page_index <= PAGE_ENG_HOMING) {
-      data_temp = page_index + 12;
-    } else if (PAGE_CHS_PROBE_PRECHECK <= page_index && page_index <= PAGE_CHS_PROBE_PRECHECK_FAILED) {
-      data_temp = page_index + 3;
-    } else if (PAGE_CHS_TOOL_CASELIGHT == page_index) {
-      data_temp = page_index + 2;
-    } else if (PAGE_CHS_PRINTING_SETTING == page_index) {
-      data_temp = page_index + 1;
-    } else {
-      data_temp = page_index + 120;
-    }
+  uint8_t *p_u8 = (uint8_t *)(&data_temp) + 1;
+
+  // Anycubic DWIN firmware requires the 07-length "5A 01" trigger format:
+  // VP 0x0084 = 0x5A01 (magic trigger), VP 0x0085 = page number.
+  data_buf[data_index++] = 0x5A;
+  data_buf[data_index++] = 0xA5;
+  data_buf[data_index++] = 0x07;
+  data_buf[data_index++] = 0x82;
+  data_buf[data_index++] = 0x00;
+  data_buf[data_index++] = 0x84;
+  data_buf[data_index++] = 0x5A;
+  data_buf[data_index++] = 0x01;
+  data_buf[data_index++] = *p_u8;
+  p_u8--;
+  data_buf[data_index++] = *p_u8;
+
+#if ACDEBUG(AC_MARLIN)
+  SERIAL_ECHOPGM("ChangePage: page="); SERIAL_ECHO(page_index);
+  SERIAL_ECHOPGM(" -> tft="); SERIAL_ECHO(data_temp);
+  SERIAL_ECHOPGM(" pkt=");
+  for (uint8_t i = 0; i < data_index; i++) {
+    SERIAL_PRINT(data_buf[i], HEX); SERIAL_CHAR(' ');
+  }
+  SERIAL_EOL();
+#endif
+
+  for (uint8_t i = 0; i < data_index; i++) {
+    TFTSer.write(data_buf[i]);
   }
 
-  uint8_t *p_u8 = (uint8_t *)(&data_temp) + 1 ;
+  page_index_last_2 = page_index_last;
+  page_index_last = page_index_now;
+  page_index_now = data_temp;
+
+#if ACDEBUG(AC_MARLIN)
+  SERIAL_ECHOLNPAIR("page_index_last_2: ", page_index_last_2);
+  SERIAL_ECHOLNPAIR("page_index_last: ", page_index_last);
+  SERIAL_ECHOLNPAIR("page_index_now: ", page_index_now);
+#endif
+}
+
+// Navigate directly to a page number that's already in DEVICE space — i.e.
+// a value read back from page_index_now/page_index_last, which are stored
+// POST-translation. Calling ChangePageOfTFT() with such a value translates
+// it AGAIN (e.g. ENG page 131 -> 131+120=251, a page with no assets at all).
+// This double-translation is exactly what caused the Terminal/Print-Settings
+// BACK-button freezes (live-confirmed via debug trace, 2026-07-26): BACK
+// held page_index_last=131 (already-mirrored ENG System page), passed it to
+// ChangePageOfTFT(), which mirrored it a second time to 251 and froze the
+// display trying to render an undefined page. Use this instead whenever
+// navigating "back" to page_index_last/page_index_last_2.
+void DgusTFT::ChangePageOfTFT_DevicePage(uint32_t device_page) {
+#if ACDEBUG(AC_MARLIN)
+  SERIAL_ECHOLNPAIR("ChangePageOfTFT_DevicePage: ", device_page);
+#endif
+
+  uint8_t data_buf[20] = {0};
+  uint8_t data_index = 0;
+  uint32_t data_temp = device_page;
+
+  uint8_t *p_u8 = (uint8_t *)(&data_temp) + 1;
 
   data_buf[data_index++] = 0x5A;
   data_buf[data_index++] = 0xA5;
@@ -943,21 +1129,7 @@ void DgusTFT::FakeChangePageOfTFT(uint32_t page_index) {
   //    uint8_t data_index = 0;
   uint32_t data_temp = 0;
 
-  if (lcd_info.language == ExtUI::CHS) {
-    data_temp = page_index;
-  } else if (lcd_info.language == ExtUI::ENG) {
-    if (PAGE_OUTAGE_RECOVERY == page_index) {
-      data_temp = PAGE_ENG_OUTAGE_RECOVERY;
-    } else if (PAGE_CHS_PROBE_PREHEATING == page_index) {
-      data_temp = PAGE_ENG_PROBE_PREHEATING;
-    } else if (PAGE_CHS_HOMING <= page_index && page_index <= PAGE_ENG_HOMING) {
-      data_temp = page_index + 12;
-    } else if (PAGE_CHS_PROBE_PRECHECK <= page_index && page_index <= PAGE_CHS_PROBE_PRECHECK_FAILED) {
-      data_temp = page_index + 3;
-    } else {
-      data_temp = page_index + 120;
-    }
-  }
+  data_temp = TranslatePage(page_index);
 
   page_index_last_2 = page_index_last;
   page_index_last = page_index_now;
@@ -987,66 +1159,179 @@ void DgusTFT::LcdAudioSet(ExtUI::audio_t audio) {
   }
 }
 
-bool DgusTFT::ReadTFTCommand() {
+// Write DGUS system register 0x0082 (LED_Config): active brightness 100% (0x64),
+// standby brightness 100% (0x64) so the panel never dims mid-print — the UI sits
+// on non-main pages for hours during prints, where a dimmed backlight would
+// otherwise stay dimmed. (The upstream Vyper driver uses 0x32 = 50% standby.)
+void DgusTFT::SetLcdBrightness() {
+  const uint8_t data_buf[] = { 0x5A, 0xA5, 0x07, 0x82, 0x00, 0x82, 0x64, 0x64, 0x03, 0xE8 };
+  for (uint8_t i = 0; i < sizeof(data_buf); i++) {
+    TFTSer.write(data_buf[i]);
+  }
+}
 
-  static uint32_t tft_last_check = 0;
+// Tools page: 207 and 209 are the same screen drawn with the case-light button OFF / ON, so pick
+// by the real light state. (ChangePageOfTFT(PAGE_CHS_TOOL_CASELIGHT) picks by language instead:
+// always 207 in CHS, always 209 in ENG — the button then showed the wrong state half the time.)
+void DgusTFT::GoToolsPage() {
+#if ENABLED(CASE_LIGHT_ENABLE)
+  ChangePageOfTFT_DevicePage(getCaseLightState() ? PAGE_ENG_TOOL_CASELIGHT : PAGE_CHS_TOOL_CASELIGHT);
+#else
+  ChangePageOfTFT(PAGE_TOOL);
+#endif
+}
 
-  static uint8_t length = 0, cnt = 0, tft_receive_steps = 0;
-  uint8_t data;
+// Print Settings page: 211 / 212 = light button OFF / ON.
+void DgusTFT::GoPrintSettingsPage() {
+#if ENABLED(CASE_LIGHT_ENABLE)
+  ChangePageOfTFT_DevicePage(getCaseLightState() ? PAGE_ENG_PRINTING_SETTING : PAGE_CHS_PRINTING_SETTING);
+#else
+  ChangePageOfTFT(PAGE_ADJUST);
+#endif
+}
 
-  if (0 == TFTSer.available() || data_received) {
-    return false;
+// System page for the current language and audio setting.
+void DgusTFT::GoSystemPage() {
+  if (lcd_info.language == ExtUI::ENG) {
+    ChangePageOfTFT(lcd_info.audio == ExtUI::ON ? 11 : 50);   // +120 -> 131 / 170 (PAGE_SYSTEM_ENG_AUDIO_ON/OFF)
+  } else {
+    ChangePageOfTFT(lcd_info.audio == ExtUI::ON ? PAGE_SYSTEM_CHS_AUDIO_ON : PAGE_SYSTEM_CHS_AUDIO_OFF);
+  }
+}
+
+void DgusTFT::SendMoveStepText() {
+  SendTxtToTFT(move_dis < 0.5f ? "0.1 mm" : (move_dis < 5.0f ? "1.0 mm" : "10 mm"), TXT_MOVE_STEP);
+}
+
+void DgusTFT::GoMovePage() {
+  ChangePageOfTFT(PAGE_MOVE);
+  SendMoveStepText();
+}
+
+// Refuse commands that would disturb a print (G28/G29/M502/M500 from the Terminal, factory reset,
+// PID tuning): show the NOT ALLOWED page — its OK button returns to the page we came from.
+bool DgusTFT::BlockedWhilePrinting() {
+  if (isPrinting() || isPrintingFromMedia() || isPrintingPaused()) {
+    ChangePageOfTFT(PAGE_FORBIT);
+    return true;
+  }
+  return false;
+}
+
+// The "please wait" screens (homing, leveling, probe preheat, pausing, stopping) have a spinner
+// baked into their background image, which the firmware cannot animate. Instead write a live
+// status line into TXT_WAIT_STATUS: moving dots show the firmware is alive, and the text shows
+// real progress (axis positions, probe point, heater temperatures).
+void DgusTFT::WaitStatus() {
+  static uint32_t last_ms = 0;
+  static uint8_t phase = 0;
+  static const char * const dots[4] = { "   ", ".  ", ".. ", "..." };
+
+  const uint32_t pg = page_index_now;
+  const bool homing   = (pg == PAGE_CHS_HOMING || pg == PAGE_ENG_HOMING);
+  const bool leveling = (pg == PAGE_LEVELING || pg == PAGE_LEVELING + 120);
+  const bool preheat  = (pg == PAGE_CHS_PROBE_PREHEATING || pg == PAGE_ENG_PROBE_PREHEATING);
+  const bool pausing  = (pg == PAGE_WAIT_PAUSE || pg == PAGE_WAIT_PAUSE + 120);
+  const bool stopping = (pg == PAGE_WAIT_STOP || pg == PAGE_WAIT_STOP + 120);
+  const bool waiting = homing || leveling || preheat || pausing || stopping;
+  // The probe-test page has no status line but gets the same spinner.
+  const bool probetest = (pg == PAGE_CHS_PROBE_PRECHECK || pg == PAGE_ENG_PROBE_PRECHECK);
+  const bool animating = waiting || probetest;
+
+  // Start/stop an Animation Icon on these pages (no effect unless the display files contain one).
+  static bool anim_running = false;
+  if (animating != anim_running) {
+    anim_running = animating;
+    SendValueToTFT(animating ? 1 : 0, TXT_WAIT_ANIM);
   }
 
-  data = TFTSer.read();
+  if (!waiting) return;
 
-  if (tft_receive_steps == 0) {
-    if (data != 0x5a) {
-      cnt = 0;
-      length = 0;
-      data_index = 0;
-      data_received = 0;
-      return false;
-    }
+  if (millis() - last_ms < 400) return;
+  last_ms = millis();
+  phase = (phase + 1) & 3;
 
-    tft_last_check = millis();
-    while (!TFTSer.available()) {
-      TERN_(USE_WATCHDOG, HAL_watchdog_refresh());
-      if (millis() - tft_last_check > 500) {
+  // Keep every line <= 20 characters so it fits the 256 px box at any plausible font width.
+  char buf[40];
+  if (homing)
+    sprintf(buf, "Homing%s X%d Y%d Z%d", dots[phase], (int)getAxisPosition_mm(X), (int)getAxisPosition_mm(Y), (int)getAxisPosition_mm(Z));
+  else if (leveling) {
+    const unsigned total = GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y;
+    sprintf(buf, "Probing %u/%u%s", (unsigned)probe_cnt, total, dots[phase]);
+    SendValueToTFT(constrain(probe_cnt * 100U / total, 0U, 100U), TXT_WAIT_BAR);   // Process Bar on the Leveling page
+  }
+  else if (preheat)
+    sprintf(buf, "H%u/%u B%u/%u%s", (unsigned)getActualTemp_celsius(E0), (unsigned)getTargetTemp_celsius(E0),
+            (unsigned)getActualTemp_celsius(BED), (unsigned)getTargetTemp_celsius(BED), dots[phase]);
+  else if (pausing)
+    sprintf(buf, "Pausing%s", dots[phase]);
+  else
+    sprintf(buf, "Stopping%s", dots[phase]);
+  SendTxtToTFT(buf, TXT_WAIT_STATUS);
+}
+
+// Non-blocking frame parser for "5A A5 [len] [payload...]".
+// Consumes at most one complete frame per call; partial frames persist in the
+// static state across calls, so a truncated frame (e.g. a lone 0x5A after a
+// cable glitch) never stalls the main loop — the parser simply resumes when
+// the next byte arrives.
+bool DgusTFT::ReadTFTCommand() {
+
+  static uint8_t length = 0, cnt = 0, tft_receive_steps = 0;
+
+  while (TFTSer.available() && !data_received) {
+    const uint8_t data = TFTSer.read();
+
+    switch (tft_receive_steps) {
+      case 0:                       // expect first header byte
+        if (data == 0x5A) tft_receive_steps = 1;
+        break;
+
+      case 1:                       // expect second header byte
+        if (data == 0xA5) {
+          tft_receive_steps = 2;
+        } else if (data != 0x5A) {  // stay in this state on repeated 0x5A
+          tft_receive_steps = 0;
+        }
+        break;
+
+      case 2:                       // length byte
+        length = data;
         data_index = 0;
-        data_received = 0;
-        printf("lcd ReadTFTCommand error\n");
-        return false;
-      }
-    }
+        cnt = 0;
+        if (length == 0) {
+          // Zero-length frame (noise, or a malformed packet): there is no
+          // payload to read, so resync on the next header instead of either
+          // (a) falling through to case 3, which would steal one byte from
+          // the NEXT real frame as bogus payload, or (b) asserting
+          // data_received with a stale data_buf, which ProcessPanelRequest
+          // would process as if it were a fresh command.
+          tft_receive_steps = 0;
+          break;
+        }
+        tft_receive_steps = 3;
+        break;
 
-    data = TFTSer.read();
-    //MYSERIAL.write(data );
-    if (data == 0xa5) {
-      tft_receive_steps = 2;
-    }
-  } else if (tft_receive_steps == 2) {
-    length = data;
-    tft_receive_steps = 3;
-    data_index = 0;
-    cnt = 0 ;
-  } else if (tft_receive_steps == 3) {
-    if (data_index >= 63) {
+      case 3:                       // payload
+        if (data_index >= (DATA_BUF_SIZE - 1)) {
 #if ACDEBUG(AC_MARLIN)
-      SERIAL_ECHOLNPAIR("lcd uart buff overflow: ", data_index);
+          SERIAL_ECHOLNPAIR("lcd uart buff overflow: ", data_index);
 #endif
-      data_index = 0;
-      data_received = 0;
-      return false;
-    }
-    data_buf[data_index++] = data;
-    cnt++;
-    if (cnt >= length) { //Receive complete
-      tft_receive_steps = 0;
-      cnt = 0;
-      data_index = 0;
-      data_received = 1;
-      return true;
+          tft_receive_steps = 0;
+          data_index = 0;
+          data_received = 0;
+          return false;
+        }
+        data_buf[data_index++] = data;
+        cnt++;
+        if (cnt >= length) {        // receive complete
+          tft_receive_steps = 0;
+          cnt = 0;
+          data_index = 0;
+          data_received = 1;
+          return true;
+        }
+        break;
     }
   }
 
@@ -1066,7 +1351,8 @@ void DgusTFT::CheckHeaters() {
   float temp = 0;
   static uint32_t time_last = 0;
 
-  if (millis() < time_last + 500) {
+  // Subtraction form is safe across millis() wraparound (~49.7 days)
+  if (millis() - time_last < 500) {
     return;
   }
 
@@ -1259,10 +1545,14 @@ void DgusTFT::ProcessPanelRequest() {
         p_u8++;
         *p_u8 = data_buf[3];
         if ((control_value & 0x00FFFFFF) == 0x010072) { // startup last gif
+          // Only "animation finished" ends IdleLoop's boot-sync poll. Stopping on the first reply
+          // (0x010000 = animation still running) would leave a display whose own push of 0x010072
+          // was dropped sitting on the boot animation forever.
+          lcd_boot_synced = true;
 
           LcdAudioSet(lcd_info.audio);
 
-          SendValueToTFT(2, ADDRESS_MOVE_DISTANCE);
+          SendMoveStepText();
 
 #if ENABLED(CASE_LIGHT_ENABLE)
           SendValueToTFT(getCaseLightState(), ADDRESS_SYSTEM_LED_STATUS);
@@ -1287,21 +1577,19 @@ void DgusTFT::ProcessPanelRequest() {
       }
 
       /* else if((control_index&0xF000)==0x2000)// is TXT ADDRESS
-         {
-           tft_txt_index = control_index;
-           j=0;
-           for(i=4; ;i++)
-           {
-             tft_txt_buf[j] = data_buf[i];
-        if(tft_txt_buf[j]==0xFF)
-        {
-         tft_txt_buf[j]= 0 ;
-         break;
-        }
-        j++;
-           }
-         }
+         { ... }
       */
+#if ACDEBUG(AC_MARLIN)
+      else {
+        // Catch-all: log any VP the display sends that we don't handle.
+        SERIAL_ECHOPGM("RX_VP=0x"); SERIAL_PRINT((uint32_t)control_index, HEX);
+        SERIAL_ECHOPGM(" data=");
+        for (uint8_t _i = 3; _i < 10; _i++) {
+          SERIAL_CHAR(' '); SERIAL_PRINT(data_buf[_i], HEX);
+        }
+        SERIAL_EOL();
+      }
+#endif
     }
     else  if (data_buf[0] == 0x82)
     {
@@ -1351,12 +1639,7 @@ void DgusTFT::page1_handle(void) {
       break;
 
     case 2:   // tool
-#if ENABLED(CASE_LIGHT_ENABLE)
-      ChangePageOfTFT(PAGE_CHS_TOOL_CASELIGHT);
-      SendValueToTFT(getCaseLightState(), ADDRESS_SYSTEM_LED_STATUS);
-#else
-      ChangePageOfTFT(PAGE_TOOL);
-#endif
+      GoToolsPage();
       break;
 
     case 3:   // prepare
@@ -1364,19 +1647,7 @@ void DgusTFT::page1_handle(void) {
       break;
 
     case 4:   // system
-      if (lcd_info.language == ExtUI::ENG) {
-        if (lcd_info.audio == ExtUI::ON) {
-          ChangePageOfTFT(11);    // PAGE_SYSTEM_ENG_AUDIO_ON - 120
-        } else if (lcd_info.audio == ExtUI::OFF) {
-          ChangePageOfTFT(50);   // PAGE_SYSTEM_ENG_AUDIO_OFF - 120
-        }
-      } else if (lcd_info.language == ExtUI::CHS) {
-        if (lcd_info.audio == ExtUI::ON) {
-          ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_ON);
-        } else if (lcd_info.audio == ExtUI::OFF) {
-          ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_OFF);
-        }
-      }
+      GoSystemPage();
       break;
   }
 
@@ -1408,7 +1679,7 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
     case 1: // return
       {
         ChangePageOfTFT(PAGE_MAIN);
-        SendColorToTFT(COLOUR_WHITE, TXT_DISCRIBE_0 + 0x30 * (lcd_txtbox_index - 1));
+        if (lcd_txtbox_index) SendColorToTFT(COLOUR_WHITE, TXT_DISCRIBE_0 + 0x30 * (lcd_txtbox_index - 1));
       }
       break;
 
@@ -1417,7 +1688,7 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
         if (lcd_txtbox_page > 0) {
           lcd_txtbox_page--;
 
-          SendColorToTFT(COLOUR_WHITE, TXT_DISCRIBE_0 + 0x30 * (lcd_txtbox_index - 1));
+          if (lcd_txtbox_index) SendColorToTFT(COLOUR_WHITE, TXT_DISCRIBE_0 + 0x30 * (lcd_txtbox_index - 1));
           lcd_txtbox_index = 0;
 
           SendFileList(lcd_txtbox_page * 5);
@@ -1430,7 +1701,7 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
         if ((lcd_txtbox_page + 1) * 5 < filenavigator.getFileNum()) {
           lcd_txtbox_page++;
 
-          SendColorToTFT(COLOUR_WHITE, TXT_DISCRIBE_0 + 0x30 * (lcd_txtbox_index - 1));
+          if (lcd_txtbox_index) SendColorToTFT(COLOUR_WHITE, TXT_DISCRIBE_0 + 0x30 * (lcd_txtbox_index - 1));
           lcd_txtbox_index = 0;
 
           SendFileList(lcd_txtbox_page * 5);
@@ -1522,15 +1793,16 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
 
           sprintf(str_buf, "%d", (uint16_t)getProgress_percent());
           SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
+          SendValueToTFT(getProgress_percent(), TXT_PRINT_BAR);   // Process Bar control
 
           uint32_t time = 0;
           sprintf(str_buf, "%s H ", utostr3(time / 60));
           sprintf(str_buf + strlen(str_buf), "%s M", utostr3(time % 60));
           SendTxtToTFT(str_buf, TXT_PRINT_TIME);
-					if (gcodeComment != " G-Code Status Area ") {
-            gcodeComment = " G-Code Status Area ";// MEL_MOD malebuffy
-            SendTxtToTFT(gcodeComment, TXT_PRINT_COMMENT);
-			  	}
+          // reset the status line at print start (the old pointer comparison of two string
+          // literals was unspecified behaviour)
+          gcodeComment = " G-Code Status Area ";
+          SendTxtToTFT(gcodeComment, TXT_PRINT_COMMENT);
           ChangePageOfTFT(PAGE_STATUS2);
         }
       }
@@ -1565,6 +1837,7 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
         if (file_index < filenavigator.getFileNum()) {
 
           SendColorToTFT(COLOR_RED, TXT_DISCRIBE_0 + 0x30 * (lcd_txtbox_index - 1));
+          filenavigator.sendRows(lcd_txtbox_index);   // mark the tapped row with '> '
 
           if (lcd_txtbox_index_last && lcd_txtbox_index_last != lcd_txtbox_index) {  // 1~5
             SendColorToTFT(COLOUR_WHITE, TXT_DISCRIBE_0 + 0x30 * (lcd_txtbox_index_last - 1));
@@ -1634,17 +1907,9 @@ void DgusTFT::page3_handle(void) {
 
     case 4: // print change param
 
-#ifdef CASE_LIGHT_ENABLE
-      ChangePageOfTFT(PAGE_CHS_PRINTING_SETTING);
-      SendValueToTFT(getCaseLightState(), ADDRESS_PRINT_SETTING_LED_STATUS);
-#else
-      ChangePageOfTFT(PAGE_ADJUST);
-#endif
-
-      SendValueToTFT((uint16_t)getTargetTemp_celsius(E0), TXT_ADJUST_HOTEND);
-      SendValueToTFT((uint16_t)getTargetTemp_celsius(BED), TXT_ADJUST_BED);
+      GoPrintSettingsPage();
+      send_print_setting_values();
       feedrate_last = (uint16_t)getFeedrate_percent();
-      SendValueToTFT(feedrate_last, TXT_ADJUST_SPEED);
       flash_time = millis();
       break;
   }
@@ -1664,6 +1929,7 @@ void DgusTFT::page3_handle(void) {
     progress_last = getProgress_percent();
     sprintf(str_buf, "%u", progress_last);
     SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
+    SendValueToTFT(getProgress_percent(), TXT_PRINT_BAR);   // Process Bar control
   }
 
   // Get Printing Time
@@ -1713,19 +1979,9 @@ void DgusTFT::page4_handle(void) {
 
     case 4: // print settings
 
-#ifdef CASE_LIGHT_ENABLE
-      ChangePageOfTFT(PAGE_CHS_PRINTING_SETTING);
-      SendValueToTFT(getCaseLightState(), ADDRESS_PRINT_SETTING_LED_STATUS);
-#else
-      ChangePageOfTFT(PAGE_ADJUST);
-#endif
-
-      SendValueToTFT((uint16_t)getTargetTemp_celsius(E0), TXT_ADJUST_HOTEND);
-      SendValueToTFT((uint16_t)getTargetTemp_celsius(BED), TXT_ADJUST_BED);
+      GoPrintSettingsPage();
+      send_print_setting_values();
       feedrate_last = (uint16_t)getFeedrate_percent();
-      SendValueToTFT(feedrate_last, TXT_ADJUST_SPEED);
-      SendValueToTFT((uint16_t)getActualFan_percent(FAN0), TXT_FAN_SPEED_TARGET);
-      SendTxtToTFT(ftostr(getZOffset_mm()), TXT_LEVEL_OFFSET);
 
       break;
   }
@@ -1748,6 +2004,7 @@ void DgusTFT::page4_handle(void) {
     if (progress_last != getProgress_percent()) {
       sprintf(str_buf, "%d", getProgress_percent());
       SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
+      SendValueToTFT(getProgress_percent(), TXT_PRINT_BAR);   // Process Bar control
       progress_last = getProgress_percent();
     }
   } else { // we are printing from a HOST
@@ -1767,116 +2024,25 @@ void DgusTFT::page4_handle(void) {
 	}
 }
 
-void DgusTFT::page5_handle(void)          // print settings
+void DgusTFT::page5_handle(void)          // print settings (the variant without a case-light button)
 {
-  char str_buf[10];
-  float z_off;
-  int16_t steps;
-  static bool z_change = false;
-
-  switch (key_value) {
-    case 0:
-      break;
-
-    case 1: // return
-      if (AC_printer_printing == printer_state) {
-        ChangePageOfTFT(PAGE_STATUS2);  // show pause
-      } else if (AC_printer_paused == printer_state) {
-        ChangePageOfTFT(PAGE_STATUS1);  // show print
-      }
-      break;
-
-    case 2: // - MEL MOD for 0.01mm
-      {
-        z_off = getZOffset_mm();
-
-        if (z_off <= -5) {
-          return ;
-        }
-
-        steps = mmToWholeSteps(-BABYSTEP_MULTIPLICATOR_Z, Z);
-        babystepAxis_steps(steps, Z);
-
-        z_off -= BABYSTEP_MULTIPLICATOR_Z;
-        setZOffset_mm(z_off);
-
-        sprintf(str_buf, "%.2f", getZOffset_mm());
-        SendTxtToTFT(str_buf, TXT_LEVEL_OFFSET);
-
-        z_change = true;
-      }
-      break;
-
-    case 3: // + MEL MOD 0.01mm
-      {
-        z_off = getZOffset_mm();
-
-        if (z_off >= 5) {
-          return ;
-        }
-
-        steps = mmToWholeSteps(BABYSTEP_MULTIPLICATOR_Z, Z);
-        babystepAxis_steps(steps, Z);
-
-        z_off += BABYSTEP_MULTIPLICATOR_Z;
-        setZOffset_mm(z_off);
-
-        sprintf(str_buf, "%.2f", getZOffset_mm());
-        SendTxtToTFT(str_buf, TXT_LEVEL_OFFSET);
-
-        z_change = true;
-      }
-      break;
-
-    case 4: // light control
-#if ENABLED(CASE_LIGHT_ENABLE)
-      if (getCaseLightState()) {
-        SendValueToTFT(0, ADDRESS_PRINT_SETTING_LED_STATUS);
-        setCaseLightState(0);
-      } else {
-        SendValueToTFT(1, ADDRESS_PRINT_SETTING_LED_STATUS);
-        setCaseLightState(1);
-      }
-#endif
-      break;
-
-    case 5:
-      ChangePageOfTFT(PAGE_DONE);
-      break;
-
-    case 6:
-
-      break;
-
-    case 7:
-      RequestValueFromTFT(TXT_ADJUST_BED);
-      RequestValueFromTFT(TXT_ADJUST_SPEED);
-      RequestValueFromTFT(TXT_ADJUST_HOTEND);
-      RequestValueFromTFT(TXT_FAN_SPEED_TARGET);
-
-      if (z_change) {
-        injectCommands_P(PSTR("M500"));
-        z_change = false;
-      }
-
-      if (AC_printer_printing == printer_state) {
-        ChangePageOfTFT(PAGE_STATUS2);  // show pause
-      } else if (AC_printer_paused == printer_state) {
-        ChangePageOfTFT(PAGE_STATUS1);  // show print
-      }
-
-      break;
-  }
+  page211_212_handle();
 }
 
 void DgusTFT::page6_handle(void)
 {
+  // Input Shaping tuning has no backend on this branch: it's a Marlin
+  // 2.1.x-era feature (M593 / feature/input_shaping.*) that doesn't exist in
+  // this Marlin 2.0.8 core — no config option, no source file. The frequency/
+  // zeta adjust buttons are intentionally left unwired rather than faking a
+  // result; only BACK works, so the page is at least not a dead end.
   switch (key_value)
   {
     case 0:
       break;
 
-    case 1:
+    case 1: // return
+      ChangePageOfTFT(PAGE_PREPARE);
       break;
   }
 }
@@ -1899,7 +2065,7 @@ void DgusTFT::page7_handle(void) // tools
 
     case 2:
       {
-        ChangePageOfTFT(PAGE_MOVE);
+        GoMovePage();
       }
       break;
 
@@ -1944,11 +2110,10 @@ void DgusTFT::page7_handle(void) // tools
 void DgusTFT::page8_handle(void) {
 
   static uint16_t movespeed = 50;
-  static float move_dis = 1.0f;
 
-  if (key_value == 2 || key_value == 4 ||
-      key_value == 6 || key_value == 8 ||
-      key_value == 10 || key_value == 12 && !isMoving()) {
+  if ((key_value == 2 || key_value == 4 ||
+       key_value == 6 || key_value == 8 ||
+       key_value == 10 || key_value == 12) && !isMoving()) {
 
     if (getAxisPosition_mm(Z) < 0) {
       setAxisPosition_mm(0, Z, 8);
@@ -1962,11 +2127,7 @@ void DgusTFT::page8_handle(void) {
 
     case 1://return
 
-#ifdef CASE_LIGHT_ENABLE
-      ChangePageOfTFT(PAGE_CHS_TOOL_CASELIGHT);
-#else
-      ChangePageOfTFT(PAGE_TOOL);
-#endif
+      GoToolsPage();
 
       break;
 
@@ -2036,17 +2197,17 @@ void DgusTFT::page8_handle(void) {
 
     case 3:
       move_dis = 0.1f ;
-      SendValueToTFT(1, ADDRESS_MOVE_DISTANCE);
+      SendMoveStepText();
       break;
 
     case 7:
       move_dis = 1.0f ;
-      SendValueToTFT(2, ADDRESS_MOVE_DISTANCE);
+      SendMoveStepText();
       break;
 
     case 11:
       move_dis = 10.0f ;
-      SendValueToTFT(3, ADDRESS_MOVE_DISTANCE);
+      SendMoveStepText();
       break;
 
     case 14:
@@ -2075,52 +2236,41 @@ void DgusTFT::page9_handle(void)
     case 1://return
       {
 
-#if ENABLED(CASE_LIGHT_ENABLE)
-        ChangePageOfTFT(PAGE_CHS_TOOL_CASELIGHT);
-        SendValueToTFT(getCaseLightState(), ADDRESS_SYSTEM_LED_STATUS);
-#else
-        ChangePageOfTFT(PAGE_TOOL);
-#endif
+        GoToolsPage();
 
       }
       break;
-    case 2:
-      {
-
-      }
-      break;
-    case 3:
-
-      break;
-    case 4:
+    case 2: // HOTEND -5C
+      setTargetTemp_celsius(constrain(getTargetTemp_celsius(E0) - 5, 0, HEATER_0_MAXTEMP), E0);
+      SendValueToTFT((uint16_t)getTargetTemp_celsius(E0), TXT_HOTEND_TARGET);
       break;
 
-    case 5:
+    case 3: // HOTEND +5C
+      setTargetTemp_celsius(constrain(getTargetTemp_celsius(E0) + 5, 0, HEATER_0_MAXTEMP), E0);
+      SendValueToTFT((uint16_t)getTargetTemp_celsius(E0), TXT_HOTEND_TARGET);
+      break;
+
+    case 4: // BED -5C
+      setTargetTemp_celsius(constrain(getTargetTemp_celsius(BED) - 5, 0, BED_MAXTEMP), BED);
+      SendValueToTFT((uint16_t)getTargetTemp_celsius(BED), TXT_BED_TARGET);
+      break;
+
+    case 5: // BED +5C
+      setTargetTemp_celsius(constrain(getTargetTemp_celsius(BED) + 5, 0, BED_MAXTEMP), BED);
+      SendValueToTFT((uint16_t)getTargetTemp_celsius(BED), TXT_BED_TARGET);
       break;
 
     case 6: // cooling
       setTargetTemp_celsius(0, E0);
       setTargetTemp_celsius(0, BED);
 
-#if ENABLED(CASE_LIGHT_ENABLE)
-      ChangePageOfTFT(PAGE_CHS_TOOL_CASELIGHT);
-      SendValueToTFT(getCaseLightState(), ADDRESS_SYSTEM_LED_STATUS);
-#else
-      ChangePageOfTFT(PAGE_TOOL);
-#endif
+      GoToolsPage();
 
       break;
 
     case 7: // send target temp
-      RequestValueFromTFT(TXT_HOTEND_TARGET);
-      RequestValueFromTFT(TXT_BED_TARGET);
-
-#if ENABLED(CASE_LIGHT_ENABLE)
-      ChangePageOfTFT(PAGE_CHS_TOOL_CASELIGHT);
-      SendValueToTFT(getCaseLightState(), ADDRESS_SYSTEM_LED_STATUS);
-#else
-      ChangePageOfTFT(PAGE_TOOL);
-#endif
+      // +/- already applied the targets immediately; nothing to read back.
+      GoToolsPage();
 
       break;
   }
@@ -2145,41 +2295,34 @@ void DgusTFT::page10_handle(void)
     case 1:   // return
       {
 
-#if ENABLED(CASE_LIGHT_ENABLE)
-        ChangePageOfTFT(PAGE_CHS_TOOL_CASELIGHT);
-        SendValueToTFT(getCaseLightState(), ADDRESS_SYSTEM_LED_STATUS);
-#else
-        ChangePageOfTFT(PAGE_TOOL);
-#endif
+        GoToolsPage();
 
       }
       break;
 
-    case 2:
-      {
-
-      }
+    case 2: // FAN -5%
+      setTargetFan_percent(constrain((int16_t)getTargetFan_percent(FAN0) - 5, 0, 100), FAN0);
+      SendValueToTFT((uint16_t)getTargetFan_percent(FAN0), TXT_FAN_SPEED_TARGET);
       break;
 
-    case 3:
+    case 3: // FAN +5%
+      setTargetFan_percent(constrain((int16_t)getTargetFan_percent(FAN0) + 5, 0, 100), FAN0);
+      SendValueToTFT((uint16_t)getTargetFan_percent(FAN0), TXT_FAN_SPEED_TARGET);
       break;
 
-    case 4:
+    case 4: // SPEED -5%
+      setFeedrate_percent(constrain((int16_t)getFeedrate_percent() - 5, 10, 999));
+      SendValueToTFT((uint16_t)getFeedrate_percent(), TXT_PRINT_SPEED_TARGET);
       break;
 
-    case 5:
+    case 5: // SPEED +5%
+      setFeedrate_percent(constrain((int16_t)getFeedrate_percent() + 5, 10, 999));
+      SendValueToTFT((uint16_t)getFeedrate_percent(), TXT_PRINT_SPEED_TARGET);
       break;
 
     case 6:   // ok
-      RequestValueFromTFT(TXT_FAN_SPEED_TARGET);
-      RequestValueFromTFT(TXT_PRINT_SPEED_TARGET);
-
-#if ENABLED(CASE_LIGHT_ENABLE)
-      ChangePageOfTFT(PAGE_CHS_TOOL_CASELIGHT);
-      SendValueToTFT(getCaseLightState(), ADDRESS_SYSTEM_LED_STATUS);
-#else
-      ChangePageOfTFT(PAGE_TOOL);
-#endif
+      // +/- already applied fan and speed immediately; nothing to read back.
+      GoToolsPage();
 
       break;
   }
@@ -2220,7 +2363,8 @@ void DgusTFT::page11_handle(void) {// SYSTEM PAGE BUTTONS
 	    ChangePageOfTFT(PAGE_PRINTERSTATS);
       break;
 
-    case 3:
+    case 3: // TERMINAL
+      ChangePageOfTFT(PAGE_TERMINAL);
       break;
 
     case 4:   // audio
@@ -2255,10 +2399,10 @@ void DgusTFT::page11_handle(void) {// SYSTEM PAGE BUTTONS
       ChangePageOfTFT(PAGE_ABOUT);
       break;
 
-    case 6:
-      ChangePageOfTFT(PAGE_RECORD);
+    case 6: // FACTORY RESET (was "Records"/PAGE_RECORD)
+      ChangePageOfTFT(PAGE_FACTORY_RESET);
       break;
-			
+
   }
 }
 
@@ -2286,27 +2430,7 @@ void DgusTFT::page13_handle(void)
       break;
 
     case 1://return
-      {
-        if (lcd_info.language == ExtUI::ENG) {
-          if (lcd_info.audio == ExtUI::ON) {
-            ChangePageOfTFT(11);    // PAGE_SYSTEM_ENG_AUDIO_ON - 120
-          } else if (lcd_info.audio == ExtUI::OFF) {
-            ChangePageOfTFT(50);   // PAGE_SYSTEM_ENG_AUDIO_OFF - 120
-          }
-        } else if (lcd_info.language == ExtUI::CHS) {
-          if (lcd_info.audio == ExtUI::ON) {
-            ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_ON);
-          } else if (lcd_info.audio == ExtUI::OFF) {
-            ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_OFF);
-          }
-        }
-      }
-      break;
-
-    case 2:
-      {
-
-      }
+      GoSystemPage();
       break;
   }
 }
@@ -2379,6 +2503,16 @@ void DgusTFT::page15_handle(void)
         ChangePageOfTFT(PAGE_FILAMENT);
       }
       break;
+
+    case 5: // COOL DOWN — both heaters off. (Was SHAPING; M593 input shaping does not exist in
+            // Marlin 2.0.8, so the button and its page 6 are hidden — see tools/ui_features.py.)
+      setTargetTemp_celsius(0, E0);
+      setTargetTemp_celsius(0, BED);
+      break;
+
+    case 6: // THERMAL TUNING
+      ChangePageOfTFT(PAGE_THERMAL_TUNING);
+      break;
   }
 }
 
@@ -2415,6 +2549,11 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
       break;
 
     case 4:
+      ChangePageOfTFT(PAGE_AUTO_OFFSET);
+      break;
+
+    case 5: // Z OFFSET WIZARD — same guided M1024 step-adjust flow as
+            // "AUTO Z OFFSET" (case 4); no separate wizard page exists
       ChangePageOfTFT(PAGE_AUTO_OFFSET);
       break;
 
@@ -2619,7 +2758,7 @@ void DgusTFT::page20_handle(void)   // confirm
       break;
     case 1://return
       {
-        ChangePageOfTFT(page_index_last);
+        ChangePageOfTFT_DevicePage(page_index_last);
       }
       break;
 
@@ -2639,7 +2778,7 @@ void DgusTFT::page21_handle(void)
 
     case 1://return
       {
-        ChangePageOfTFT(page_index_last);
+        ChangePageOfTFT_DevicePage(page_index_last);
       }
       break;
 
@@ -2691,13 +2830,13 @@ void DgusTFT::page23_handle(void)
 
     case 1:
       {
-        ChangePageOfTFT(page_index_last);
+        ChangePageOfTFT_DevicePage(page_index_last);
       }
       break;
 
     case 2:
       {
-        ChangePageOfTFT(page_index_last);
+        ChangePageOfTFT_DevicePage(page_index_last);
       }
       break;
   }
@@ -2717,12 +2856,12 @@ void DgusTFT::page24_handle(void)
       break;
     case 1://return
       {
-        ChangePageOfTFT(page_index_last);
+        ChangePageOfTFT_DevicePage(page_index_last);
       }
       break;
     case 2:
       {
-        ChangePageOfTFT(page_index_last);
+        ChangePageOfTFT_DevicePage(page_index_last);
       }
       break;
 
@@ -2768,7 +2907,7 @@ void DgusTFT::page26_handle(void)
       break;
     case 1://return
       {
-        ChangePageOfTFT(page_index_last);
+        ChangePageOfTFT_DevicePage(page_index_last);
 
       }
       break;
@@ -2839,7 +2978,7 @@ void DgusTFT::page28_handle(void)
       break;
     case 1://return
       {
-        ChangePageOfTFT(page_index_last);
+        ChangePageOfTFT_DevicePage(page_index_last);
 
       }
       break;
@@ -2957,7 +3096,7 @@ void DgusTFT::page33_handle(void)
         setTargetTemp_celsius(LEVELING_BED_TEMP, BED);
 #endif
 
-        injectCommands_P(PSTR("M851 Z0\nG28\nG29"));
+        start_leveling_run();
         printer_state = AC_printer_probing;
         ChangePageOfTFT(PAGE_LEVELING);
       }
@@ -3073,27 +3212,13 @@ void DgusTFT::page117_handle(void)  // Page CHS Mute handler
       }
       break;
 
-    case 2:   // language
-      {
-        if (lcd_info.language == ExtUI::CHS) {
-          lcd_info.language = ExtUI::ENG;
-          if (lcd_info.audio == ExtUI::ON) {
-            ChangePageOfTFT(11);  // PAGE_SYSTEM_ENG_AUDIO_ON-120
-          } else if (lcd_info.audio == ExtUI::OFF) {
-            ChangePageOfTFT(50);  // PAGE_SYSTEM_ENG_AUDIO_OFF-120
-          }
-        } else if (lcd_info.language == ExtUI::ENG) {
-          lcd_info.language = ExtUI::CHS;
-          if (lcd_info.audio == ExtUI::ON) {
-            ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_ON);
-          } else if (lcd_info.audio == ExtUI::OFF) {
-            ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_OFF);
-          }
-        }
-      }
+    case 2:   // statistics
+      printerStatsToTFT();
+      ChangePageOfTFT(PAGE_PRINTERSTATS);
       break;
 
-    case 3:
+    case 3: // TERMINAL
+      ChangePageOfTFT(PAGE_TERMINAL);
       break;
 
     case 4:   // audio
@@ -3121,8 +3246,8 @@ void DgusTFT::page117_handle(void)  // Page CHS Mute handler
 
       break;
 
-    case 6:
-      ChangePageOfTFT(PAGE_RECORD);
+    case 6: // FACTORY RESET (was "Records"/PAGE_RECORD)
+      ChangePageOfTFT(PAGE_FACTORY_RESET);
       break;
   }
 }
@@ -3153,7 +3278,8 @@ void DgusTFT::page170_handle(void) { // ENG Mute handler
 	    ChangePageOfTFT(PAGE_PRINTERSTATS);
       break;
 
-    case 3:
+    case 3: // TERMINAL
+      ChangePageOfTFT(PAGE_TERMINAL);
       break;
 
     case 4:   // audio
@@ -3181,8 +3307,8 @@ void DgusTFT::page170_handle(void) { // ENG Mute handler
       ChangePageOfTFT(PAGE_ABOUT);
       break;
 
-    case 6:
-      ChangePageOfTFT(PAGE_RECORD);
+    case 6: // FACTORY RESET (was "Records"/PAGE_RECORD)
+      ChangePageOfTFT(PAGE_FACTORY_RESET);
       break;
   }
 }
@@ -3209,6 +3335,7 @@ void DgusTFT::page171_handle(void)  // CHS power outage resume handler
 
         sprintf(str_buf, "%u", (uint16_t)getProgress_percent());
         SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
+        SendValueToTFT(getProgress_percent(), TXT_PRINT_BAR);   // Process Bar control
 
         ChangePageOfTFT(PAGE_STATUS2);               // show pause
 #ifdef CASE_LIGHT_ENABLE
@@ -3256,6 +3383,7 @@ void DgusTFT::page173_handle(void)  // ENG power outage resume handler
 
         sprintf(str_buf, "%u", (uint16_t)getProgress_percent());
         SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
+        SendValueToTFT(getProgress_percent(), TXT_PRINT_BAR);   // Process Bar control
 
         ChangePageOfTFT(PAGE_STATUS2);      // show pause
 
@@ -3335,7 +3463,7 @@ void DgusTFT::page177_to_198_handle(void)
             PAGE_PRINT_FINISH == page_index_last) {
           ChangePageOfTFT(PAGE_MAIN);
         } else {
-          ChangePageOfTFT(page_index_last_2);
+          ChangePageOfTFT_DevicePage(page_index_last_2);
         }
 
       } else {
@@ -3345,7 +3473,7 @@ void DgusTFT::page177_to_198_handle(void)
             page_index_last -= 120;
           }
         }
-        ChangePageOfTFT(page_index_last);
+        ChangePageOfTFT_DevicePage(page_index_last);
       }
 
       disable_all_steppers();
@@ -3373,7 +3501,7 @@ void DgusTFT::page178_to_181_190_to_193_handle(void)    // temperature abnormal
         stopPrint();
         ChangePageOfTFT(PAGE_MAIN);
       } else {
-        ChangePageOfTFT(page_index_last);
+        ChangePageOfTFT_DevicePage(page_index_last);
       }
 
       onSurviveInKilled();
@@ -3423,6 +3551,7 @@ void DgusTFT::page201_handle(void)  // probe precheck
     if (getProbeState()) {  // triggered too early
       probe_check_counter = 0;
       probe_tare_flag = 0;
+      probe_failed_ms = millis();
       ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK_FAILED);
     }
     probe_tare_flag = 1;
@@ -3456,6 +3585,7 @@ void DgusTFT::page201_handle(void)  // probe precheck
     if (probe_check_counter++ >=  200) {   // waiting for 1 min
       probe_check_counter = 0;
       probe_tare_flag = 0;
+      probe_failed_ms = millis();
       ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK_FAILED);
     }
   }
@@ -3482,22 +3612,26 @@ void DgusTFT::page202_handle(void)  // probe precheck ok
 
   delay(3000);
 
-  injectCommands_P(PSTR("M851 Z0\nG28\nG29"));
+  start_leveling_run();
   printer_state = AC_printer_probing;
   ChangePageOfTFT(PAGE_LEVELING);
 }
 
-void DgusTFT::page203_handle(void)    // probe precheck failed
+void DgusTFT::page203_handle(void)    // probe precheck failed (203 CHS / 206 ENG)
 {
-  static millis_t flash_time = 0;
-  //        static millis_t probe_check_counter = 0;
-  //        static uint8_t probe_state_last = 0;
-  //        char str_buf[16];
-
-  if (millis() < (flash_time + 1500) ) {
-    return;
+  switch (key_value) {
+    case 0:
+      break;
+    case 1:   // BACK
+      ChangePageOfTFT(PAGE_PreLEVEL);
+      return;
   }
-  flash_time = millis();
+
+  // The page used to have no way out at all. If the BACK button isn't in the display's loaded art
+  // (older 16_68_.icl), still leave on our own after 10 s.
+  if (millis() - probe_failed_ms > 10000) {
+    ChangePageOfTFT(PAGE_PreLEVEL);
+  }
 }
 
 void DgusTFT::page207_209_handle(void)
@@ -3516,7 +3650,7 @@ void DgusTFT::page207_209_handle(void)
 
     case 2:
       {
-        ChangePageOfTFT(PAGE_MOVE);
+        GoMovePage();
       }
       break;
 
@@ -3540,55 +3674,54 @@ void DgusTFT::page207_209_handle(void)
     case 5:   // turn off the xyz motor
       if (!isMoving()) {
         disable_all_steppers();
+        set_all_unhomed();   // page7_handle does this; without it Marlin still believed the axes were homed
       }
       break;
 
-    case 6:   // light control
+    case 6:   // light control — re-open the page drawn with the new state (207 off / 209 on)
 #if ENABLED(CASE_LIGHT_ENABLE)
-      if (getCaseLightState()) {
-        setCaseLightState(0);
-        SendValueToTFT(0, ADDRESS_SYSTEM_LED_STATUS);
-      } else {
-        setCaseLightState(1);
-        SendValueToTFT(1, ADDRESS_SYSTEM_LED_STATUS);
-      }
+      setCaseLightState(!getCaseLightState());
+      GoToolsPage();
 #endif
       break;
   }
 }
 
-// print settings with case light
+// Print Settings (211/212; also page 5/125 when there is no case light). Every value has its own
+// - / + buttons that apply immediately and update the displayed value; nothing is read back from the
+// display. BACK leaves without saving; SAVE stores the Z offset (M500) and returns to the print page.
 void DgusTFT::page211_212_handle(void)
 {
   char str_buf[10];
-  float z_off;
-  int16_t steps;
   static bool z_change = false;
+
+  auto return_to_print_page = []() {
+    if (AC_printer_printing == printer_state) {
+      ChangePageOfTFT(PAGE_STATUS2);  // show pause
+    } else if (AC_printer_paused == printer_state) {
+      ChangePageOfTFT(PAGE_STATUS1);  // show print
+    }
+  };
 
   switch (key_value) {
     case 0:
       break;
 
-    case 1: // return
-      if (AC_printer_printing == printer_state) {
-        ChangePageOfTFT(PAGE_STATUS2);  // show pause
-      } else if (AC_printer_paused == printer_state) {
-        ChangePageOfTFT(PAGE_STATUS1);  // show print
-      }
+    case 1: // BACK — without saving
+      return_to_print_page();
       break;
 
-    case 2: // -
+    case 2: // Z offset -
+    case 3: // Z offset +
       {
-        z_off = getZOffset_mm();
+        const bool plus = (key_value == 3);
+        float z_off = getZOffset_mm();
 
-        if (z_off <= -5) {
-          return ;
-        }
+        if (plus ? (z_off >= 5) : (z_off <= -5)) return;
 
-        steps = mmToWholeSteps(-BABYSTEP_MULTIPLICATOR_Z, Z);
-        babystepAxis_steps(steps, Z);
-
-        z_off -= BABYSTEP_MULTIPLICATOR_Z;
+        const float step = plus ? BABYSTEP_MULTIPLICATOR_Z : -BABYSTEP_MULTIPLICATOR_Z;
+        babystepAxis_steps(mmToWholeSteps(step, Z), Z);
+        z_off += step;
         setZOffset_mm(z_off);
 
         sprintf(str_buf, "%.2f", getZOffset_mm());
@@ -3598,81 +3731,171 @@ void DgusTFT::page211_212_handle(void)
       }
       break;
 
-    case 3: // +
-      {
-        z_off = getZOffset_mm();
-
-        if (z_off >= 5) {
-          return ;
-        }
-
-        steps = mmToWholeSteps(BABYSTEP_MULTIPLICATOR_Z, Z);
-        babystepAxis_steps(steps, Z);
-
-        z_off += BABYSTEP_MULTIPLICATOR_Z;
-        setZOffset_mm(z_off);
-
-        sprintf(str_buf, "%.2f", getZOffset_mm());
-        SendTxtToTFT(str_buf, TXT_LEVEL_OFFSET);
-
-        z_change = true;
-      }
-      break;
-
-    case 4: // light control
+    case 4: // light control — re-open the page drawn with the new state (211 off / 212 on)
 #if ENABLED(CASE_LIGHT_ENABLE)
-      if (getCaseLightState()) {
-        SendValueToTFT(0, ADDRESS_PRINT_SETTING_LED_STATUS);
-        setCaseLightState(0);
-      } else {
-        SendValueToTFT(1, ADDRESS_PRINT_SETTING_LED_STATUS);
-        setCaseLightState(1);
-      }
+      setCaseLightState(!getCaseLightState());
+      GoPrintSettingsPage();
 #endif
       break;
 
-    case 5:
-      ChangePageOfTFT(PAGE_DONE);
-      break;
-
-    case 6:
-
-      break;
-
-    case 7:
-      RequestValueFromTFT(TXT_ADJUST_BED);
-      RequestValueFromTFT(TXT_ADJUST_SPEED);
-      RequestValueFromTFT(TXT_ADJUST_HOTEND);
-      RequestValueFromTFT(TXT_FAN_SPEED_TARGET);
-
+    case 7: // SAVE
       if (z_change) {
         injectCommands_P(PSTR("M500"));
         z_change = false;
       }
+      return_to_print_page();
+      break;
 
-      if (AC_printer_printing == printer_state) {
-        ChangePageOfTFT(PAGE_STATUS2);  // show pause
-      } else if (AC_printer_paused == printer_state) {
-        ChangePageOfTFT(PAGE_STATUS1);  // show print
+    case 8:  // hotend target -5
+    case 9:  // hotend target +5
+      {
+        const int16_t t = constrain((int16_t)getTargetTemp_celsius(E0) + (key_value == 9 ? 5 : -5), 0, HEATER_0_MAXTEMP);
+        setTargetTemp_celsius(t, E0);
+        SendValueToTFT((uint16_t)t, TXT_ADJUST_HOTEND);
       }
+      break;
 
+    case 10: // bed target -5
+    case 11: // bed target +5
+      {
+        const int16_t t = constrain((int16_t)getTargetTemp_celsius(BED) + (key_value == 11 ? 5 : -5), 0, BED_MAXTEMP);
+        setTargetTemp_celsius(t, BED);
+        SendValueToTFT((uint16_t)t, TXT_ADJUST_BED);
+      }
+      break;
+
+    case 12: // print speed -5 %
+    case 13: // print speed +5 %
+      {
+        const int16_t v = constrain((int16_t)getFeedrate_percent() + (key_value == 13 ? 5 : -5), 10, 300);
+        setFeedrate_percent(v);
+        SendValueToTFT((uint16_t)v, TXT_ADJUST_SPEED);
+      }
+      break;
+
+    case 14: // part-cooling fan -5 %
+    case 15: // part-cooling fan +5 %
+      {
+        const int16_t v = constrain((int16_t)getTargetFan_percent(FAN0) + (key_value == 15 ? 5 : -5), 0, 100);
+        setTargetFan_percent(v, FAN0);
+        SendValueToTFT((uint16_t)v, TXT_FAN_SPEED_TARGET);
+      }
       break;
   }
 }
 
-void DgusTFT::page213_handle(void) {// MEL_MOD to display printer stats
- switch (key_value) {
+void DgusTFT::page213_handle(void) {// MEL_MOD to display printer stats (213 ENG / 93 CHS)
+  switch (key_value) {
     case 0:
       break;
-    case 0x0999: // return
-			  if (lcd_info.audio == ExtUI::ON) {
-          ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_ON);    // PAGE_SYSTEM_ENG_AUDIO_ON - 120
-        } else if (lcd_info.audio == ExtUI::OFF) {
-          ChangePageOfTFT(50);// PAGE_SYSTEM_ENG_AUDIO_OFF - 120
-        }
-			//ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_ON);// go back to the ABOUT SOUND enabled page
+    case 1: // return
+      GoSystemPage();
       break;
- }
+  }
+}
+
+// Page 214 — Thumbnail / print preview. Not currently reachable: nothing
+// navigates here yet (would need the file browser's per-file tap handler to
+// carry the selected filename across the page change, which it doesn't).
+// The actual thumbnail IMAGE also has no backend — this Marlin 2.0.8 build
+// has no G-code thumbnail parsing at all. Left as a safe, minimal stub so
+// that if a future entry point is added, BACK at least works.
+void DgusTFT::page214_handle(void) {
+  switch (key_value) {
+    case 0:
+      break;
+    case 1: // BACK (KEY_THUMB_BACK)
+      ChangePageOfTFT(PAGE_FILE);
+      break;
+    case 2: // PRINT (KEY_THUMB_PRINT) — no selected-file context available here
+      break;
+  }
+}
+
+// Page 215 — Terminal. Fixed preset command buttons (not free-text G-code
+// entry — the display's zone list has no keyboard-input record for this
+// page), each logging into a 5-line rolling display via TXT_TERM_L0-L4.
+void DgusTFT::page215_handle(void) {
+  static char term_log[5][24] = { "", "", "", "", "" };
+
+  auto log_and_send = [](PGM_P cmd) {
+    // shift older lines up, insert newest at the bottom
+    for (uint8_t i = 0; i < 4; i++) strcpy(term_log[i], term_log[i + 1]);
+    snprintf_P(term_log[4], sizeof(term_log[4]), PSTR("> %s"), cmd);
+    const uint16_t vps[5] = { TXT_TERM_L0, TXT_TERM_L1, TXT_TERM_L2, TXT_TERM_L3, TXT_TERM_L4 };
+    for (uint8_t i = 0; i < 5; i++) SendTxtToTFT(term_log[i], vps[i]);
+  };
+
+  switch (key_value) {
+    case 0:
+      break;
+    case 1: // BACK (KEY_TERM_BACK) — return to whichever System page opened this
+      ChangePageOfTFT_DevicePage(page_index_last);
+      break;
+    case 3: // G28 HOME (KEY_TERM_G28)
+      if (BlockedWhilePrinting()) break;
+      injectCommands_P(PSTR("G28"));
+      log_and_send(PSTR("G28"));
+      break;
+    case 4: // G29 LEVEL (KEY_TERM_G29)
+      if (BlockedWhilePrinting()) break;
+      injectCommands_P(PSTR("G29"));
+      log_and_send(PSTR("G29"));
+      break;
+    case 5: // M105 TEMPS (KEY_TERM_M105) — harmless, allowed during a print
+      injectCommands_P(PSTR("M105"));
+      log_and_send(PSTR("M105"));
+      break;
+    case 6: // M502 RESET (KEY_TERM_M502) — reset to defaults, does NOT save; this is the
+            // quick/expert path, distinct from page 217's confirm-then-save Factory Reset
+      if (BlockedWhilePrinting()) break;
+      injectCommands_P(PSTR("M502"));
+      log_and_send(PSTR("M502"));
+      break;
+    case 7: // M500 SAVE (KEY_TERM_M500) — writes the EEPROM file to the SD card
+      if (BlockedWhilePrinting()) break;
+      injectCommands_P(PSTR("M500"));
+      log_and_send(PSTR("M500"));
+      break;
+  }
+}
+
+// Page 216 — Thermal Tuning. This Marlin 2.0.8 build has no MPC (M306), so both buttons run PID
+// autotune (M303) and save the result with M500, which is what the screen says. The tune runs for
+// minutes inside one G-code command: refuse while printing or while any command is still queued,
+// so a second press cannot stack another tune behind the first.
+void DgusTFT::page216_handle(void) {
+  switch (key_value) {
+    case 0:
+      break;
+    case 1: // BACK (KEY_TUNE_BACK)
+      ChangePageOfTFT(PAGE_PREPARE);
+      break;
+    case 2: // PID AUTOTUNE HOTEND (KEY_TUNE_HOTEND)
+      if (BlockedWhilePrinting() || commandsInQueue()) break;
+      injectCommands_P(PSTR("M303 E0 S" STRINGIFY(AC_PID_HOTEND_TUNE_TEMP) " C8 U1\nM500"));
+      break;
+    case 3: // PID AUTOTUNE BED (KEY_TUNE_BED)
+      if (BlockedWhilePrinting() || commandsInQueue()) break;
+      injectCommands_P(PSTR("M303 E-1 S" STRINGIFY(AC_PID_BED_TUNE_TEMP) " C8 U1\nM500"));
+      break;
+  }
+}
+
+// Page 217 — Factory Reset confirmation.
+void DgusTFT::page217_handle(void) {
+  switch (key_value) {
+    case 0:
+      break;
+    case 1: // CANCEL
+      ChangePageOfTFT_DevicePage(page_index_last);
+      break;
+    case 2: // RESET — restore defaults and persist them
+      if (BlockedWhilePrinting()) break;
+      injectCommands_P(PSTR("M502\nM500"));
+      ChangePageOfTFT(PAGE_MAIN);
+      break;
+  }
 }
 
 void DgusTFT::pop_up_manager(void)
