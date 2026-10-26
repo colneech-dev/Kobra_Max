@@ -49,7 +49,7 @@ DIFF_PIXELS_MAX = 120
 # The u16 at bytes 6-7 of every library written by DWIN's tools is a CRC-16 of everything from byte 8 to the
 # end of the file: the classic table-driven "Modbus" routine (init 0xFFFF; auchCRCHi/auchCRCLo; high byte
 # first). Found by decompiling DWIN's Excel2ICL.dll (Excel2ICL.Utils.CRC16 / ICL.getICL) and confirmed on
-# six independent files (stock, IDE-built, another project's library, icon libraries).
+# six files (stock, IDE-built, another project's library, icon libraries; three distinct DWIN-produced libraries).
 def _crc_tables():
     t = []
     for i in range(256):

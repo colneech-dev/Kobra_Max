@@ -67,8 +67,13 @@ touch. `tools/cross_check_display.py` checks the first three against each other 
   `ChangePageOfTFT()` with a stored page translates it a second time (ENG 131 → 251, a page that does
   not exist) and freezes the display. Never subtract/add 120 by hand.
 * **Never send a page change while the boot animation is playing** — the display freezes. Wait for
-  `REG_LCD_READY` (VP `0x0014`) to report `0x010072`; the display pushes it by itself when the
-  animation finishes. **[HW]**
+  `REG_LCD_READY` (VP `0x0014`) to report `0x010072`. **[HW]** Note the DWIN guide names VP `0x0014`
+  `PIC_Now` (current picture): the low byte `0x72` = 114 is the last picture of the stock boot animation
+  (record `0x5A04` on page 50, pictures 50..114), so "finished" really means "display is showing picture
+  114". The firmware also polls every 3 s and gives up waiting after 30 s (`BOOT_SYNC_TIMEOUT_MS`).
+  Side effect: pictures 50..114 of *our* library are played as boot frames, and our pressed-button images
+  (50..83) live in that range, so they flash by at power-on. Cosmetic; the boot animation is not to be
+  re-tried (see project memory).
 
 ### Page map
 
@@ -261,7 +266,7 @@ Both use the same container ("DGUS_3"), decodable with `tools/check_icl.py` (it 
 ```
 00  "DGUS_3"                      magic
 06  u16  CRC-16 of bytes 8..end    table-driven "Modbus" CRC (init 0xFFFF, auchCRCHi/auchCRCLo, high byte
-                                  first). Verified on 6 independent files (check_icl.icl_crc).
+                                  first). Verified on 6 files, of which 3 are distinct DWIN-produced libraries (check_icl.icl_crc).
 08  u32  total file size - 8
 0C  4 bytes flags / count         e.g. 04 01 00 00 (ours), 04 00 D6 00 (stock, 0xD6 = 214 pictures),
                                   04 00 45 00 (icon lib, 0x45 = 69 icons)
@@ -431,7 +436,9 @@ by the display (its flasher counts only CFG/Code/BIN/DZK/HZK/ICL/LIB/WAE/UIC/GTF
    give you this. In an administrator command prompt: `format X: /q /fs:fat32 /a:4096` (erases the card).
    With any other cluster size the display's blue screen reports **0 files** and flashes nothing —
    this cost us two test rounds. **[HW]**
-2. Copy the `DWIN_SET` folder (just the display files, no BMPs) to the **card root**.
+2. Copy the **release package's** `DWIN_SET` folder (display files only, no BMPs; `tools/build_release.py` applies the
+   `FLASH_RENAMES` such as `23_ICO.icl` -> `25_ICO.icl`) to the **card root**. The repo's own `DWIN_SET/` keeps the stock
+   names and must not be copied directly.
 3. Printer **off** → card into the small USB port on the **back of the display** → power on. A blue
    screen lists what it flashed (`.CFG 1, .BIN 4, .DZK 1, .HZK 1, .ICL 2…`, all non-zero) and ends with
    `END !`. Power off, remove the card.
@@ -579,3 +586,17 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 13. **A failed/blank display flash**: power off 15–20 s, then reflash a known-good set.
 14. **Tooling gotcha (this environment):** inline Python heredocs mangle backslashes (`\n`, `\xff`) — write
     scripts to files or use `chr(92)`.
+
+## Known limits and accepted risks (review of 2026-10-25)
+
+* Not verified on hardware: pressed-button effect, process bars, spinner, Print Settings -/+, file-row marker,
+  Z-offset restore, script-built `16_68_.icl`, Terminal/Factory-Reset paths.
+* The ICL CRC and layout were reproduced with our own decoder (same assumptions as the builder), not by a DWIN tool.
+* `cross_check_display.py` does not read the *shipped* `13TouchFile.bin` bytes, font/colour fields, `0x5A01`/`0x5A23`
+  records or runtime navigation (it checks SP slots only). Its mirror of the IdleLoop dispatch scans a limited text span.
+* Show-file text records use font byte 0x42 at 0x1C, outside the guide's documented 0-5; stock pages use font id 24.
+  It renders correctly on hardware, so it is left alone.
+* `temperature.cpp` ignores min/max-temp errors for the first 5 s after boot (inherited from Anycubic stock).
+* The watchdog (requested 8 s) fires after roughly 21 s on this HAL; shortening it needs hardware timing tests.
+* Progress-bar values are only re-sent when they change; they persist in the display's VP, so this is fine unless a page
+  clears VPs.

@@ -1,6 +1,16 @@
 Marlin firmware for the AnyCubic Kobra Max.
 Based off Marlin 2.0.8 (bugfix)
 
+# HC32F460 port (branch `kobra-max-hc32`)
+
+This branch targets the newer Kobra Max mainboard (HC32F460, DWIN T5L1 "DGUS II" 272x480 touch display), built with
+PlatformIO (`pio run`, environment `HC32F460E_kobra_max`, flashed as `firmware.bin` from SD at 0x8000).
+The display needs its own flash set (`DWIN_SET`): see `docs/DISPLAY_NOTES.md` for everything known about the display,
+the generators under `tools/`, and the release packager `python tools/build_release.py`.
+Status: boots, serial, touch and navigation are hardware-validated; many newer screens are still untested (see the
+"Known limits" list in the notes). Not yet tuned for safety-critical use: check `HEATER_0_MAXTEMP` / `BED_MAXTEMP`
+against your hardware before printing unattended.
+
 # Important - READ THIS
 
 If you are getting great prints from your Kobra Max keep in mind that you can't fix something that's not broken. Updating your firmware may void your warranty and may or may not perform exactly as you expect it to. Thus, firmware updates are at your own risk.

@@ -497,7 +497,7 @@
 #define HEATER_5_MAXTEMP 275
 #define HEATER_6_MAXTEMP 275
 #define HEATER_7_MAXTEMP 275
-#define BED_MAXTEMP      130    // max target temp-10=110
+#define BED_MAXTEMP      130    // Marlin allows targets up to BED_MAXTEMP-10 = 120
 
 //===========================================================================
 //============================= PID Settings ================================
@@ -521,7 +521,7 @@
     // If fewer than EXTRUDER values are provided, the last element will be repeated.
     #define DEFAULT_Kp_LIST {  22.20,  22.20 }
     #define DEFAULT_Ki_LIST {   1.08,   1.08 }
-    #define DEFAULT_Kd_LIST { 114.00, 114.00 }
+    #define DEFAULT_Kd_LIST { 119.00, 119.00 }
   #else
     #define DEFAULT_Kp  22.20
     #define DEFAULT_Ki   1.08
