@@ -88,6 +88,9 @@ gs.btn, gs.vp_area = _rec_btn, _rec_vp
 
 # ── load show file and touch zones ────────────────────────────────────────────
 
+SP_BAD = []   # (page, vp): text records whose SP slot (bytes 2-3) is not 0xFFFF
+
+
 def load_show():
     show = {}
     if not SHOWFILE.exists():
@@ -106,6 +109,8 @@ def load_show():
             vp = int.from_bytes(r[6:8], 'big')
             x, y = int.from_bytes(r[8:10], 'big'), int.from_bytes(r[10:12], 'big')
             if t == 0x5A11:   # text: absolute x2,y2 at bytes 18..21
+                if int.from_bytes(r[2:4], 'big') != 0xFFFF:
+                    SP_BAD.append((i, vp))
                 recs.append((vp, x, y, int.from_bytes(r[18:20], 'big'), int.from_bytes(r[20:22], 'big')))
             elif t == 0x5A10:  # integer: only the top-left corner is stored
                 recs.append((vp, x, y, None, None))
@@ -278,6 +283,9 @@ def main():
                 err(f'p{pg}: touch zone key {zz[4]} {zz[:4]} has no drawn button')
 
         # [3] art vs show file
+        for bad_pg, bad_vp in SP_BAD:
+            if bad_pg == pg:
+                err(f'p{pg}: text record VP 0x{bad_vp:04X} has SP slot != 0xFFFF')
         for vp_, x, y, x2, y2 in recs:
             if x2 is None:
                 if not any(v[1] <= x <= v[3] and v[2] <= y <= v[4] for v in vps):
