@@ -246,7 +246,10 @@ stale_banner = ("""
 !!! WARNING: THE PICTURE LIBRARY IN THIS PACKAGE (16_68_.icl) IS OUT OF DATE !!!
 It was built before the latest artwork. It will show OLD pictures under NEW touch zones and
 text records (missing button art, no pressed-button effect). Rebuild it first (STEP 0).
-=======================================================
+""" + ("""
+A freshly built but UNPROVEN script-made library is in EXPERIMENTAL_SCRIPT_ICL/ (its own README):
+flash that DWIN_SET folder instead if you want to test the new artwork.
+""" if "--script-icl" in sys.argv else "") + """=======================================================
 """ if ICL_STALE else "")
 
 readme = f"""\
