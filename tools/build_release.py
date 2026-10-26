@@ -78,7 +78,10 @@ def git_info():
         branch = subprocess.check_output(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             stderr=subprocess.DEVNULL, text=True).strip()
-        return f"{branch}@{sha}"
+        dirty = subprocess.check_output(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            stderr=subprocess.DEVNULL, text=True).strip()
+        return f"{branch}@{sha}" + ("-dirty (uncommitted changes)" if dirty else "")
     except Exception:
         return "unknown"
 
@@ -115,6 +118,7 @@ run_tool("cross_check_display.py",   "art / touch zones / show-file / handler cr
 # The display shows the compiled 16_68_.icl, NOT the BMPs. If it is older than the BMPs, the touch
 # zones and text records generated above will not line up with what is on screen.
 step("Checking 16_68_.icl against the BMPs")
+ICL_STALE = False
 _icl = subprocess.run([PYTHON, os.path.join("tools", "check_icl.py")], capture_output=True, text=True)
 print(_icl.stdout.strip().splitlines()[-1] if _icl.stdout.strip() else "check_icl produced no output")
 if _icl.returncode != 0:
@@ -125,6 +129,7 @@ if _icl.returncode != 0:
     if "--allow-stale-icl" not in sys.argv:
         sys.exit(1)
     print("  --allow-stale-icl given: continuing.")
+    ICL_STALE = True
 
 # ── 2. Create clean release directory ────────────────────────────────────────
 
@@ -237,12 +242,19 @@ else:
 git_ref  = git_info()
 build_ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
+stale_banner = ("""
+!!! WARNING: THE PICTURE LIBRARY IN THIS PACKAGE (16_68_.icl) IS OUT OF DATE !!!
+It was built before the latest artwork. It will show OLD pictures under NEW touch zones and
+text records (missing button art, no pressed-button effect). Rebuild it first (STEP 0).
+=======================================================
+""" if ICL_STALE else "")
+
 readme = f"""\
 KobraMax-HC32 Firmware
 Build: {git_ref}
 Date:  {build_ts}
 =======================================================
-
+{stale_banner}
 SD CARD CONTENTS
 ----------------
 The SD card needs two separate flashing passes:
