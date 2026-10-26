@@ -106,6 +106,9 @@ DgusTFT::p_fun fun_array[] = {
 };
 
 
+// Give up waiting for the display's "animation finished" report after this long (ms since boot).
+#define BOOT_SYNC_TIMEOUT_MS 30000UL
+
 // Probing progress (G29 grid points reached). File scope so WaitStatus() can show it.
 static uint8_t probe_cnt = 0;
 // When the probe pre-check last failed; page203_handle returns to the Leveling menu after a timeout.
@@ -348,6 +351,14 @@ void DgusTFT::IdleLoop()  {
     } else if (millis() - last_poll_ms > 3000) {
       last_poll_ms = millis();
       RequestValueFromTFT(REG_LCD_READY);
+    }
+    // The boot animation is long over by now. If 0x010072 never arrived (reply lost, or the display
+    // reports a different final frame), a page change is safe and beats a UI stuck on the animation.
+    if (millis() > BOOT_SYNC_TIMEOUT_MS && AC_printer_resuming_from_power_outage != printer_state) {
+      lcd_boot_synced = true;
+      LcdAudioSet(lcd_info.audio);
+      SendMoveStepText();
+      ChangePageOfTFT(PAGE_MAIN);
     }
   }
 
@@ -3563,6 +3574,7 @@ void DgusTFT::page201_handle(void)  // probe precheck
       probe_tare_flag = 0;
       probe_failed_ms = millis();
       ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK_FAILED);
+      return;   // do not fall through: the check below would replace FAILED with OK
     }
     probe_tare_flag = 1;
   }
