@@ -105,7 +105,7 @@ _marlin_upstream/
 # Generated release packages (rebuild with tools/build_release.py)
 release/
 release_anim_test/
-release_v2/
+release_v*/
 
 # Script-generated display artefacts (rebuild with tools/build_icl.py / generate_spinner_icons.py)
 DWIN_SET/auto_icl/
