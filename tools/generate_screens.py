@@ -697,7 +697,9 @@ def page_level_advance():
     btn(draw, MARGIN, y,       W // 2 - 4, y + 48, "- 0.01 mm",  style='normal',  icon=0xf068)
     btn(draw, W // 2 + 4, y, W - MARGIN,   y + 48, "+ 0.01 mm",  style='primary', icon=0xf067)
     y += 62
-    text_center(draw, (0, y, W, y + 20), "Saved automatically with SAVE button", F_TINY, GRAY)
+    vp_area(draw, MARGIN, y + 2, W - MARGIN, y + 26, 'Homing...')   # live status line
+    text_center(draw, (0, y + 32, W, y + 48), "Nozzle goes to the bed centre at Z0", F_TINY, GRAY)
+    text_center(draw, (0, y + 50, W, y + 66), "Adjust until paper just drags, then SAVE", F_TINY, GRAY)
     footer_2btn(draw, "BACK", "SAVE", l_style='ghost', r_style='primary')
     return img
 
@@ -736,11 +738,13 @@ def page_filament():
     title_bar(draw, "FILAMENT")
     y = CONTENT_Y1 + 16
     text_left(draw, MARGIN, y, "HOTEND TEMPERATURE", F_SMALL, GRAY);  y += 16
-    vp_area(draw, MARGIN, y, W - MARGIN, y + 34, '210/230 C');  y += 48
-    btn(draw, MARGIN, y, W - MARGIN, y + 48, "LOAD FILAMENT",   style='primary', icon=0xf063);   y += 60
-    btn(draw, MARGIN, y, W - MARGIN, y + 48, "UNLOAD FILAMENT", style='normal',  icon=0xf062);    y += 60
+    vp_area(draw, MARGIN, y, W - MARGIN, y + 34, '210/230 C');  y += 40
+    vp_area(draw, MARGIN, y, W - MARGIN, y + 24, 'Heating to 230 C...');  y += 32   # live status line
+    btn(draw, MARGIN, y, W - MARGIN, y + 40, "LOAD FILAMENT",   style='primary', icon=0xf063);   y += 48
+    btn(draw, MARGIN, y, W - MARGIN, y + 40, "EXTRUDE 10 MM",   style='normal',  icon=0xf078);   y += 48
+    btn(draw, MARGIN, y, W - MARGIN, y + 40, "UNLOAD FILAMENT", style='normal',  icon=0xf062);   y += 48
     btn(draw, MARGIN, y, W - MARGIN, y + 40, "STOP",            style='danger',  icon=0xf04d)
-    text_center(draw, (0, y + 48, W, y + 66), "Must be >=220 C to load/unload", F_TINY, GRAY)
+    text_center(draw, (0, y + 46, W, y + 62), "Heats to 230 C first. Use EXTRUDE once loaded", F_TINY, GRAY)
     footer_1btn(draw, "BACK", style='ghost')
     return img
 

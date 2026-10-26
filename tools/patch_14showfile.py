@@ -261,6 +261,8 @@ TXT_WAIT_BAR  = 0x2B30      # leveling progress, pages 34/154
 
 # Move Axes: the three step buttons carry no label in the art. Each has two text variables laid over it:
 # *_W (white, shown when not selected) and *_O (orange, shown when selected). The firmware blanks the other.
+TXT_FILAMENT_STATUS = 0x2BA0   # Filament page status line (Heating... / Loading... / Ready)
+
 TXT_STEP_W0 = 0x2B40
 TXT_STEP_W1 = 0x2B50
 TXT_STEP_W2 = 0x2B60
@@ -439,6 +441,7 @@ PAGE13 = STATUS_BAR + [
 #   vp(8,134,264,188) w=256 h=54
 PAGE17 = STATUS_BAR + [
     make_text_record(TXT_LEVEL_OFFSET, 8, 134, 256, 54, chars=8),
+    make_text_record(TXT_WAIT_STATUS, 8, 266, 256, 24, chars=25),   # "Homing..." / "Adjust Z"
 ]
 
 # Pages 18/138 — Preheat
@@ -459,6 +462,7 @@ PAGE18 = STATUS_BAR + [
 #   vp(8,124,264,158) w=256 h=34
 PAGE19 = STATUS_BAR + [
     make_text_record(TXT_FILAMENT_TEMP, 8, 124, 256, 34, chars=9),
+    make_text_record(TXT_FILAMENT_STATUS, 8, 164, 256, 24, chars=25),
 ]
 
 # Pages 22/142 — Print Finish

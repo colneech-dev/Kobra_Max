@@ -628,3 +628,12 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
   end in "...". The Printing page shows 24 characters of the name.
 * The guide also lists a native Text Scroll control (0x5A14, 7.16) that could do the marquee in the display; not used (untested).
 * The cross-check reads the text box from bytes 14-21 of a record (bytes 8-11 are the text's own, inset start).
+
+## Filament and Z-offset pages (2026-10-26)
+
+* Filament page (19/139): LOAD / EXTRUDE 10 MM / UNLOAD / STOP. Every action sets 230 C, shows "Heating to 230 C..." in
+  `TXT_FILAMENT_STATUS` and starts at 225 C. LOAD is the long fast feed for new filament; EXTRUDE is a slow 10 mm purge
+  (`MEL_cmnd_extrude_filament`) for filament that is already in the nozzle.
+* Z-offset page (17/137): opening it homes (G28), lifts to Z5, moves to the bed centre and lowers to Z0, with a status
+  line ("Homing and moving..." / "Adjust Z with - / +", `TXT_WAIT_STATUS`). The - / + buttons are ignored until the nozzle
+  has arrived. Adjust until a sheet of paper just drags, then SAVE (M500). BACK undoes the change; both lift Z to 10 mm.
