@@ -2587,13 +2587,19 @@ void DgusTFT::page17_handle(void)
   float z_off;
   int16_t steps;
   static bool z_change = false;
+  static float z_orig = 0;   // offset when the page was first changed; BACK restores it
 
   switch (key_value)
   {
     case 0:
       break;
 
-    case 1://return
+    case 1://return — without saving: undo the live Z changes (a later M500 must not store them)
+      if (z_change) {
+        babystepAxis_steps(mmToWholeSteps(z_orig - getZOffset_mm(), Z), Z);
+        setZOffset_mm(z_orig);
+        z_change = false;
+      }
       ChangePageOfTFT(PAGE_PreLEVEL);
       break;
 
@@ -2603,6 +2609,7 @@ void DgusTFT::page17_handle(void)
       if (z_off <= -5) {
         return ;
       }
+      if (!z_change) z_orig = z_off;
 
       steps = mmToWholeSteps(-BABYSTEP_MULTIPLICATOR_Z, Z);
       babystepAxis_steps(steps, Z);
@@ -2622,6 +2629,7 @@ void DgusTFT::page17_handle(void)
       if (z_off >= 5) {
         return ;
       }
+      if (!z_change) z_orig = z_off;
 
       steps = mmToWholeSteps(BABYSTEP_MULTIPLICATOR_Z, Z);
       babystepAxis_steps(steps, Z);

@@ -600,3 +600,18 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 * The watchdog (requested 8 s) fires after roughly 21 s on this HAL; shortening it needs hardware timing tests.
 * Progress-bar values are only re-sent when they change; they persist in the display's VP, so this is fine unless a page
   clears VPs.
+
+## Hardware limits and thermal settings (checked 2026-10-26)
+
+* Vendor spec (Anycubic store page for the original Kobra Max): nozzle <= 260 C, bed <= 90 C (one retailer lists 110 C).
+  Firmware: `HEATER_0_MAXTEMP 275` (targets to 260), `BED_MAXTEMP 100` (targets to 90). Raise the bed value only if your
+  bed is known good for more. All presets and tune temperatures are within these.
+* Compared with Marlin 2.1.2.7: protection is enabled and intact. Fixed here: `loud_kill` no longer depends on a beeper to
+  switch heaters off; the 5 s boot grace in min/max temp errors now switches heaters off instead of ignoring the fault.
+  Looser than upstream (left alone, tune with hardware): hotend hysteresis 10 C (upstream 4), bed protection period 60 s
+  (upstream 20), bed watch 120 s (upstream 60). `THERMAL_PROTECTION_VARIANCE_MONITOR` is not enabled.
+  Not audited: planner, M104/M109/M140/M190, power-loss preheat-on-resume.
+* `build_icl.py` count field (bytes 13-14): IDE libraries disagree - stock background lib 214 (= pictures, max ID 215),
+  our IDE-built lib 256 (= max ID, 145 pictures), icon lib 69 (= pictures). The script writes max ID for backgrounds and
+  picture count for icon libraries. If the display ever rejects a script-built library, try the other convention first.
+* Firmware reports `2.0.8-hc32-<git hash>[-dirty]` in M115 (`tools/build_id.py`).

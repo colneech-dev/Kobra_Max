@@ -793,14 +793,13 @@ int16_t Temperature::getHeaterPower(const heater_id_t heater_id) {
 
 inline void loud_kill(PGM_P const lcd_msg, const heater_id_t heater_id) {
   marlin_state = MF_KILLED;
+  thermalManager.disable_all_heaters();   // must not depend on having a beeper
   #if USE_BEEPER
-    thermalManager.disable_all_heaters();
-
-  watchdog_refresh();
-  TERN_(USE_BEEPER, buzzer.tone(300, 1000));
-  watchdog_refresh();
-  TERN_(USE_BEEPER, buzzer.tone(300, 1000));
-  watchdog_refresh();
+    watchdog_refresh();
+    buzzer.tone(300, 1000);
+    watchdog_refresh();
+    buzzer.tone(300, 1000);
+    watchdog_refresh();
   #endif
   kill(lcd_msg, HEATER_PSTR(heater_id));
 }
@@ -853,8 +852,9 @@ void Temperature::max_temp_error(const heater_id_t heater_id) {
     DWIN_Popup_Temperature(1);
   #endif
 
-  if(millis() < 5000) {
-    return ;
+  if (millis() < 5000) {   // ADC filters are still filling: ignore the fault, but never leave a heater on
+    disable_all_heaters();
+    return;
   }
 
   _temp_error(heater_id, PSTR(STR_T_MAXTEMP), GET_TEXT(MSG_ERR_MAXTEMP));
@@ -865,8 +865,9 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
     DWIN_Popup_Temperature(0);
   #endif
 
-  if(millis() < 5000) {
-    return ;
+  if (millis() < 5000) {   // ADC filters are still filling: ignore the fault, but never leave a heater on
+    disable_all_heaters();
+    return;
   }
 
   _temp_error(heater_id, PSTR(STR_T_MINTEMP), GET_TEXT(MSG_ERR_MINTEMP));
