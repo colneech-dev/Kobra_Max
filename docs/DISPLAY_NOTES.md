@@ -155,7 +155,7 @@ control* in the show file watches one VP and draws it; a *touch control* writes 
 | `0x2690 …` | About / statistics text | (About and Statistics share addresses) |
 | `0x2920 … 0x29E0` | `TXT_TERM_L0…4` | Terminal log |
 | `0x2A80` | `TXT_WAIT_STATUS` | live status line on wait screens |
-| `0x2AB0` | `TXT_MOVE_STEP` | selected Move-axes step ("1.0 mm") |
+| `0x2B40`-`0x2B90` | `TXT_STEP_W0..2`, `TXT_STEP_O0..2` | Move-axes step button labels: white (not selected) / orange (selected) text over label-less buttons |
 | `0x2B00` | `TXT_WAIT_ANIM` | spinner start/stop (1 = run) |
 | `0x2B20` / `0x2B30` | `TXT_PRINT_BAR` / `TXT_WAIT_BAR` | progress-bar values (0–100) |
 | `0x4300 / 0x4500 / 0x4550` | move step / light state | **stock** icon-VPs; no display record uses them now |
