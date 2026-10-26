@@ -38,8 +38,21 @@ OUT_PATH  = "DWIN_SET/14ShowFile.bin"
 
 # ── Record builders ────────────────────────────────────────────────────────────
 
+# The display's built-in ASCII font (the guide: "0# font ... 4x8 to 64x128") only has glyphs with a 1:2
+# width:height ratio. Any other size silently falls back to a smaller one (12x12 drew 6x12 text).
+ASCII_SIZES = ((16, 32), (14, 28), (12, 24), (10, 20), (8, 16), (7, 14), (6, 12))
+
+
+def fit_font(w, h, chars):
+    """Largest built-in ASCII size whose text of `chars` characters fits a w x h box (2 px margin)."""
+    for cw, ch in ASCII_SIZES:
+        if ch <= h - 2 and cw * chars <= w - 4:
+            return cw, ch
+    return ASCII_SIZES[-1]
+
+
 def make_text_record(vp_addr, x, y, w, h, color=0xFFFF, font=0x001E,
-                     unk=0x0000, cw=12, ch=12, flags=0x42000000):
+                     unk=0x0000, cw=None, ch=None, flags=0x42000000, chars=21):
     """Build a 32-byte 0x5A11 VP variable-length text display record.
 
     x/y/w/h here are position + size, as every call site expects. The two
@@ -54,11 +67,16 @@ def make_text_record(vp_addr, x, y, w, h, color=0xFFFF, font=0x001E,
     the actual root cause of the bed-temp-never-renders bug (any box placed
     right of screen center had x > w for reasonable widths).
     """
+    if cw is None or ch is None:
+        cw, ch = fit_font(w, h, chars)
     x2, y2 = x + w, y + h
+    # Text starts inset 3 px from the left and vertically centred in the box (the display only
+    # left-aligns); the box itself stays as drawn in the art, which the cross-check compares.
+    sx, sy = x + 3, y + max(0, (h - ch) // 2)
     return struct.pack(
         '>HHHHHHHHHHHH',
         0x5A11, 0xFFFF, 0x000D, vp_addr,
-        x, y, color, x, y, x2, y2, font,
+        sx, sy, color, x, y, x2, y2, font,
     ) + struct.pack('>H', unk) + bytes([cw, ch]) + struct.pack('>I', flags)
 
 
@@ -267,8 +285,8 @@ TXT_TERM_L4    = 0x29E0
 
 # 12x24 characters: "220/220" is 7 characters = 84 px in the 92 px box.
 STATUS_BAR = [
-    make_text_record(TXT_MAIN_HOTEND, 40,  13, 92, 28, cw=12, ch=24),
-    make_text_record(TXT_MAIN_BED,   176,  13, 92, 28, cw=12, ch=24),
+    make_text_record(TXT_MAIN_HOTEND, 40,  13, 92, 28, chars=7),
+    make_text_record(TXT_MAIN_BED,   176,  13, 92, 28, chars=7),
 ]
 
 # RGB565 colours for Process Bar controls (match generate_screens: DIVIDER, ORANGE, BG_ELEVATED)
@@ -285,11 +303,12 @@ COLOR_ORANGE     = rgb565(255, 107, 53)   # 0xFB46
 # page_file_browser(): ROW_H=54; row i: y1=CONTENT_Y1+i*54=92+i*54, y2=y1+52
 # VP: (MARGIN+28=36, y1+8, W-MARGIN=264, y2-8) → w=228, h=36
 PAGE2 = STATUS_BAR + [
-    make_text_record(TXT_FILE_0, 36, 100, 228, 36),   # row 0: y1=92
-    make_text_record(TXT_FILE_1, 36, 154, 228, 36),   # row 1: y1=146
-    make_text_record(TXT_FILE_2, 36, 208, 228, 36),   # row 2: y1=200
-    make_text_record(TXT_FILE_3, 36, 262, 228, 36),   # row 3: y1=254
-    make_text_record(TXT_FILE_4, 36, 316, 228, 36),   # row 4: y1=308
+    # 10x20 characters: 22 per row (dgus_FileNavigator.cpp ROW_CHARS); +8 px puts them mid-row
+    make_text_record(TXT_FILE_0, 36, 108, 228, 20, cw=10, ch=20),   # row 0: y1=92
+    make_text_record(TXT_FILE_1, 36, 162, 228, 20, cw=10, ch=20),   # row 1: y1=146
+    make_text_record(TXT_FILE_2, 36, 216, 228, 20, cw=10, ch=20),   # row 2: y1=200
+    make_text_record(TXT_FILE_3, 36, 270, 228, 20, cw=10, ch=20),   # row 3: y1=254
+    make_text_record(TXT_FILE_4, 36, 324, 228, 20, cw=10, ch=20),   # row 4: y1=308
 ]
 
 # Pages 3/4/123/124 — Print Status (printing / paused — identical VP layout)
@@ -301,11 +320,11 @@ PAGE2 = STATUS_BAR + [
 #   (verified against the art by tools/cross_check_display.py)
 #   Progress track (8,168)-(218,192): a Process Bar control driven by TXT_PRINT_BAR (0-100)
 PAGE3 = STATUS_BAR + [
-    make_text_record(TXT_PRINT_NAME,     8,   114, 256, 30),
-    make_text_record(TXT_PRINT_PROGRESS, 222, 168,  42, 24),
-    make_text_record(TXT_PRINT_TIME,     8,   212, 130, 28),
-    make_text_record(TXT_PRINT_SPEED,    142, 212, 122, 28),
-    make_text_record(TXT_PRINT_COMMENT,  8,   264, 256, 30),
+    make_text_record(TXT_PRINT_NAME,     8,   114, 256, 30, chars=24),
+    make_text_record(TXT_PRINT_PROGRESS, 222, 168,  42, 24, chars=3),
+    make_text_record(TXT_PRINT_TIME,     8,   212, 130, 28, chars=9),
+    make_text_record(TXT_PRINT_SPEED,    142, 212, 122, 28, chars=6),
+    make_text_record(TXT_PRINT_COMMENT,  8,   264, 256, 30, chars=24),
 ] + ([make_process_bar_record(TXT_PRINT_BAR, 8, 168, 218, 192,
                               COLOR_BAR_BORDER, COLOR_ORANGE, COLOR_BAR_BG)] if uf.PROGRESS_BARS else [])
 PAGE4 = PAGE3   # paused vs printing — identical VP layout
@@ -320,7 +339,7 @@ PAGE4 = PAGE3   # paused vs printing — identical VP layout
 # (68,y)-(204,y+36). Z offset is text; hotend / bed / speed / fan are integer values the firmware
 # writes (and updates itself when a - / + button is pressed).
 _PS_VPS = (None, TXT_ADJUST_HOTEND, TXT_ADJUST_BED, TXT_ADJUST_SPEED, TXT_FAN_SPEED_TARGET)
-PAGE5 = STATUS_BAR + [make_text_record(TXT_LEVEL_OFFSET, 68, uf.PRINT_SETTINGS_ROWS[0][1], 136, 36)] + [
+PAGE5 = STATUS_BAR + [make_text_record(TXT_LEVEL_OFFSET, 68, uf.PRINT_SETTINGS_ROWS[0][1], 136, 36, chars=6)] + [
     make_integer_record(vp, 76, row[1] + 8)
     for row, vp in zip(uf.PRINT_SETTINGS_ROWS, _PS_VPS) if vp is not None
 ]
@@ -329,10 +348,10 @@ PAGE5 = STATUS_BAR + [make_text_record(TXT_LEVEL_OFFSET, 68, uf.PRINT_SETTINGS_R
 # page_input_shaping(): y starts at CONTENT_Y1+10=102; per row: label(+18), vp(66,y,206,y+34)(+48)
 # Row 0 X_FREQ: y=120; Row 1 Y_FREQ: y=186; Row 2 X_ZETA: y=252; Row 3 Y_ZETA: y=318
 PAGE6 = STATUS_BAR + [
-    make_text_record(TXT_IS_FREQ_X, 66, 120, 140, 34),
-    make_text_record(TXT_IS_FREQ_Y, 66, 186, 140, 34),
-    make_text_record(TXT_IS_ZETA_X, 66, 252, 140, 34),
-    make_text_record(TXT_IS_ZETA_Y, 66, 318, 140, 34),
+    make_text_record(TXT_IS_FREQ_X, 66, 120, 140, 34, chars=7),
+    make_text_record(TXT_IS_FREQ_Y, 66, 186, 140, 34, chars=7),
+    make_text_record(TXT_IS_ZETA_X, 66, 252, 140, 34, chars=7),
+    make_text_record(TXT_IS_ZETA_Y, 66, 318, 140, 34, chars=7),
 ]
 
 # Pages 8/128 — Move Axes: labels of the three step buttons (see generate_screens.page_move).
@@ -341,7 +360,7 @@ PAGE6 = STATUS_BAR + [
 def _step_records():
     recs = []
     for i, (bx, n) in enumerate(((8, 6), (94, 6), (182, 5))):
-        x = bx + (82 - 10 * n) // 2
+        x = bx + (82 - 10 * n) // 2 - 3   # make_text_record insets text by 3 px
         recs.append(make_text_record((TXT_STEP_W0, TXT_STEP_W1, TXT_STEP_W2)[i], x, 119, 10 * n, 20,
                                      color=0xFFFF, cw=10, ch=20))
         recs.append(make_text_record((TXT_STEP_O0, TXT_STEP_O1, TXT_STEP_O2)[i], x, 119, 10 * n, 20,
@@ -419,7 +438,7 @@ PAGE13 = STATUS_BAR + [
 # page_level_advance(): y starts at CONTENT_Y1+24=116; label(+18→134)
 #   vp(8,134,264,188) w=256 h=54
 PAGE17 = STATUS_BAR + [
-    make_text_record(TXT_LEVEL_OFFSET, 8, 134, 256, 54),
+    make_text_record(TXT_LEVEL_OFFSET, 8, 134, 256, 54, chars=8),
 ]
 
 # Pages 18/138 — Preheat
@@ -431,15 +450,15 @@ PAGE17 = STATUS_BAR + [
 #   The firmware writes "actual/target" into one full-width box per heater (the old separate,
 #   never-filled TARGET boxes were removed from the art).
 PAGE18 = STATUS_BAR + [
-    make_text_record(TXT_PREHEAT_HOTEND, 8, 142, 256, 34),
-    make_text_record(TXT_PREHEAT_BED,    8, 234, 256, 34),
+    make_text_record(TXT_PREHEAT_HOTEND, 8, 142, 256, 34, chars=9),
+    make_text_record(TXT_PREHEAT_BED,    8, 234, 256, 34, chars=9),
 ]
 
 # Pages 19/139 — Filament
 # page_filament(): y starts at CONTENT_Y1+16=108; label(+16→124)
 #   vp(8,124,264,158) w=256 h=34
 PAGE19 = STATUS_BAR + [
-    make_text_record(TXT_FILAMENT_TEMP, 8, 124, 256, 34),
+    make_text_record(TXT_FILAMENT_TEMP, 8, 124, 256, 34, chars=9),
 ]
 
 # Pages 22/142 — Print Finish
@@ -459,12 +478,12 @@ PAGE22 = STATUS_BAR + [
 #   Row 5 LONGEST PRINT:   VP (8,322,256,24)
 #   Row 6 FILAMENT USED:   VP (8,374,256,24)
 PAGE93 = STATUS_BAR + [
-    make_text_record(TXT_STATS_PRINTS_TOTAL,    8, 114, 256, 24),
-    make_text_record(TXT_STATS_PRINTS_FINISHED, 8, 166, 256, 24),
-    make_text_record(TXT_STATS_PRINTS_FAILED,   8, 218, 256, 24),
-    make_text_record(TXT_STATS_PRINTS_TIME,     8, 270, 256, 24),
-    make_text_record(TXT_STATS_PRINTS_LONGEST,  8, 322, 256, 24),
-    make_text_record(TXT_STATS_PRINTS_FILAMENT, 8, 374, 256, 24),
+    make_text_record(TXT_STATS_PRINTS_TOTAL,    8, 114, 256, 24, chars=24),
+    make_text_record(TXT_STATS_PRINTS_FINISHED, 8, 166, 256, 24, chars=24),
+    make_text_record(TXT_STATS_PRINTS_FAILED,   8, 218, 256, 24, chars=24),
+    make_text_record(TXT_STATS_PRINTS_TIME,     8, 270, 256, 24, chars=24),
+    make_text_record(TXT_STATS_PRINTS_LONGEST,  8, 322, 256, 24, chars=24),
+    make_text_record(TXT_STATS_PRINTS_FILAMENT, 8, 374, 256, 24, chars=24),
 ]
 # Pages 14/134 — Print History uses the same stats layout as pages 93/213.
 # firmware page14_handle calls printerStatsToTFT() which writes to TXT_STATS_* addresses.
@@ -475,7 +494,7 @@ PAGE14 = PAGE93
 #   FILE label (+14→178): vp(8,178,264,212) w=256 h=34 ; +46→224
 #   PROGRESS label (+14→238): vp(8,238,264,272) w=256 h=34
 PAGE171 = STATUS_BAR + [
-    make_text_record(TXT_PRINT_NAME,     8, 178, 256, 34),   # TXT_OUTAGE_RECOVERY_FILE
+    make_text_record(TXT_PRINT_NAME,     8, 178, 256, 34, chars=24),   # TXT_OUTAGE_RECOVERY_FILE
     make_text_record(TXT_PRINT_PROGRESS, 8, 238, 256, 34),   # TXT_OUTAGE_RECOVERY_PROGRESS
 ]
 
@@ -492,7 +511,7 @@ PAGE212 = PAGE211   # ENG variant — identical pixel layout
 # page_thumbnail(): tw=160, ix=174; right-panel vp(174,118,90,28); full-width vp(8,310,256,30)
 PAGE214 = STATUS_BAR + [
     make_text_record(TXT_PRINT_NAME,    174, 118,  90, 28),  # right-panel (short area next to thumbnail)
-    make_text_record(TXT_PRINT_FULLNAME,  8, 310, 256, 30),  # full-width below thumbnail
+    make_text_record(TXT_PRINT_FULLNAME,  8, 310, 256, 30, chars=24),  # full-width below thumbnail
 ]
 
 # Page 215 — Terminal: 5 log lines + preset command buttons + status bar

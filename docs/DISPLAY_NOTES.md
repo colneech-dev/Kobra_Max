@@ -615,3 +615,16 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
   our IDE-built lib 256 (= max ID, 145 pictures), icon lib 69 (= pictures). The script writes max ID for backgrounds and
   picture count for icon libraries. If the display ever rejects a script-built library, try the other convention first.
 * Firmware reports `2.0.8-hc32-<git hash>[-dirty]` in M115 (`tools/build_id.py`).
+
+## Text sizing and alignment (2026-10-26)
+
+* The built-in ASCII font only has 1:2 glyphs (6x12, 7x14, 8x16, 10x20, 12x24, 14x28, 16x32 ...). The old default `12x12`
+  silently drew 6x12 text, which is why value boxes looked tiny. `patch_14showfile.make_text_record` now picks the largest
+  1:2 size that fits the box for `chars` characters (`fit_font`), starts the text 3 px in and centres it vertically.
+  Pass `chars=` for anything longer or shorter than the default 21.
+* The text record (0x5A11) can only left-align. Short dynamic strings are centred by the firmware with leading spaces
+  (`center_pad`: status bar 7 slots of 12 px, wait-screen status line 25 slots of 10 px). Fixed strings are centred by their start x.
+* The file browser shows 22 characters per row; a longer selected name scrolls (`FileNavigator::scrollSelected`), other long names
+  end in "...". The Printing page shows 24 characters of the name.
+* The guide also lists a native Text Scroll control (0x5A14, 7.16) that could do the marquee in the display; not used (untested).
+* The cross-check reads the text box from bytes 14-21 of a record (bytes 8-11 are the text's own, inset start).

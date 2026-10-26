@@ -113,6 +113,27 @@ DgusTFT::p_fun fun_array[] = {
 static uint8_t probe_cnt = 0;
 // When the probe pre-check last failed; page203_handle returns to the Leveling menu after a timeout.
 static millis_t probe_failed_ms = 0;
+// Characters of the file name the Printing page can show (record is 10 px wide characters in a 256 px box).
+#define PRINT_NAME_CHARS 24
+
+// Copy `src` into `out` (room for chars+1), ending in "..." when it is longer than `chars`.
+static void fit_text(char * const out, const char * const src, const uint8_t chars) {
+  if (strlen(src) <= chars) { strcpy(out, src); return; }
+  strncpy(out, src, chars - 3);
+  strcpy(out + chars - 3, "...");
+}
+
+// The display only left-aligns text, and its characters are fixed width, so pad with leading spaces to
+// centre a short string in a box that holds `slots` characters.
+static void center_pad(char * const buf, const size_t size, const uint8_t slots) {
+  const size_t len = strlen(buf);
+  if (len >= slots || len + 1 >= size) return;
+  size_t pad = (slots - len) / 2;
+  if (len + pad + 1 > size) pad = size - len - 1;
+  memmove(buf + pad, buf, len + 1);
+  memset(buf, ' ', pad);
+}
+
 // Highest target Marlin accepts (it faults at MAXTEMP, and its own limit is MAXTEMP-15 / -10).
 #define HOTEND_TARGET_MAX (HEATER_0_MAXTEMP - 15)
 #define BED_TARGET_MAX    (BED_MAXTEMP - 10)
@@ -386,6 +407,7 @@ void DgusTFT::IdleLoop()  {
     char str_buf[14]; // "65535/65535\0" = 12 chars; 14 gives safe margin
 
     sprintf(str_buf, "%u/%u", (uint16_t)getActualTemp_celsius(E0), (uint16_t)getTargetTemp_celsius(E0));
+    center_pad(str_buf, sizeof(str_buf), 7);   // 7 characters of 12 px in the 92 px status-bar box
 #if ACDEBUG(AC_MARLIN)
     SERIAL_ECHOPGM("StatusBar HOTEND vp=0x"); SERIAL_PRINT((uint32_t)TXT_MAIN_HOTEND, HEX);
     SERIAL_ECHOPGM(" page="); SERIAL_ECHO(page_index_now);
@@ -394,6 +416,7 @@ void DgusTFT::IdleLoop()  {
     SendTxtToTFT(str_buf, TXT_MAIN_HOTEND);
 
     sprintf(str_buf, "%u/%u", (uint16_t)getActualTemp_celsius(BED), (uint16_t)getTargetTemp_celsius(BED));
+    center_pad(str_buf, sizeof(str_buf), 7);
 #if ACDEBUG(AC_MARLIN)
     SERIAL_ECHOPGM("StatusBar BED    vp=0x"); SERIAL_PRINT((uint32_t)TXT_MAIN_BED, HEX);
     SERIAL_ECHOPGM(" page="); SERIAL_ECHO(page_index_now);
@@ -1295,6 +1318,7 @@ void DgusTFT::WaitStatus() {
     sprintf(buf, "Pausing%s", dots[phase]);
   else
     sprintf(buf, "Stopping%s", dots[phase]);
+  center_pad(buf, sizeof(buf), 25);   // 25 characters of 10 px in the 256 px status line
   SendTxtToTFT(buf, TXT_WAIT_STATUS);
 }
 
@@ -1700,6 +1724,8 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
 
   char file_index = 0;
 
+  filenavigator.scrollSelected();   // marquee for a selected name that does not fit
+
   switch (key_value) {
     case 0:
       break;
@@ -1770,9 +1796,8 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
           setCaseLightState(1);
 #endif
 
-          char str_buf[20];
-          strncpy_P(str_buf, filenavigator.filelist.longFilename(), 17);
-          str_buf[17] = '\0';
+          char str_buf[28];
+          fit_text(str_buf, filenavigator.filelist.longFilename(), PRINT_NAME_CHARS);
           SendTxtToTFT(str_buf, TXT_PRINT_NAME);
 
           if (printer_state == AC_printer_resuming_from_power_outage) {
@@ -1811,9 +1836,8 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
 
           printFile(filenavigator.filelist.shortFilename());
 
-          char str_buf[20];
-          strncpy_P(str_buf, filenavigator.filelist.longFilename(), 17);
-          str_buf[17] = '\0';
+          char str_buf[28];
+          fit_text(str_buf, filenavigator.filelist.longFilename(), PRINT_NAME_CHARS);
           SendTxtToTFT(str_buf, TXT_PRINT_NAME);
 
           sprintf(str_buf, "%d", (uint16_t)getFeedrate_percent());

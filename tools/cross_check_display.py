@@ -108,7 +108,8 @@ def load_show():
             t = int.from_bytes(r[0:2], 'big')
             vp = int.from_bytes(r[6:8], 'big')
             x, y = int.from_bytes(r[8:10], 'big'), int.from_bytes(r[10:12], 'big')
-            if t == 0x5A11:   # text: absolute x2,y2 at bytes 18..21
+            if t == 0x5A11:   # text: box start at bytes 14..17 (8..11 is the text's own start), absolute x2,y2 at 18..21
+                x, y = int.from_bytes(r[14:16], 'big'), int.from_bytes(r[16:18], 'big')
                 if int.from_bytes(r[2:4], 'big') != 0xFFFF:
                     SP_BAD.append((i, vp))
                 recs.append((vp, x, y, int.from_bytes(r[18:20], 'big'), int.from_bytes(r[20:22], 'big')))
