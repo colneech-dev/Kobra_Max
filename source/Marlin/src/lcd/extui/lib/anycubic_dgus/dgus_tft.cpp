@@ -110,6 +110,10 @@ DgusTFT::p_fun fun_array[] = {
 static uint8_t probe_cnt = 0;
 // When the probe pre-check last failed; page203_handle returns to the Leveling menu after a timeout.
 static millis_t probe_failed_ms = 0;
+// Highest target Marlin accepts (it faults at MAXTEMP, and its own limit is MAXTEMP-15 / -10).
+#define HOTEND_TARGET_MAX (HEATER_0_MAXTEMP - 15)
+#define BED_TARGET_MAX    (BED_MAXTEMP - 10)
+
 // Selected Move Axes step (mm); file scope so the step text can be re-sent when the page opens.
 static float move_dis = 1.0f;
 
@@ -143,8 +147,12 @@ static void send_print_setting_values() {
   DgusTFT::SendValueToTFT((uint16_t)getTargetFan_percent(FAN0), TXT_FAN_SPEED_TARGET);
 }
 
+// True from the start of a run until it ends; a restarted run must not take the zeroed (M851 Z0) offset as the user's.
+static bool leveling_pending = false;
+
 static void start_leveling_run() {
-  zoffset_before_level = getZOffset_mm();
+  if (!leveling_pending) zoffset_before_level = getZOffset_mm();
+  leveling_pending = true;
   injectCommands_P(PSTR("M851 Z0\nG28\nG29"));
   probe_cnt = 0;
 }
@@ -734,9 +742,10 @@ void DgusTFT::StatusChange(const char * const msg)  {
         if (strcmp_P(msg + strlen(CUSTOM_MACHINE_NAME), MARLIN_msg_ready) == 0) {
           if (probe_cnt == GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y) {
             probe_cnt = 0;
+            leveling_pending = false;
             setZOffset_mm(zoffset_after_leveling());
             injectCommands_P(PSTR("M500"));
-            FakeChangePageOfTFT(PAGE_PreLEVEL); // this avoid a overquick UI fresh when probing done
+            ChangePageOfTFT(PAGE_PreLEVEL);   // wait pages 34/154 have no touch zones: must leave them explicitly
             printer_state = AC_printer_idle;
             msg_matched = true;
           }
@@ -745,6 +754,7 @@ void DgusTFT::StatusChange(const char * const msg)  {
         // If probing fails dont save the mesh raise the probe above the bad point
         if (strcmp_P(msg, MARLIN_msg_probing_failed) == 0) {
           PlayTune(BEEPER_PIN, BeepBeepBeeep, 1);
+          leveling_pending = false;
           probe_cnt = 0;   // a failed run must not leave the next run's point count off
           setZOffset_mm(zoffset_before_level);   // M851 Z0 zeroed it; give the user's value back (not saved: the saved one was never changed)
           injectCommands_P(PSTR("G1 Z50 F500"));
@@ -1473,7 +1483,7 @@ void DgusTFT::ProcessPanelRequest() {
         p_u8++;
         *p_u8 = data_buf[4];
 
-        temp = constrain((uint16_t)control_value, 0, HEATER_0_MAXTEMP);
+        temp = constrain((uint16_t)control_value, 0, HOTEND_TARGET_MAX);
         setTargetTemp_celsius(temp, E0);
       }
       else if (control_index == TXT_BED_TARGET || control_index == TXT_ADJUST_BED) //bed target temp
@@ -1483,7 +1493,7 @@ void DgusTFT::ProcessPanelRequest() {
         p_u8++;
         *p_u8 = data_buf[4];
 
-        temp = constrain((uint16_t)control_value, 0, BED_MAXTEMP);
+        temp = constrain((uint16_t)control_value, 0, BED_TARGET_MAX);
         setTargetTemp_celsius(temp, BED);
       }
       else if (control_index == TXT_FAN_SPEED_TARGET) //fan speed
@@ -1521,7 +1531,7 @@ void DgusTFT::ProcessPanelRequest() {
         p_u8++;
         *p_u8 = data_buf[4];
 
-        temp = constrain((uint16_t)control_value, 0, HEATER_0_MAXTEMP);
+        temp = constrain((uint16_t)control_value, 0, HOTEND_TARGET_MAX);
         setTargetTemp_celsius(temp, E0);
       }
 
@@ -1532,7 +1542,7 @@ void DgusTFT::ProcessPanelRequest() {
         p_u8++;
         *p_u8 = data_buf[4];
 
-        temp = constrain((uint16_t)control_value, 0, BED_MAXTEMP);
+        temp = constrain((uint16_t)control_value, 0, BED_TARGET_MAX);
         setTargetTemp_celsius(temp, BED);
       }
 
@@ -2241,22 +2251,22 @@ void DgusTFT::page9_handle(void)
       }
       break;
     case 2: // HOTEND -5C
-      setTargetTemp_celsius(constrain(getTargetTemp_celsius(E0) - 5, 0, HEATER_0_MAXTEMP), E0);
+      setTargetTemp_celsius(constrain(getTargetTemp_celsius(E0) - 5, 0, HOTEND_TARGET_MAX), E0);
       SendValueToTFT((uint16_t)getTargetTemp_celsius(E0), TXT_HOTEND_TARGET);
       break;
 
     case 3: // HOTEND +5C
-      setTargetTemp_celsius(constrain(getTargetTemp_celsius(E0) + 5, 0, HEATER_0_MAXTEMP), E0);
+      setTargetTemp_celsius(constrain(getTargetTemp_celsius(E0) + 5, 0, HOTEND_TARGET_MAX), E0);
       SendValueToTFT((uint16_t)getTargetTemp_celsius(E0), TXT_HOTEND_TARGET);
       break;
 
     case 4: // BED -5C
-      setTargetTemp_celsius(constrain(getTargetTemp_celsius(BED) - 5, 0, BED_MAXTEMP), BED);
+      setTargetTemp_celsius(constrain(getTargetTemp_celsius(BED) - 5, 0, BED_TARGET_MAX), BED);
       SendValueToTFT((uint16_t)getTargetTemp_celsius(BED), TXT_BED_TARGET);
       break;
 
     case 5: // BED +5C
-      setTargetTemp_celsius(constrain(getTargetTemp_celsius(BED) + 5, 0, BED_MAXTEMP), BED);
+      setTargetTemp_celsius(constrain(getTargetTemp_celsius(BED) + 5, 0, BED_TARGET_MAX), BED);
       SendValueToTFT((uint16_t)getTargetTemp_celsius(BED), TXT_BED_TARGET);
       break;
 
@@ -2311,12 +2321,12 @@ void DgusTFT::page10_handle(void)
       break;
 
     case 4: // SPEED -5%
-      setFeedrate_percent(constrain((int16_t)getFeedrate_percent() - 5, 10, 999));
+      setFeedrate_percent(constrain((int16_t)getFeedrate_percent() - 5, 10, 300));
       SendValueToTFT((uint16_t)getFeedrate_percent(), TXT_PRINT_SPEED_TARGET);
       break;
 
     case 5: // SPEED +5%
-      setFeedrate_percent(constrain((int16_t)getFeedrate_percent() + 5, 10, 999));
+      setFeedrate_percent(constrain((int16_t)getFeedrate_percent() + 5, 10, 300));
       SendValueToTFT((uint16_t)getFeedrate_percent(), TXT_PRINT_SPEED_TARGET);
       break;
 
@@ -3694,6 +3704,7 @@ void DgusTFT::page211_212_handle(void)
 {
   char str_buf[10];
   static bool z_change = false;
+  static float z_orig = 0;   // offset when the page was first changed; BACK restores it
 
   auto return_to_print_page = []() {
     if (AC_printer_printing == printer_state) {
@@ -3707,7 +3718,12 @@ void DgusTFT::page211_212_handle(void)
     case 0:
       break;
 
-    case 1: // BACK — without saving
+    case 1: // BACK — without saving: undo the live Z changes
+      if (z_change) {
+        babystepAxis_steps(mmToWholeSteps(z_orig - getZOffset_mm(), Z), Z);
+        setZOffset_mm(z_orig);
+        z_change = false;
+      }
       return_to_print_page();
       break;
 
@@ -3718,6 +3734,7 @@ void DgusTFT::page211_212_handle(void)
         float z_off = getZOffset_mm();
 
         if (plus ? (z_off >= 5) : (z_off <= -5)) return;
+        if (!z_change) z_orig = z_off;
 
         const float step = plus ? BABYSTEP_MULTIPLICATOR_Z : -BABYSTEP_MULTIPLICATOR_Z;
         babystepAxis_steps(mmToWholeSteps(step, Z), Z);
@@ -3749,7 +3766,7 @@ void DgusTFT::page211_212_handle(void)
     case 8:  // hotend target -5
     case 9:  // hotend target +5
       {
-        const int16_t t = constrain((int16_t)getTargetTemp_celsius(E0) + (key_value == 9 ? 5 : -5), 0, HEATER_0_MAXTEMP);
+        const int16_t t = constrain((int16_t)getTargetTemp_celsius(E0) + (key_value == 9 ? 5 : -5), 0, HOTEND_TARGET_MAX);
         setTargetTemp_celsius(t, E0);
         SendValueToTFT((uint16_t)t, TXT_ADJUST_HOTEND);
       }
@@ -3758,7 +3775,7 @@ void DgusTFT::page211_212_handle(void)
     case 10: // bed target -5
     case 11: // bed target +5
       {
-        const int16_t t = constrain((int16_t)getTargetTemp_celsius(BED) + (key_value == 11 ? 5 : -5), 0, BED_MAXTEMP);
+        const int16_t t = constrain((int16_t)getTargetTemp_celsius(BED) + (key_value == 11 ? 5 : -5), 0, BED_TARGET_MAX);
         setTargetTemp_celsius(t, BED);
         SendValueToTFT((uint16_t)t, TXT_ADJUST_BED);
       }
@@ -3829,8 +3846,8 @@ void DgusTFT::page215_handle(void) {
   switch (key_value) {
     case 0:
       break;
-    case 1: // BACK (KEY_TERM_BACK) — return to whichever System page opened this
-      ChangePageOfTFT_DevicePage(page_index_last);
+    case 1: // BACK (KEY_TERM_BACK) — page_index_last may be a homing/leveling page with no touch zones
+      GoSystemPage();
       break;
     case 3: // G28 HOME (KEY_TERM_G28)
       if (BlockedWhilePrinting()) break;
@@ -3888,7 +3905,7 @@ void DgusTFT::page217_handle(void) {
     case 0:
       break;
     case 1: // CANCEL
-      ChangePageOfTFT_DevicePage(page_index_last);
+      GoSystemPage();
       break;
     case 2: // RESET — restore defaults and persist them
       if (BlockedWhilePrinting()) break;
