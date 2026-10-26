@@ -358,7 +358,7 @@ def page_file_browser():
         # file icon
         _fa_centered(draw, MARGIN + 11, (y1 + y2) // 2, 0xf15b, _fa(22), DGRAY)
         # filename VP area
-        vp_area(draw, MARGIN + 28, y1 + 8, W - MARGIN, y2 - 8, f'filename_{i+1}.gcode')
+        vp_area(draw, MARGIN + 28, y1 + 16, W - MARGIN, y1 + 36, f'filename_{i+1}.gcode')
         separator(draw, y2 + 1)
 
     page_y = CONTENT_Y1 + 5 * ROW_H + 4

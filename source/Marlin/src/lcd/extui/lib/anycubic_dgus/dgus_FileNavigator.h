@@ -47,6 +47,7 @@ namespace Anycubic {
       void   upDIR();
       void   changeDIR(char *);
       void   sendFile();
+      void   scrollSelected();   // call often: scrolls the selected row's name when it is too long to fit
       void   refresh();
       char * getCurrentFolderName();
       uint16_t getFileNum();
@@ -57,6 +58,10 @@ namespace Anycubic {
       static uint16_t  lastindex;
       static uint8_t   folderdepth;
       static uint16_t  currentindex;
+      static uint8_t   sel_row;      // 1-5 = row with the '> ' marker, 0 = none
+      static uint8_t   scroll_off;   // first visible character of the selected name
+      static uint8_t   scroll_hold;  // ticks left to pause at either end
+      static millis_t  scroll_ms;
   };
   extern FileNavigator filenavigator;
 }

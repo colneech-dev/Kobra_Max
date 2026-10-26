@@ -49,6 +49,13 @@ namespace Anycubic {
   uint16_t  FileNavigator::lastindex;
   uint8_t   FileNavigator::folderdepth;
   uint16_t  FileNavigator::currentindex;                      // override the panel request
+  uint8_t   FileNavigator::sel_row;
+  uint8_t   FileNavigator::scroll_off;
+  uint8_t   FileNavigator::scroll_hold;
+  millis_t  FileNavigator::scroll_ms;
+
+  // A row's text box is 228 px wide and the names are drawn with 10 px characters.
+  static constexpr uint8_t ROW_CHARS = 22;
 
   FileNavigator filenavigator;
 
@@ -91,23 +98,46 @@ namespace Anycubic {
   // Send the five rows starting at currentindex. The display's file-name boxes cannot recolour the
   // selected row (their text records have no description pointer), so the selection is shown by
   // prefixing that row with '> ' instead.
+  // A name longer than the box is cut with "..." on the other rows and scrolls on the selected one
+  // (scrollSelected). Text beyond the box would wrap onto a second line.
   void FileNavigator::sendRows(uint8_t selected) {
     const uint8_t files = 5;
     char name[MAX_PATH_LEN + 4];
     uint8_t file_num = 0;
+    sel_row = selected;
+    scroll_off = 0;
+    scroll_hold = 4;
+    scroll_ms = millis();
     for (uint16_t _seek = currentindex; _seek < currentindex + files; _seek++) {
       if (filelist.seek(_seek)) {
-        if (selected && selected == file_num + 1) {
-          snprintf(name, sizeof(name), "> %s", filelist.longFilename());
-          DgusTFT::SendTxtToTFT(name, TXT_FILE_0 + file_num * 0x30);
-        }
+        const char * const lfn = filelist.longFilename();
+        const bool sel = selected && selected == file_num + 1;
+        const uint8_t room = sel ? ROW_CHARS - 2 : ROW_CHARS;   // the marker takes two characters
+        if (strlen(lfn) <= room)
+          snprintf(name, sizeof(name), "%s%s", sel ? "> " : "", lfn);
         else
-          DgusTFT::SendTxtToTFT(filelist.longFilename(), TXT_FILE_0 + file_num * 0x30);
+          snprintf(name, sizeof(name), "%s%.*s%s", sel ? "> " : "", sel ? room : room - 3, lfn, sel ? "" : "...");
+        DgusTFT::SendTxtToTFT(name, TXT_FILE_0 + file_num * 0x30);
       }
       else
         DgusTFT::SendTxtToTFT("", TXT_FILE_0 + file_num * 0x30);
       file_num++;
     }
+  }
+
+  void FileNavigator::scrollSelected() {
+    if (!sel_row || millis() - scroll_ms < 350) return;
+    scroll_ms = millis();
+    if (!filelist.seek(currentindex + sel_row - 1)) return;
+    const char * const lfn = filelist.longFilename();
+    const uint8_t room = ROW_CHARS - 2, len = strlen(lfn);
+    if (len <= room) return;
+    if (scroll_hold) { scroll_hold--; return; }           // pause at the start and at the end
+    if (scroll_off + room >= len) { scroll_off = 0; scroll_hold = 4; }
+    else { scroll_off++; if (scroll_off + room >= len) scroll_hold = 4; }
+    char name[ROW_CHARS + 4];
+    snprintf(name, sizeof(name), "> %.*s", room, lfn + scroll_off);
+    DgusTFT::SendTxtToTFT(name, TXT_FILE_0 + (sel_row - 1) * 0x30);
   }
 
   void FileNavigator::sendFile() {
