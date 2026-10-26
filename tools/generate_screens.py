@@ -151,8 +151,11 @@ def separator(draw, y, color=DIVIDER):
     draw.line([(0, y), (W, y)], fill=color, width=1)
 
 
-def vp_area(draw, x1, y1, x2, y2, placeholder=''):
-    """Area where DGUS will overlay dynamic text from a VP."""
+def vp_area(draw, x1, y1, x2, y2, placeholder='', visible=True):
+    """Area where DGUS will overlay dynamic text from a VP. visible=False draws nothing: the text
+    is laid straight over other art (the Move Axes step buttons)."""
+    if not visible:
+        return
     draw.rectangle([(x1, y1), (x2, y2)], fill=BG_DARK)
     draw.rectangle([(x1, y1), (x2, y2)], outline=(45, 45, 58), width=1)
     if placeholder:
@@ -496,13 +499,14 @@ def page_move():
 
     # Step size
     text_left(draw, MARGIN, y, "STEP SIZE", F_TINY, GRAY)
-    # Selected step is shown as live text (the buttons carry no state of their own).
-    vp_area(draw, 96, y - 6, W - MARGIN, y + 14, '1.0 mm')
     y += 14
     bw = (W - 2*MARGIN - 8) // 3
-    btn(draw, MARGIN,          y, MARGIN + bw,       y + 30, "0.1 mm", style='normal')
-    btn(draw, MARGIN + bw + 4, y, MARGIN + 2*bw + 4, y + 30, "1.0 mm", style='normal')
-    btn(draw, W - MARGIN - bw, y, W - MARGIN,        y + 30, "10 mm",  style='normal')
+    # The buttons are drawn WITHOUT labels: the firmware prints each label on top as live text, orange on
+    # the selected step and white on the others (two text variables per button, see patch_14showfile.py).
+    # This is how a button stays "set" - the display itself only shows a pressed look while a finger is on it.
+    for bx, lbl in ((MARGIN, "0.1 mm"), (MARGIN + bw + 4, "1.0 mm"), (W - MARGIN - bw, "10 mm")):
+        btn(draw, bx, y, bx + bw, y + 30, "", style='normal')
+        vp_area(draw, bx + (bw - 10 * len(lbl)) // 2, y + 5, bx + (bw + 10 * len(lbl)) // 2, y + 25, visible=False)
     y += 42
 
     # Axis rows

@@ -241,8 +241,14 @@ TXT_WAIT_ANIM = 0x2B00
 TXT_PRINT_BAR = 0x2B20      # print progress, pages 3/4
 TXT_WAIT_BAR  = 0x2B30      # leveling progress, pages 34/154
 
-# Move Axes: selected step size shown as text (buttons carry no state)
-TXT_MOVE_STEP = 0x2AB0
+# Move Axes: the three step buttons carry no label in the art. Each has two text variables laid over it:
+# *_W (white, shown when not selected) and *_O (orange, shown when selected). The firmware blanks the other.
+TXT_STEP_W0 = 0x2B40
+TXT_STEP_W1 = 0x2B50
+TXT_STEP_W2 = 0x2B60
+TXT_STEP_O0 = 0x2B70
+TXT_STEP_O1 = 0x2B80
+TXT_STEP_O2 = 0x2B90
 
 # Terminal (215)
 TXT_TERM_INPUT = 0x2A10
@@ -259,9 +265,10 @@ TXT_TERM_L4    = 0x29E0
 #   flame icon at x=4 → hotend VP at (40,13,92,28) → TXT_MAIN_HOTEND (0x2030)
 #   bed   icon at x=140 → bed VP at (176,13,92,28) → TXT_MAIN_BED   (0x2880)
 
+# 12x24 characters: "220/220" is 7 characters = 84 px in the 92 px box.
 STATUS_BAR = [
-    make_text_record(TXT_MAIN_HOTEND, 40,  13, 92, 28),
-    make_text_record(TXT_MAIN_BED,   176,  13, 92, 28),
+    make_text_record(TXT_MAIN_HOTEND, 40,  13, 92, 28, cw=12, ch=24),
+    make_text_record(TXT_MAIN_BED,   176,  13, 92, 28, cw=12, ch=24),
 ]
 
 # RGB565 colours for Process Bar controls (match generate_screens: DIVIDER, ORANGE, BG_ELEVATED)
@@ -328,12 +335,20 @@ PAGE6 = STATUS_BAR + [
     make_text_record(TXT_IS_ZETA_Y, 66, 318, 140, 34),
 ]
 
-# Pages 8/128 — Move Axes: selected step size, right of the 'STEP SIZE' label
-# 10x20 dot ASCII font (the guide: 0# font has every ASCII glyph from 4x8 to 64x128), orange so the
-# selection stands out next to the grey step buttons.
-PAGE8 = STATUS_BAR + [
-    make_text_record(TXT_MOVE_STEP, 96, 94, 168, 20, color=COLOR_ORANGE, cw=10, ch=20),
-]
+# Pages 8/128 — Move Axes: labels of the three step buttons (see generate_screens.page_move).
+# 10x20 dot ASCII font (the guide: 0# font has every ASCII glyph from 4x8 to 64x128).
+# Buttons: x = 8 / 94 / 182, width 82, y = 114; label x = button centre - 5 px per character.
+def _step_records():
+    recs = []
+    for i, (bx, n) in enumerate(((8, 6), (94, 6), (182, 5))):
+        x = bx + (82 - 10 * n) // 2
+        recs.append(make_text_record((TXT_STEP_W0, TXT_STEP_W1, TXT_STEP_W2)[i], x, 119, 10 * n, 20,
+                                     color=0xFFFF, cw=10, ch=20))
+        recs.append(make_text_record((TXT_STEP_O0, TXT_STEP_O1, TXT_STEP_O2)[i], x, 119, 10 * n, 20,
+                                     color=COLOR_ORANGE, cw=10, ch=20))
+    return recs
+
+PAGE8 = STATUS_BAR + _step_records()
 
 # 'Please wait' pages — homing 177/189, leveling 34/154, probe preheat 175/176, pausing 32/152,
 # stopping 23/143, probe test 201/204 (no status line). One entry per badge in ui_features.WAIT_BADGES:

@@ -283,8 +283,14 @@
 #define TXT_PRINT_BAR    0x2B20   // print progress on the Printing / Paused pages
 #define TXT_WAIT_BAR     0x2B30   // probe points done on the Leveling page
 
-// Move Axes page: the selected step size ("0.1 mm" / "1.0 mm" / "10 mm"), shown as text.
-#define TXT_MOVE_STEP    0x2AB0
+// Move Axes page: each step button's label is live text, white (TXT_STEP_W*) or, when selected, orange
+// (TXT_STEP_O*). Addresses must match tools/patch_14showfile.py.
+#define TXT_STEP_W0      0x2B40
+#define TXT_STEP_W1      0x2B50
+#define TXT_STEP_W2      0x2B60
+#define TXT_STEP_O0      0x2B70
+#define TXT_STEP_O1      0x2B80
+#define TXT_STEP_O2      0x2B90
 
 // Terminal page (215) rolling 5-line log — addresses must match
 // tools/patch_14showfile.py's TXT_TERM_L0-L4 exactly.

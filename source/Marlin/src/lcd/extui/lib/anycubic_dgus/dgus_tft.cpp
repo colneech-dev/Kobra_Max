@@ -1221,7 +1221,14 @@ void DgusTFT::GoSystemPage() {
 }
 
 void DgusTFT::SendMoveStepText() {
-  SendTxtToTFT(move_dis < 0.5f ? "0.1 mm" : (move_dis < 5.0f ? "1.0 mm" : "10 mm"), TXT_MOVE_STEP);
+  static const char * const label[3] = { "0.1 mm", "1.0 mm", "10 mm" };
+  static const uint16_t white[3]  = { TXT_STEP_W0, TXT_STEP_W1, TXT_STEP_W2 };
+  static const uint16_t orange[3] = { TXT_STEP_O0, TXT_STEP_O1, TXT_STEP_O2 };
+  const uint8_t sel = move_dis < 0.5f ? 0 : (move_dis < 5.0f ? 1 : 2);
+  for (uint8_t i = 0; i < 3; i++) {
+    SendTxtToTFT(i == sel ? "" : label[i], white[i]);    // the selected step is drawn orange instead
+    SendTxtToTFT(i == sel ? label[i] : "", orange[i]);
+  }
 }
 
 void DgusTFT::GoMovePage() {
@@ -1275,15 +1282,15 @@ void DgusTFT::WaitStatus() {
   // Keep every line <= 20 characters so it fits the 256 px box at any plausible font width.
   char buf[40];
   if (homing)
-    sprintf(buf, "Homing%s X%d Y%d Z%d", dots[phase], (int)getAxisPosition_mm(X), (int)getAxisPosition_mm(Y), (int)getAxisPosition_mm(Z));
+    sprintf(buf, "Homing%s X%d Y%d Z%d", dots[phase], (int)getAxisPosition_mm(X), (int)getAxisPosition_mm(Y), (int)getAxisPosition_mm(Z));   // X/Y/Z = current position in mm
   else if (leveling) {
     const unsigned total = GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y;
     sprintf(buf, "Probing %u/%u%s", (unsigned)probe_cnt, total, dots[phase]);
     SendValueToTFT(constrain(probe_cnt * 100U / total, 0U, 100U), TXT_WAIT_BAR);   // Process Bar on the Leveling page
   }
   else if (preheat)
-    sprintf(buf, "H%u/%u B%u/%u%s", (unsigned)getActualTemp_celsius(E0), (unsigned)getTargetTemp_celsius(E0),
-            (unsigned)getActualTemp_celsius(BED), (unsigned)getTargetTemp_celsius(BED), dots[phase]);
+    sprintf(buf, "Hotend %u/%u Bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)getTargetTemp_celsius(E0),
+            (unsigned)getActualTemp_celsius(BED), (unsigned)getTargetTemp_celsius(BED));   // <= 24 chars at 10 px = fits the 256 px box
   else if (pausing)
     sprintf(buf, "Pausing%s", dots[phase]);
   else
