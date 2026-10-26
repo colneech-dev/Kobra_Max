@@ -285,6 +285,9 @@
 
 // Move Axes page: each step button's label is live text, white (TXT_STEP_W*) or, when selected, orange
 // (TXT_STEP_O*). Addresses must match tools/patch_14showfile.py.
+// Filament page: "Heating to 230 C..." / "Loading..." / "Ready" (must match tools/patch_14showfile.py)
+#define TXT_FILAMENT_STATUS 0x2BA0
+
 #define TXT_STEP_W0      0x2B40
 #define TXT_STEP_W1      0x2B50
 #define TXT_STEP_W2      0x2B60

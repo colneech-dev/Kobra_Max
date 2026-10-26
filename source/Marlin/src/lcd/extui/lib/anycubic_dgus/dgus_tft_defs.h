@@ -121,7 +121,8 @@
 #define AC_cmnd_enable_levelling       PSTR("M420 S1 V1")
 #define AC_cmnd_power_loss_recovery    PSTR("G28 R5 X Y\nG28 Z")       // Lift, home X and Y then home Z when in 'safe' position
 #define MEL_cmnd_auto_unload_filament  PSTR("G90\nG1 Z20 F500\nG92 E0\nG1 F200 E20\nG4 P1000\nG92 E0\nG1 F2400 E-660\nM400\nG92 E0\nM104 S0\nM84")//
-#define MEL_cmnd_auto_load_Filament    PSTR("G28\nG1 Z20 F560\nG92 E0\nG1 F2600 E560\nG92 E0\nG1 F200 E80\nM400\nM104 S0\nM84")// faster load and purge
+#define MEL_cmnd_extrude_filament      PSTR("M83\nG1 E10 F200\nM82")   // slow 10 mm purge: safe with filament already in the nozzle
+#define MEL_cmnd_auto_load_Filament   PSTR("G28\nG1 Z20 F560\nG92 E0\nG1 F2600 E560\nG92 E0\nG1 F200 E80\nM400\nM104 S0\nM84")// faster load and purge
 
 namespace Anycubic {
   enum heater_state_t : uint8_t {

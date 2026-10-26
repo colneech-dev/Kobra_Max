@@ -138,6 +138,10 @@ static void center_pad(char * const buf, const size_t size, const uint8_t slots)
 #define HOTEND_TARGET_MAX (HEATER_0_MAXTEMP - 15)
 #define BED_TARGET_MAX    (BED_MAXTEMP - 10)
 
+// True from opening the Z-offset page until its home + move-to-centre sequence has finished;
+// the - / + buttons are ignored meanwhile (babystepping during a homing move would be wrong).
+static bool zoffset_moving = false;
+
 // Selected Move Axes step (mm); file scope so the step text can be re-sent when the page opens.
 static float move_dis = 1.0f;
 
@@ -2593,11 +2597,19 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
       break;
 
     case 3:
+      if (BlockedWhilePrinting()) break;
       char str_buf[10];
       str_buf[0] = 0;
       strcat(str_buf, ftostr(getZOffset_mm()));
       SendTxtToTFT(str_buf, TXT_LEVEL_OFFSET);
       ChangePageOfTFT(PAGE_LEVEL_ADVANCE);
+      // Home, then park the nozzle at the bed centre at Z0 so the offset can be tuned with a sheet of paper.
+      {
+        char cmd[72];
+        sprintf_P(cmd, PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000\nG1 Z0 F200"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2));
+        injectCommands(cmd);
+        zoffset_moving = true;
+      }
       break;
 
     case 4:
@@ -2620,6 +2632,19 @@ void DgusTFT::page17_handle(void)
   static bool z_change = false;
   static float z_orig = 0;   // offset when the page was first changed; BACK restores it
 
+  {
+    static millis_t status_ms = 0;
+    if (millis() - status_ms > 500) {
+      status_ms = millis();
+      if (zoffset_moving && !commandsInQueue()) zoffset_moving = false;
+      char st[28];
+      strcpy_P(st, zoffset_moving ? PSTR("Homing and moving...") : PSTR("Adjust Z with - / +"));
+      center_pad(st, sizeof(st), 25);
+      SendTxtToTFT(st, TXT_WAIT_STATUS);
+    }
+  }
+  if (zoffset_moving && (key_value == 2 || key_value == 3)) return;   // wait for the nozzle to arrive
+
   switch (key_value)
   {
     case 0:
@@ -2631,6 +2656,7 @@ void DgusTFT::page17_handle(void)
         setZOffset_mm(z_orig);
         z_change = false;
       }
+      injectCommands_P(PSTR("G1 Z10 F600"));   // lift the nozzle off the bed
       ChangePageOfTFT(PAGE_PreLEVEL);
       break;
 
@@ -2684,6 +2710,7 @@ void DgusTFT::page17_handle(void)
         injectCommands_P(PSTR("M500"));
       }
 
+      injectCommands_P(PSTR("G1 Z10 F600"));   // lift the nozzle off the bed
       ChangePageOfTFT(PAGE_PREPARE);
       break;
   }
@@ -2727,17 +2754,18 @@ void DgusTFT::page18_handle(void) //preheat
   SendTxtToTFT(str_buf, TXT_PREHEAT_BED);
 }
 
+// Filament page. LOAD / UNLOAD / EXTRUDE always heat first (the status line says so) and start by
+// themselves once the hotend is up to temperature. LOAD is the long fast feed for NEW filament; with
+// filament already in the nozzle use EXTRUDE (a slow 10 mm purge) - a second fast load strips the filament.
 void DgusTFT::page19_handle(void)   // Filament
 {
-  typedef enum {
-    FILA_NO_ACT = 0x00,
-    FILA_IN     = 0x01,
-    FILA_OUT    = 0x02,
-  } filament_cmd_t;
+  typedef enum { FILA_NO_ACT = 0, FILA_IN, FILA_OUT, FILA_EXTRUDE } filament_cmd_t;
+  static const uint16_t FILAMENT_TEMP  = 230;   // target while loading / unloading / extruding
+  static const uint16_t FILAMENT_READY = 225;   // start once the hotend is this hot
 
-  char str_buf[20];
-  //            static bool fil_need_in = 0;
-  static filament_cmd_t filament_cmd = FILA_NO_ACT;
+  char str_buf[28];
+  static filament_cmd_t filament_cmd = FILA_NO_ACT;      // waiting for the hotend to heat
+  static filament_cmd_t filament_running = FILA_NO_ACT;  // injected, still running
   static millis_t flash_time = 0;
   switch (key_value)
   {
@@ -2745,28 +2773,25 @@ void DgusTFT::page19_handle(void)   // Filament
       break;
 
     case 1:   // return
-      {
-        filament_cmd = FILA_NO_ACT;
-        ChangePageOfTFT(PAGE_PREPARE);
-      }
-      break;
-
-    // Load / unload: heat first when the hotend is cold, then run the sequence by itself (see below).
-    // Both sequences end with M104 S0, so the second use in a row usually starts from a cooled hotend;
-    // it used to bounce to a "heat first" page that never started the heater, so nothing happened.
-    case 2:   // Filament in
-    case 3:   // filament out
-      if (BlockedWhilePrinting()) break;
-      if (commandsInQueue()) break;      // a load / unload is still running
-      if (getTargetTemp_celsius(E0) < 230) setTargetTemp_celsius(230, E0);
-      filament_cmd = (key_value == 2) ? FILA_IN : FILA_OUT;
-      break;
-
-    case 4:   // stop
-      setTargetTemp_celsius(0, E0);// kill the heating
       filament_cmd = FILA_NO_ACT;
+      ChangePageOfTFT(PAGE_PREPARE);
       break;
 
+    case 2:   // load
+    case 3:   // unload
+    case 5:   // extrude
+      if (BlockedWhilePrinting()) break;
+      if (commandsInQueue() || filament_running != FILA_NO_ACT) break;   // still busy
+      if (getTargetTemp_celsius(E0) < FILAMENT_TEMP) setTargetTemp_celsius(FILAMENT_TEMP, E0);
+      filament_cmd = key_value == 2 ? FILA_IN : (key_value == 3 ? FILA_OUT : FILA_EXTRUDE);
+      flash_time = 0;   // refresh the status line now
+      break;
+
+    case 4:   // stop: cancel a pending start and stop heating
+      setTargetTemp_celsius(0, E0);
+      filament_cmd = FILA_NO_ACT;
+      flash_time = 0;
+      break;
   }
 
   if (millis() < (flash_time + 1000) ) {
@@ -2777,12 +2802,24 @@ void DgusTFT::page19_handle(void)   // Filament
   sprintf(str_buf, "%u/%u", (uint16_t)getActualTemp_celsius(E0), (uint16_t)getTargetTemp_celsius(E0));
   SendTxtToTFT(str_buf, TXT_FILAMENT_TEMP);
 
-  // Start the requested sequence once the hotend is hot enough; the temperature box above shows the heating.
-  if (filament_cmd != FILA_NO_ACT && !isPrinting() && getActualTemp_celsius(E0) >= 220) {
-    injectCommands_P(filament_cmd == FILA_IN ? MEL_cmnd_auto_load_Filament    // MELS mod: quick load + purge
-                                             : MEL_cmnd_auto_unload_filament);
+  if (filament_running != FILA_NO_ACT && !commandsInQueue()) filament_running = FILA_NO_ACT;   // finished
+
+  // Start the requested sequence once the hotend is up to temperature.
+  if (filament_cmd != FILA_NO_ACT && !isPrinting() && getActualTemp_celsius(E0) >= FILAMENT_READY) {
+    injectCommands_P(filament_cmd == FILA_IN  ? MEL_cmnd_auto_load_Filament        // MELS mod: quick load + purge
+                   : filament_cmd == FILA_OUT ? MEL_cmnd_auto_unload_filament
+                                              : MEL_cmnd_extrude_filament);
+    filament_running = filament_cmd;
     filament_cmd = FILA_NO_ACT;
   }
+
+  if (filament_cmd != FILA_NO_ACT)           sprintf_P(str_buf, PSTR("Heating to %u C..."), FILAMENT_TEMP);
+  else if (filament_running == FILA_IN)      strcpy_P(str_buf, PSTR("Loading filament..."));
+  else if (filament_running == FILA_OUT)     strcpy_P(str_buf, PSTR("Unloading filament..."));
+  else if (filament_running == FILA_EXTRUDE) strcpy_P(str_buf, PSTR("Extruding 10 mm..."));
+  else                                       strcpy_P(str_buf, PSTR("Ready"));
+  center_pad(str_buf, sizeof(str_buf), 25);
+  SendTxtToTFT(str_buf, TXT_FILAMENT_STATUS);
 }
 
 void DgusTFT::page20_handle(void)   // confirm
