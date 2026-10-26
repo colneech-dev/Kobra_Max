@@ -2751,33 +2751,15 @@ void DgusTFT::page19_handle(void)   // Filament
       }
       break;
 
+    // Load / unload: heat first when the hotend is cold, then run the sequence by itself (see below).
+    // Both sequences end with M104 S0, so the second use in a row usually starts from a cooled hotend;
+    // it used to bounce to a "heat first" page that never started the heater, so nothing happened.
     case 2:   // Filament in
-      if (getActualTemp_celsius(E0) < 220) {
-        filament_cmd = FILA_NO_ACT;
-        ChangePageOfTFT(PAGE_FILAMENT_HEAT);
-      } else {
-        if (getTargetTemp_celsius(E0) < 230) {
-          setTargetTemp_celsius(230, E0);
-        }
-        injectCommands_P(MEL_cmnd_auto_load_Filament);// MELS mod to quickly load/purge filament
-        //filament_cmd = FILA_IN;// no longer needed.
-      }
-      break;
-
     case 3:   // filament out
-      if (getActualTemp_celsius(E0) < 220) {
-        filament_cmd = FILA_NO_ACT;
-        ChangePageOfTFT(PAGE_FILAMENT_HEAT);
-      } else {
-        if (getTargetTemp_celsius(E0) < 230) {
-          setTargetTemp_celsius(230, E0);
-        }
-        if (filament_cmd == FILA_NO_ACT) {
-          //injectCommands_P(AC_cmnd_manual_unload_filament_first_in);
-          injectCommands_P(MEL_cmnd_auto_unload_filament);// MELS mod to quickly remove filament
-        }
-        //filament_cmd = FILA_OUT;// don't need this any more
-      }
+      if (BlockedWhilePrinting()) break;
+      if (commandsInQueue()) break;      // a load / unload is still running
+      if (getTargetTemp_celsius(E0) < 230) setTargetTemp_celsius(230, E0);
+      filament_cmd = (key_value == 2) ? FILA_IN : FILA_OUT;
       break;
 
     case 4:   // stop
@@ -2795,17 +2777,11 @@ void DgusTFT::page19_handle(void)   // Filament
   sprintf(str_buf, "%u/%u", (uint16_t)getActualTemp_celsius(E0), (uint16_t)getTargetTemp_celsius(E0));
   SendTxtToTFT(str_buf, TXT_FILAMENT_TEMP);
 
-  if (!isPrinting()) {
-
-    if (filament_cmd == FILA_IN) {
-      if (canMove(E0) && !commandsInQueue()) {
-        injectCommands_P(AC_cmnd_manual_load_filament);
-      }
-    } else if (filament_cmd == FILA_OUT) {
-      if (canMove(E0) && !commandsInQueue()) {
-        injectCommands_P(AC_cmnd_manual_unload_filament);
-      }
-    }
+  // Start the requested sequence once the hotend is hot enough; the temperature box above shows the heating.
+  if (filament_cmd != FILA_NO_ACT && !isPrinting() && getActualTemp_celsius(E0) >= 220) {
+    injectCommands_P(filament_cmd == FILA_IN ? MEL_cmnd_auto_load_Filament    // MELS mod: quick load + purge
+                                             : MEL_cmnd_auto_unload_filament);
+    filament_cmd = FILA_NO_ACT;
   }
 }
 
