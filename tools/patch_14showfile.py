@@ -57,7 +57,7 @@ def make_text_record(vp_addr, x, y, w, h, color=0xFFFF, font=0x001E,
     x2, y2 = x + w, y + h
     return struct.pack(
         '>HHHHHHHHHHHH',
-        0x5A11, color, 0x000D, vp_addr,
+        0x5A11, 0xFFFF, 0x000D, vp_addr,
         x, y, color, x, y, x2, y2, font,
     ) + struct.pack('>H', unk) + bytes([cw, ch]) + struct.pack('>I', flags)
 
