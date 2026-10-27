@@ -446,7 +446,7 @@ by the display (its flasher counts only CFG/Code/BIN/DZK/HZK/ICL/LIB/WAE/UIC/GTF
 4. Mainboard: put `firmware.bin` on a card root, card into the **front** slot, power on; it flashes by itself.
    **Use a different card for the display flash than the one that lives in the printer, and never format the
    printer's card:** settings (bed mesh, Z offset, PID) are stored in `eeprom.dat` on it, and a formatted card means
-   no mesh and the default Z offset (prints come out too high; the firmware now asks for leveling before printing).
+   no mesh and the default Z offset (prints come out too high until you level again).
 5. **If a bad flash leaves the display blank, frozen or garbled: power it off completely, wait 15–20 seconds
    so the capacitors discharge, then reflash the last known-good set.** A plain re-flash while still
    powered does *not* recover it. `release/` is the last known-good set.
