@@ -1018,7 +1018,7 @@
  *     |    [-]    |
  *     O-- FRONT --+
  */
-#define NOZZLE_TO_PROBE_OFFSET { 0, 0, 0.2 }
+#define NOZZLE_TO_PROBE_OFFSET { 0, 0, 0 }   // nozzle is the probe: Z0 = trigger height until the Z-offset page changes it (it is baked into the mesh, see dgus_tft.cpp)
 
 // Most probes should stay away from the edges of the bed, but
 // with NOZZLE_AS_PROBE this can be negative for a wider probing area.

@@ -148,24 +148,28 @@ static bool zoffset_moving = false;
 // Selected Move Axes step (mm); file scope so the step text can be re-sent when the page opens.
 static float move_dis = 1.0f;
 
-// Z offset (probe.offset.z) at the moment a leveling run starts. A run zeroes it (M851 Z0) so the
-// mesh is probed at nozzle contact; the user's tuned value has to come back afterwards — on success
-// AND on failure. (It used to be overwritten with 0.05 on every success and left at 0 on failure.)
-static float zoffset_before_level = 0.05f;
-
-// The offset Marlin boots with before anybody has tuned anything (Configuration.h).
-static float untuned_zoffset() {
-#ifdef NOZZLE_TO_PROBE_OFFSET
-  static const float d[] = NOZZLE_TO_PROBE_OFFSET;
-  return d[Z_AXIS];
-#else
-  return 0;
-#endif
-}
-
-// Offset to apply after a successful run: the tuned value, or Anycubic's stock 0.05 if it was never tuned.
-static float zoffset_after_leveling() {
-  return fabsf(zoffset_before_level - untuned_zoffset()) < 0.001f ? 0.05f : zoffset_before_level;
+// HOW THE Z OFFSET REALLY WORKS HERE (read before changing it). Z homes on the Z-min endstop, not on the
+// probe, so probe.offset.z (M851) is used in exactly one place: G29 stores measured_z + offset in every
+// mesh point (probe.cpp). Nothing applies it again afterwards. So the nozzle height at Z0 is "mesh point =
+// trigger height + the offset in force WHEN G29 RAN"; changing M851 later, or babystepping, does not
+// survive a re-home or a reboot. The code used to zero the offset for G29 (M851 Z0) and put the user's
+// value back afterwards, which threw it away (prints came out at the bare trigger height, and the Z-offset
+// page "did not work"). Now:
+//   * G29 runs with the stored offset, so the mesh contains it;
+//   * saving a changed offset also adds the change to every mesh point (commit_zoffset), keeping
+//     "offset stored == offset inside the mesh" true, and undoes the live babystep it replaces.
+static void commit_zoffset(const float offset_before) {
+  const float delta = getZOffset_mm() - offset_before;
+  if (fabsf(delta) < 0.0001f) return;
+  if (getMeshValid()) {
+    babystepAxis_steps(mmToWholeSteps(-delta, Z), Z);   // the live babystep is replaced by the mesh shift below
+    xy_uint8_t p;
+    for (p.x = 0; p.x < GRID_MAX_POINTS_X; p.x++)
+      for (p.y = 0; p.y < GRID_MAX_POINTS_Y; p.y++)
+        setMeshPoint(p, getMeshPoint(p) + delta);
+  }
+  // With no mesh the new offset is simply stored and used by the next G29.
+  injectCommands_P(PSTR("M500"));
 }
 
 // Values shown when the Print Settings page opens. The page has no read-back: its - / + buttons apply
@@ -178,13 +182,8 @@ static void send_print_setting_values() {
   DgusTFT::SendValueToTFT((uint16_t)getTargetFan_percent(FAN0), TXT_FAN_SPEED_TARGET);
 }
 
-// True from the start of a run until it ends; a restarted run must not take the zeroed (M851 Z0) offset as the user's.
-static bool leveling_pending = false;
-
 static void start_leveling_run() {
-  if (!leveling_pending) zoffset_before_level = getZOffset_mm();
-  leveling_pending = true;
-  injectCommands_P(PSTR("M851 Z0\nG28\nG29"));
+  injectCommands_P(PSTR("G28\nG29"));   // with the stored Z offset, which G29 bakes into the mesh
   probe_cnt = 0;
 }
 
@@ -795,9 +794,7 @@ void DgusTFT::StatusChange(const char * const msg)  {
         if (strcmp_P(msg + strlen(CUSTOM_MACHINE_NAME), MARLIN_msg_ready) == 0) {
           if (probe_cnt == GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y) {
             probe_cnt = 0;
-            leveling_pending = false;
-            setZOffset_mm(zoffset_after_leveling());
-            injectCommands_P(PSTR("M500"));
+            injectCommands_P(PSTR("M500"));   // saves the mesh (which contains the Z offset) and the offset
             ChangePageOfTFT(PAGE_PreLEVEL);   // wait pages 34/154 have no touch zones: must leave them explicitly
             printer_state = AC_printer_idle;
             msg_matched = true;
@@ -807,9 +804,7 @@ void DgusTFT::StatusChange(const char * const msg)  {
         // If probing fails dont save the mesh raise the probe above the bad point
         if (strcmp_P(msg, MARLIN_msg_probing_failed) == 0) {
           PlayTune(BEEPER_PIN, BeepBeepBeeep, 1);
-          leveling_pending = false;
           probe_cnt = 0;   // a failed run must not leave the next run's point count off
-          setZOffset_mm(zoffset_before_level);   // M851 Z0 zeroed it; give the user's value back (not saved: the saved one was never changed)
           injectCommands_P(PSTR("G1 Z50 F500"));
           ChangePageOfTFT(PAGE_CHS_ABNORMAL_LEVELING_SENSOR);
           //          SendtoTFTLN(AC_msg_probing_complete);
@@ -2702,7 +2697,7 @@ void DgusTFT::page17_handle(void)
 #endif
       if (z_change) {
         z_change = false;
-        injectCommands_P(PSTR("M500"));
+        commit_zoffset(z_orig);   // bake the change into the mesh and save both
       }
 
       injectCommands_P(PSTR("G1 Z10 F600"));   // lift the nozzle off the bed
@@ -3816,7 +3811,7 @@ void DgusTFT::page211_212_handle(void)
 
     case 7: // SAVE
       if (z_change) {
-        injectCommands_P(PSTR("M500"));
+        commit_zoffset(z_orig);
         z_change = false;
       }
       return_to_print_page();

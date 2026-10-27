@@ -669,3 +669,16 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 * **Print start without a bed mesh** shows the leveling prompt: settings (mesh, Z offset) live in `eeprom.dat` on the SD
   card, so a freshly formatted card loses them and prints come out too high. Do not format the printer's own SD card.
 * **Touch feedback:** a key is acted on 120 ms after the touch (`KEY_FEEDBACK_MS`) so a page-changing button is seen lit.
+
+## Z offset: how it works in this firmware (2026-10-27, found by reading Marlin)
+
+* Z homes on the Z-min endstop (`USE_ZMIN_PLUG`; `USE_PROBE_FOR_Z_HOMING` is off), so `probe.offset.z` (M851) is used in
+  one place only: `probe_at_point()` returns `trigger_z + offset.z` and G29 stores that in every mesh point. The nozzle at
+  logical Z0 then sits `offset` above the trigger height. Nothing re-applies the offset after G29, and a babystep is lost at
+  the next home or reboot.
+* The old flow zeroed the offset for G29 (`M851 Z0`) and restored it afterwards, so the saved offset never reached the
+  mesh: prints came out at the bare trigger height and the Z-offset page "did not work". Now G29 runs with the stored offset,
+  and saving a changed offset (Z-offset page or Print Settings) adds the change to every mesh point and undoes the live
+  babystep (`commit_zoffset`), keeping "stored offset == offset inside the mesh" true. Default offset is 0 (nozzle probe).
+* Positive offset = nozzle higher at Z0, negative = closer to the bed. If prints are too high, make the offset more negative.
+* After flashing this version: run LEVEL once (rebuilds the mesh with the stored offset), then tune on the Z-offset page and SAVE.
