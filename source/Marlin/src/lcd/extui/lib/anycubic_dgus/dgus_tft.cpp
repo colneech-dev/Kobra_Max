@@ -1746,7 +1746,14 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
 
   char file_index = 0;
 
-  filenavigator.scrollSelected();   // marquee for a selected name that does not fit
+  // "No bed level found" warning: shown in the tapped file's row; a second PRINT within 10 s starts anyway.
+  static millis_t nolevel_warn_ms = 0;   // 0 = not showing
+  if (nolevel_warn_ms && ((key_value != 0 && key_value != 6) || millis() - nolevel_warn_ms > 10000UL)) {
+    nolevel_warn_ms = 0;
+    filenavigator.sendRows(lcd_txtbox_index);   // put the file names back
+  }
+
+  if (!nolevel_warn_ms) filenavigator.scrollSelected();   // marquee for a selected name that does not fit
 
   switch (key_value) {
     case 0:
@@ -1835,6 +1842,15 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
 
     case 6:   // start print
       if (lcd_txtbox_index > 0 && lcd_txtbox_index  < 6) {  // 1~5
+
+        // No bed mesh in memory (leveling is switched on again by every G28, but only if a mesh exists; the
+        // settings live in eeprom.dat on the SD card): warn once and let the user decide.
+        if (printer_state != AC_printer_resuming_from_power_outage && !getMeshValid() && !nolevel_warn_ms) {
+          nolevel_warn_ms = millis() | 1;
+          SendTxtToTFT("NO LEVEL! PRINT AGAIN?", TXT_FILE_0 + 0x30 * (lcd_txtbox_index - 1));
+          break;
+        }
+        nolevel_warn_ms = 0;
 
         if (filenavigator.filelist.seek(lcd_txtbox_page * 5 + (lcd_txtbox_index - 1))) {
 
@@ -2646,6 +2662,11 @@ void DgusTFT::page17_handle(void)
       strcpy_P(st, zoffset_moving ? PSTR("Homing and moving...") : PSTR("Adjust Z with - / +"));
       center_pad(st, sizeof(st), 25);
       SendTxtToTFT(st, TXT_WAIT_STATUS);
+      // The value box goes blank when a button press makes the display redraw the page (it only draws a
+      // text field when it is written), so send it again with every status refresh.
+      char zv[10];
+      sprintf(zv, "%.2f", getZOffset_mm());
+      SendTxtToTFT(zv, TXT_LEVEL_OFFSET);
     }
   }
   if (zoffset_moving && (key_value == 2 || key_value == 3 || key_value == 5 || key_value == 6)) return;   // wait for the nozzle to arrive
@@ -3759,6 +3780,15 @@ void DgusTFT::page211_212_handle(void)
   char str_buf[10];
   static bool z_change = false;
   static float z_orig = 0;   // offset when the page was first changed; BACK restores it
+
+  {
+    // Same as the Z-offset page: the value boxes are only drawn when written, and a button press redraws the page.
+    static millis_t refresh_ms = 0;
+    if (millis() - refresh_ms > 500) {
+      refresh_ms = millis();
+      send_print_setting_values();
+    }
+  }
 
   auto return_to_print_page = []() {
     if (AC_printer_printing == printer_state) {
