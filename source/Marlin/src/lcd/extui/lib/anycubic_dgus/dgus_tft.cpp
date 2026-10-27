@@ -148,36 +148,26 @@ static bool zoffset_moving = false;
 // Selected Move Axes step (mm); file scope so the step text can be re-sent when the page opens.
 static float move_dis = 1.0f;
 
-// HOW THE Z OFFSET REALLY WORKS HERE (read before changing it). Z homes on the Z-min endstop, not on the
-// probe, so probe.offset.z (M851) is used in exactly one place: G29 stores measured_z + offset in every
-// mesh point (probe.cpp). Nothing applies it again afterwards. So the nozzle height at Z0 is "mesh point =
-// trigger height + the offset in force WHEN G29 RAN"; changing M851 later, or babystepping, does not
-// survive a re-home or a reboot. The code used to zero the offset for G29 (M851 Z0) and put the user's
-// value back afterwards, which threw it away (prints came out at the bare trigger height, and the Z-offset
-// page "did not work"). Now:
-//   * G29 runs with the stored offset, so the mesh contains it;
-//   * saving a changed offset also adds the change to every mesh point (commit_zoffset), keeping
-//     "offset stored == offset inside the mesh" true, and undoes the live babystep it replaces.
+// HOW THE Z OFFSET WORKS HERE (read before changing it). Z homes on the Z-min endstop and set_axis_is_at_home()
+// (motion.cpp) then sets the Z position to -probe.offset.z, so the stored offset (M851 Z, saved by M500) shifts
+// the nozzle height on EVERY G28: positive = nozzle higher, negative = lower, with or without a bed mesh.
+// G29 stores run_z_probe() + offset in each mesh point (probe.cpp); that run_z_probe() value already contains
+// the same -offset, so the mesh holds the plain contact height and does not depend on the offset. At print
+// height Z0 the nozzle is therefore at: mesh (contact height) + offset. Consequences:
+//   * LEVEL first (the mesh corrects the big error: endstop plane versus bed), then fine-tune the offset;
+//   * changing the offset needs NO mesh change (an earlier version also shifted the mesh and so applied
+//     every change twice);
+//   * the live babystep on the Z page just previews the change until the next home applies the saved offset.
+static void save_zoffset() {
+  injectCommands_P(PSTR("M500"));
+}
+
 // Leveling and the Z-offset page heat the nozzle and bed (LEVELING_*_TEMP) and nothing else turns them off.
 // Called when leveling ends and when the Z-offset page is left; a running print keeps its heat.
 static void heaters_off_when_idle() {
   if (isPrinting()) return;
   setTargetTemp_celsius(0, E0);
   setTargetTemp_celsius(0, BED);
-}
-
-static void commit_zoffset(const float offset_before) {
-  const float delta = getZOffset_mm() - offset_before;
-  if (fabsf(delta) < 0.0001f) return;
-  if (getMeshValid()) {
-    babystepAxis_steps(mmToWholeSteps(-delta, Z), Z);   // the live babystep is replaced by the mesh shift below
-    xy_uint8_t p;
-    for (p.x = 0; p.x < GRID_MAX_POINTS_X; p.x++)
-      for (p.y = 0; p.y < GRID_MAX_POINTS_Y; p.y++)
-        setMeshPoint(p, getMeshPoint(p) + delta);
-  }
-  // With no mesh the new offset is simply stored and used by the next G29.
-  injectCommands_P(PSTR("M500"));
 }
 
 // Values shown when the Print Settings page opens. The page has no read-back: its - / + buttons apply
@@ -802,7 +792,7 @@ void DgusTFT::StatusChange(const char * const msg)  {
         if (strcmp_P(msg + strlen(CUSTOM_MACHINE_NAME), MARLIN_msg_ready) == 0) {
           if (probe_cnt == GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y) {
             probe_cnt = 0;
-            injectCommands_P(PSTR("M500"));   // saves the mesh (which contains the Z offset) and the offset
+            injectCommands_P(PSTR("M500"));   // saves the mesh and the Z offset
             heaters_off_when_idle();
             ChangePageOfTFT(PAGE_PreLEVEL);   // wait pages 34/154 have no touch zones: must leave them explicitly
             printer_state = AC_printer_idle;
@@ -2659,7 +2649,8 @@ void DgusTFT::page17_handle(void)
       status_ms = millis();
       if (zoffset_moving && !commandsInQueue()) zoffset_moving = false;
       char st[28];
-      strcpy_P(st, zoffset_moving ? PSTR("Homing and moving...") : PSTR("Adjust Z with - / +"));
+      if (zoffset_moving) strcpy_P(st, PSTR("Homing and moving..."));
+      else sprintf_P(st, PSTR("Z offset %+.2f mm"), getZOffset_mm());   // shown here too: the value box above has been unreliable
       center_pad(st, sizeof(st), 25);
       SendTxtToTFT(st, TXT_WAIT_STATUS);
       // The value box goes blank when a button press makes the display redraw the page (it only draws a
@@ -2717,7 +2708,7 @@ void DgusTFT::page17_handle(void)
 #endif
       if (z_change) {
         z_change = false;
-        commit_zoffset(z_orig);   // bake the change into the mesh and save both
+        save_zoffset();
       }
 
       injectCommands_P(PSTR("G1 Z10 F600"));   // lift the nozzle off the bed
@@ -3841,7 +3832,7 @@ void DgusTFT::page211_212_handle(void)
 
     case 7: // SAVE
       if (z_change) {
-        commit_zoffset(z_orig);
+        save_zoffset();
         z_change = false;
       }
       return_to_print_page();
