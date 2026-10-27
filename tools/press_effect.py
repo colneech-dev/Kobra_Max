@@ -8,7 +8,7 @@ buttons needs a "pressed" twin: the same art with the buttons drawn in a lit-up 
 page + 34 (Move Axes 128 -> 162).
 
 Pages with identical art share one pressed picture: an ENG page (+120) uses its CHS twin's, and the
-few other duplicates are listed in TWIN. Pressed IDs live in 35-83, which no page uses.
+few other duplicates are listed in TWIN. Pressed IDs live in 35-84, which no page uses (page 16's is 84: 50 is the boot page).
 """
 
 # Pages whose art generate_screens.py also emits at +120 (the ENG mirror).

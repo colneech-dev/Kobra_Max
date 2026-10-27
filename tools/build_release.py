@@ -156,8 +156,8 @@ print(f"  created {RELEASE_DIR}/")
 ART_OUT = os.path.join(RELEASE_DIR, "ICL_SOURCE_BMPS")
 os.makedirs(ART_OUT, exist_ok=True)
 # Only the pictures that belong in the library: pages 0-217 minus screens hidden by a feature flag.
-# That includes the "button held" pictures (IDs 35-83). The abandoned boot-animation frames (218-256)
-# are left out ON PURPOSE: they would push the library past its 9 flash slots (16-24).
+# That includes the "button held" pictures (IDs 35-84), picture 50 and, with BOOT_ANIMATION, the boot
+# frames (BOOT_FIRST..BOOT_LAST). The library is then about 11 flash slots (16-26).
 bmp_files = [p for p in sorted(glob.glob(os.path.join("DWIN_SET", "*.bmp")))
              if int(os.path.splitext(os.path.basename(p))[0]) <= (uf.BOOT_LAST if uf.BOOT_ANIMATION else 217)
              and int(os.path.splitext(os.path.basename(p))[0]) not in uf.HIDDEN_PAGES]
@@ -169,10 +169,11 @@ with open(os.path.join(ART_OUT, "README.txt"), "w", encoding="utf-8") as f:
         "The display never reads these files.\n\n"
         f"{len(bmp_files)} images, named by page number; the picture index must equal the page number.\n"
         "Import ALL of them, in numeric order, and nothing else.\n\n"
-        "These include the 'button held' pictures (035-083): pressing a button shows its rectangle from one of them.\n\n"
-        "SIZE LIMIT: the library must stay under 2,359,296 bytes (9 flash slots of 256 KB, slots 16-24), because\n"
-        "the icon library is shipped as 25_ICO.icl and the font as 26_FontSong14X14.DZK. Do NOT add the old\n"
-        "boot-animation frames (218-256) or the hidden pages (6, 115, 126). Expect roughly 2.0 MB.\n"
+        "These include the 'button held' pictures (035-084) and the boot animation frames (218-255).\n\n"
+        "SIZE LIMIT: the library must stay under 2,883,584 bytes (11 flash slots of 256 KB, slots 16-26), because\n"
+        "the icon library is shipped as 28_ICO.icl. Do NOT add the hidden pages (6, 115, 126).\n"
+        "Note: the spinner and selected-button icon libraries (32_SPIN.icl, 33_SEL.icl) cannot be made by this\n"
+        "route; use build_release.py --script-icl for a complete set.\n"
         "Check the result with:  python tools/check_icl.py\n")
 print(f"  copied {len(bmp_files)} BMPs to {ART_OUT} (source images for the DGUS IDE only)")
 
@@ -321,8 +322,9 @@ Files: everything in the DWIN_SET/ folder
      SD:/DWIN_SET/14ShowFile.bin
      SD:/DWIN_SET/16_68_.icl
      SD:/DWIN_SET/22_Config.bin
-     SD:/DWIN_SET/25_ICO.icl            (the stock icon library, moved from slot 23)
-     SD:/DWIN_SET/26_FontSong14X14.DZK  (moved from slot 24)
+     SD:/DWIN_SET/28_ICO.icl            (the stock icon library, moved from slot 23)
+     SD:/DWIN_SET/29_FontSong14X14.DZK  (moved from slot 24)
+     SD:/DWIN_SET/32_SPIN.icl, 33_SEL.icl  (spinner and selected-button icons; script-built sets only)
      SD:/DWIN_SET/... (fonts, config)
    (No .bmp files: the display ignores them.) After flashing, the blue screen should list non-zero
    file counts (.CFG 1, .BIN 4, .DZK 1, .HZK 1, .ICL 2 or 3).
@@ -342,6 +344,9 @@ File: firmware.bin
 1. Copy firmware.bin to the SD card root (no folder).
    SD card should look like:
      SD:/firmware.bin
+   Use the printer's OWN card for this and do NOT format it: bed mesh, Z offset and PID are stored in
+   eeprom.dat on it. A reformatted card means no mesh and the default Z offset (prints come out too
+   high). Format only the separate card you use for the display (STEP 1).
 2. Power OFF the printer.
 3. Insert the SD card into the FRONT SD card slot.
 4. Power ON. The mainboard flashes automatically.

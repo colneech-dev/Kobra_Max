@@ -101,10 +101,10 @@ touch. `tools/cross_check_display.py` checks the first three against each other 
 | 203 / 206 | Probe failed | 207 / 209 | Tools, case light **off / on** |
 | 211 / 212 | Print settings, case light **off / on** | 214 | Thumbnail (**unreachable stub**) |
 | 215 | Terminal | 216 | Thermal tuning |
-| 217 | Factory reset | **35–83** | *"button held" pictures — never navigated to* (see 3.5) |
+| 217 | Factory reset | **35–84** | *"button held" pictures — never navigated to* (see 3.5; page 16's is 84) |
+| 50 | *boot page* (Image Animation record) | **218–255** | *boot animation frames; picture 50 = frame 0* (see the boot animation section) |
 
-Pages that exist only as pictures for the *boot animation* (218–256) are **not** part of the build any
-more (see 1.4 and Part 4).
+The *boot animation* frames (218–255) ARE part of the picture library again (`ui_features.BOOT_*`; see the boot animation section at the end).
 
 ## 1.4 Flash slots — the rule that bit us
 
@@ -115,11 +115,11 @@ Picture space is slots 16–63; fonts/icons/configs share the 4–12 MB region (
 | File on the SD card | Slot(s) | What it is |
 |---|---|---|
 | `0_DWIN_ASC.HZK` | 0–11 | Built-in ASCII fonts (4×8 up to 64×128 dots) |
-| `16_68_.icl` | 16–24 (max 9 slots, 2,359,296 bytes) | Background picture library (all pages + pressed pictures) |
-| `25_ICO.icl` | 25 | Stock Anycubic icon library (popup dialogs, toggles, bulbs). *Was `23_ICO.icl`.* |
-| `26_FontSong14X14.DZK` | 26–28 | Chinese 14×14 font. *Was `24_...`.* |
-| `29_SPIN.icl` | 29 | Spinner icon library (optional; you build it) |
-| `34_BootAnim.icl` | 34 | Boot-animation frames (parked, not shipped) |
+| `16_68_.icl` | 16–26 (about 2.8 MB, 11 slots) | Background picture library: pages, pressed pictures, boot frames |
+| `28_ICO.icl` | 28 | Stock Anycubic icon library (popup dialogs, toggles, bulbs). *Was `23_ICO.icl`.* |
+| `29_FontSong14X14.DZK` | 29–31 | Chinese 14×14 font. *Was `24_...`.* |
+| `32_SPIN.icl` | 32 | Spinner icon library (script-built) |
+| `33_SEL.icl` | 33 | "Selected button" icons (script-built) |
 | `13TouchFile.bin`, `14ShowFile.bin`, `22_Config.bin`, `T5LCFG.CFG`, `DWINOS.bin` | (configuration area) | touch zones, display records, initial values, hardware config, OS |
 
 **Why `23_ICO.icl` and `24_Font…` were renamed:** the stock picture library is 7 slots (16–22) so the
@@ -155,7 +155,8 @@ control* in the show file watches one VP and draws it; a *touch control* writes 
 | `0x2690 …` | About / statistics text | (About and Statistics share addresses) |
 | `0x2920 … 0x29E0` | `TXT_TERM_L0…4` | Terminal log |
 | `0x2A80` | `TXT_WAIT_STATUS` | live status line on wait screens |
-| `0x2B40`-`0x2B90` | `TXT_STEP_W0..2`, `TXT_STEP_O0..2` | Move-axes step button labels: white (not selected) / orange (selected) text over label-less buttons |
+| `0x2BB0 / 0x2BC0 / 0x2BD0` | `TXT_STEP_SEL0..2` | Move-axes step selection: 1 shows the orange copy of that button (Variable Icon) |
+| `0x2BA0` | `TXT_FILAMENT_STATUS` | Filament page status line |
 | `0x2B00` | `TXT_WAIT_ANIM` | spinner start/stop (1 = run) |
 | `0x2B20` / `0x2B30` | `TXT_PRINT_BAR` / `TXT_WAIT_BAR` | progress-bar values (0–100) |
 | `0x4300 / 0x4500 / 0x4550` | move step / light state | **stock** icon-VPs; no display record uses them now |
@@ -364,8 +365,8 @@ Steps:
 1. **Make the frames.** One image per frame, all the same size, numbered by icon ID (`100.bmp`,
    `101.bmp`, …). IDs must be ≤ 255. For a spinner see `tools/generate_spinner_icons.py`.
 2. **Build an icon library** in the DGUS IDE from those images and save it as `<slot>_NAME.icl`
-   (we use `29_SPIN.icl`). *The slot number is the library number used in the record.* Check with
-   `check_icl.py` that it overlaps nothing. (The stock `25_ICO.icl` can be used for a quick test: its
+   (we use `32_SPIN.icl`). *The slot number is the library number used in the record.* Check with
+   `check_icl.py` that it overlaps nothing. (The stock `28_ICO.icl` can be used for a quick test: its
    toggle icons 35 → 36 animate.)
 3. **Add the record** to the page: `make_icon_animation_record(x, y, start_icon, end_icon, icon_lib,
    frame_time, stop_icon, vp_addr, v_start=1, v_stop=0, opaque=True)`.
@@ -380,7 +381,7 @@ Steps:
 
 What we built on this: `ui_features.WAIT_BADGES` (one badge per wait screen: position, glyph, colour,
 icon IDs), `generate_spinner_icons.py` (frames), `patch_14showfile.py` (records when
-`SPINNER_ANIMATION = True`). Keep `SPINNER_ANIMATION = False` until `29_SPIN.icl` is on the display:
+`SPINNER_ANIMATION = True`, now the default). Set it to `False` if `32_SPIN.icl` is not on the display:
 pointing an animation at a missing library shows garbage.
 
 *Alternatives that need no new file:* moving text (the wait screens write "Homing.. X-6 Y-20 Z4" with
@@ -398,8 +399,8 @@ the button's rectangle out of *another page's picture* and shows it over the but
    `generate_screens.generate_pressed()` does exactly this (`btn()` has a `_PRESSED` mode: 30 % lighter
    fill + 2 px orange rim).
 2. Give each pressed picture an ID that is not a page. `tools/press_effect.py` assigns **page + 34** for
-   pages 1–34 (as the stock UI does) and 69–83 for the special pages; pages with identical art
-   (ENG mirrors etc., the `TWIN` table) share one picture. IDs 35–83 are reserved for this.
+   pages 1–34 (as the stock UI does; page 16's would be 50, the boot page, so it uses 84) and 69–83 for the special pages; pages with identical art
+   (ENG mirrors etc., the `TWIN` table) share one picture. IDs 35–84 are reserved for this.
 3. `generate_dwin_controls.py` writes the ID into every zone's `Pic_On`.
 4. The pictures must be **in the rebuilt picture library** — the IDE import list is the 143 BMPs in
    `ICL_SOURCE_BMPS/`. `cross_check_display.py` fails if a zone names a picture that does not exist or
@@ -417,7 +418,7 @@ by the display (its flasher counts only CFG/Code/BIN/DZK/HZK/ICL/LIB/WAE/UIC/GTF
 1. `python tools/build_release.py --allow-stale-icl --out release_vN` (or just
    `python tools/generate_screens.py`) to make the BMPs. The packager puts exactly the images that
    belong in the library into `ICL_SOURCE_BMPS/` (pages 0–217 minus hidden pages, plus pressed pictures
-   35–83; **not** the boot-animation frames 218–256).
+   35–84, picture 50 and the boot frames 218–255).
 2. Run the DGUS IDE (`DGUS/DGUS_V7649/DGUS_V7.649.exe`, or `DWprj.hmi` for the project), use the **ICL
    tool**, import every image in `ICL_SOURCE_BMPS/` in numeric order (the picture index must equal the
    number in the file name), generate, and save as `DWIN_SET/16_68_.icl`.
@@ -437,12 +438,15 @@ by the display (its flasher counts only CFG/Code/BIN/DZK/HZK/ICL/LIB/WAE/UIC/GTF
    With any other cluster size the display's blue screen reports **0 files** and flashes nothing —
    this cost us two test rounds. **[HW]**
 2. Copy the **release package's** `DWIN_SET` folder (display files only, no BMPs; `tools/build_release.py` applies the
-   `FLASH_RENAMES` such as `23_ICO.icl` -> `25_ICO.icl`) to the **card root**. The repo's own `DWIN_SET/` keeps the stock
+   `FLASH_RENAMES` such as `23_ICO.icl` -> `28_ICO.icl`) to the **card root**. The repo's own `DWIN_SET/` keeps the stock
    names and must not be copied directly.
 3. Printer **off** → card into the small USB port on the **back of the display** → power on. A blue
    screen lists what it flashed (`.CFG 1, .BIN 4, .DZK 1, .HZK 1, .ICL 2…`, all non-zero) and ends with
    `END !`. Power off, remove the card.
 4. Mainboard: put `firmware.bin` on a card root, card into the **front** slot, power on; it flashes by itself.
+   **Use a different card for the display flash than the one that lives in the printer, and never format the
+   printer's card:** settings (bed mesh, Z offset, PID) are stored in `eeprom.dat` on it, and a formatted card means
+   no mesh and the default Z offset (prints come out too high; the firmware now asks for leveling before printing).
 5. **If a bad flash leaves the display blank, frozen or garbled: power it off completely, wait 15–20 seconds
    so the capacitors discharge, then reflash the last known-good set.** A plain re-flash while still
    powered does *not* recover it. `release/` is the last known-good set.
@@ -454,7 +458,9 @@ by the display (its flasher counts only CFG/Code/BIN/DZK/HZK/ICL/LIB/WAE/UIC/GTF
 | Flag | Meaning |
 |---|---|
 | `HAS_INPUT_SHAPING`, `HAS_MPC`, `HAS_M1024` | Whether the firmware really has `M593`, `M306`, `M1024`. If `False` the screens that need them are hidden (no buttons, no zones). |
-| `SPINNER_ANIMATION` | Spinner animation icons on wait screens (needs `29_SPIN.icl`). |
+| `SPINNER_ANIMATION` | Spinner animation icons on wait screens (needs `32_SPIN.icl`). |
+| `STEP_SELECT_ICONS`, `STEP_SIZES`, `STEP_BUTTONS` | Highlighted Move Axes step button (needs `33_SEL.icl`); the three step sizes and button rectangles. |
+| `BOOT_ANIMATION`, `BOOT_FIRST/LAST/FRAME_TIME` | Custom boot animation (pictures 218-255 through the page-50 Image Animation record). `False` = stock behaviour. |
 | `PROGRESS_BARS` | Process-bar controls on Printing and Leveling. |
 | `PRESS_EFFECT` | Pressed-button pictures + `Pic_On` in the touch file. |
 | `PRINT_SETTINGS_ROWS` | The layout (y positions, key codes) of the Print Settings screen. |
@@ -502,8 +508,7 @@ selection marker, the Terminal font, the Z-offset preservation across leveling, 
   (it links at 0xC000 instead of 0x8000 and lacks ~20 HAL fixes).
 * `M1024` (stock auto-Z-offset command) is not implemented anywhere; its screen is hidden.
 * Text boxes are top-aligned; the status-bar text may sit slightly high next to its icons — unverified.
-* A real **spinner** needs `29_SPIN.icl` built in the IDE.
-* A script-written library is verified by our decoder but not yet by the display (see above).
+* The script-written libraries (`16_68_.icl` with boot frames, `32_SPIN.icl`, `33_SEL.icl`) are verified by our decoder; the display has accepted `16_68_.icl` before, but a Tools-page glitch was seen once (v7) and is unexplained.
 
 ---
 
@@ -521,7 +526,9 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
                   │        │                  DWIN_SET/16_68_.icl
                   ├─> generate_dwin_controls.py ──> DWIN_SET/13TouchFile.bin
                   ├─> patch_14showfile.py  ───────> DWIN_SET/14ShowFile.bin   (from 14ShowFile.base.bin)
-                  └─> generate_spinner_icons.py ──> DWIN_SET/spinner_icons/*.bmp  (-> 29_SPIN.icl, manual)
+                  ├─> generate_spinner_icons.py ──> DWIN_SET/spinner_icons/*.bmp  (-> 32_SPIN.icl)
+                  ├─> generate_select_icons.py  ──> DWIN_SET/select_icons/*.bmp   (-> 33_SEL.icl)
+                  └─> generate_boot_animation.py ─> DWIN_SET/218..255.bmp + 050.bmp (boot frames)
 
  cross_check_display.py  = art  vs  touch  vs  show file  vs  C++ handlers  vs  VP addresses
  check_icl.py            = the compiled library on the display's side  vs  the BMPs; flash-slot overlaps
@@ -537,14 +544,15 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 | **`generate_screens.py`** | Draws every page's background (`DWIN_SET/NNN.bmp`, 272×480) with Pillow + the Font Awesome font in `tools/fonts/`; also renders the 40 pressed pictures (`generate_pressed`). Page map: `_build_page_map()`. Recorded boxes (`btn()`, `vp_area()`) are what `cross_check` compares against. | `python tools/generate_screens.py` |
 | **`generate_dwin_controls.py`** | Builds `13TouchFile.bin` from the `_ZONES` list (285 zones), including the press-effect IDs. `--doc` regenerates the per-page tables in `tools/DWIN_CONTROLS_README.md`. | `python tools/generate_dwin_controls.py` and `… --doc` |
 | **`patch_14showfile.py`** | Builds `14ShowFile.bin` from the stock base file: record builders (`make_text_record`, `make_integer_record`, `make_icon_animation_record`, `make_process_bar_record`), per-page record lists, page-table rewrite (0-based!), count = 218. Idempotent. | `python tools/patch_14showfile.py` |
-| **`generate_spinner_icons.py`** | Makes the spinner frames (66 icons, 82×82) into `DWIN_SET/spinner_icons/` with a README for building `29_SPIN.icl`. | after changing `WAIT_BADGES` or frame count |
+| **`generate_spinner_icons.py`** | Makes the spinner frames (66 icons, 82×82) into `DWIN_SET/spinner_icons/` (library `32_SPIN.icl`). | after changing `WAIT_BADGES` or frame count |
 | **`cross_check_display.py`** | The main safety net. Re-renders every page in memory and checks: **[1]** BMP on disk is current, **[2]** every drawn button has a touch zone covering ≥ 85 % of it and every zone has a button, **[3]** every drawn text box has a show-file record (≥ 80 % overlap) and vice versa, **[4]** every zone key has a `case` in the handler IdleLoop actually dispatches (brace-matched parser), **[5]** VP addresses agree between `dgus_tft.h` and the patcher, **[6]** every press-effect picture exists, **[7]** pages that share a pressed picture have identical art. `--overlay DIR` writes each page with zones (red, key number) and records (cyan) drawn on top. Exit 1 on errors. | after every change; `--overlay` to *see* a misalignment |
 | **`check_icl.py`** | Decodes `DWIN_SET/16_68_.icl` (repairing DWIN's JPEG quirks) and compares every picture with its BMP → tells you whether **the art on the display is current**; reports pictures that should/shouldn't be in the library; reports **flash-slot overlaps** between display files (honours `FLASH_RENAMES`). `--extract DIR` writes every picture as PNG. | after building the ICL; `--extract` to see what is *really* on the display |
-| **`build_icl.py`** | **Experimental.** Builds a picture or icon library (`.icl`) from BMPs without the DGUS IDE, using an IDE-built file as the template for the JPEG header/quantisation tables; self-tests, then verifies the output with `check_icl`'s decoder. Writes to `DWIN_SET/auto_icl/` (never over your IDE library). `--kind icons --src DIR --out FILE` builds an icon library (e.g. the spinner); `--selftest` runs only the checks. `build_release.py --script-icl` makes a complete experimental display set with it. | `python tools/build_icl.py` |
-| **`build_release.py`** | One command to a flashable package: builds the firmware (`pio run`), regenerates BMPs/zones/records/spinner frames, runs `cross_check_display` (fails the build on errors) and `check_icl` (fails on a stale/overlapping library unless `--allow-stale-icl`), then copies the display files to `<out>/DWIN_SET/` (renaming the icon library and font), BMP sources to `ICL_SOURCE_BMPS/` (+README), spinner sources to `ICON_LIB_SOURCE/`, `firmware.bin`, and a README with flashing steps. `--out DIR` keeps `release/` untouched; `--script-icl` also writes `EXPERIMENTAL_SCRIPT_ICL/` (a full display set with the script-built library). | `python tools/build_release.py --out release_v3 [--allow-stale-icl] [--script-icl]` |
+| **`build_icl.py`** | **Experimental.** Builds a picture or icon library (`.icl`) from BMPs without the DGUS IDE, using an IDE-built file as the template for the JPEG header/quantisation tables; self-tests, then verifies the output with `check_icl`'s decoder. Writes to `DWIN_SET/auto_icl/` (never over your IDE library). `--kind icons --src DIR --out FILE` builds an icon library (spinner, select icons); `--selftest` runs only the checks. `build_release.py --script-icl` uses it for all three libraries. | `python tools/build_icl.py` |
+| **`build_release.py`** | One command to a flashable package: builds the firmware (`pio run`), regenerates BMPs/zones/records/spinner frames, runs `cross_check_display` (fails the build on errors) and `check_icl` (fails on a stale/overlapping library unless `--allow-stale-icl`), then copies the display files to `<out>/DWIN_SET/` (renaming the icon library and font), BMP sources to `ICL_SOURCE_BMPS/` (+README), spinner sources to `ICON_LIB_SOURCE/`, `firmware.bin`, and a README with flashing steps. `--out DIR` keeps `release/` untouched; `--script-icl` builds the picture library and both icon libraries by script (no IDE, no staleness check) and checks the flash slots. | `python tools/build_release.py --out release_vN --script-icl` |
 | **`validate_display.py`** | **Deprecated.** Older text-heuristic checker of the C++ source. Its handler regex missed 42 of 54 handlers for months (so "all checks pass" meant little) and it reports false positives. Kept only for reference; use `cross_check_display.py`. | — |
 | **`rename_firmware.py`** | PlatformIO post-build hook (`extra_scripts` in `platformio.ini`): copies `firmware.bin` to `Firmware.bin` in the build folder. | automatic |
-| **`generate_boot_animation.py`** | Legacy/parked. Generates numbered JPEG frames for DWIN's `Movie2ICL.exe` to compile a boot-animation ICL (`34_BootAnim.icl`). | only if the boot animation is revisited |
+| **`generate_select_icons.py`** | The orange "selected" copies of the Move Axes step buttons (`DWIN_SET/select_icons/`, library `33_SEL.icl`). | after changing `STEP_SIZES` / button layout |
+| **`generate_boot_animation.py`** | Draws the boot frames (pictures `BOOT_FIRST..BOOT_LAST`: flame, title, progress bar) and picture 50 (= frame 0) into `DWIN_SET/`. | after changing the animation or `BOOT_*` |
 | **`update_dgus_excel.py`** | Legacy. Keeps `DGUS/DisplayConfig.xls` / `TouchConfig.xls` in step with the custom pages as human-readable documentation (the GUI path that would regenerate 13/14 from them is bypassed). | rarely |
 | `fix_eng_pages_and_term.py`, `fix_mpc_save.py`, `fix_null_terminators.py`, `patch_page216.py` | **One-off migration scripts, already applied** to `dgus_tft.cpp` (language-neutral pages, terminal VP overflow, MPC save, NUL escapes, page 216 support). Historical; do not re-run. | — |
 | `re/il_dump.ps1` | Reverse-engineering helper: disassembles .NET methods by reflection (PowerShell 7). Used on DWIN's `Excel2ICL.dll` to learn the library CRC. | see the header of the script |

@@ -741,12 +741,12 @@ def page_filament():
     y = CONTENT_Y1 + 16
     text_left(draw, MARGIN, y, "HOTEND TEMPERATURE", F_SMALL, GRAY);  y += 16
     vp_area(draw, MARGIN, y, W - MARGIN, y + 34, '210/230 C');  y += 40
-    vp_area(draw, MARGIN, y, W - MARGIN, y + 24, 'Heating to 230 C...');  y += 32   # live status line
+    vp_area(draw, MARGIN, y, W - MARGIN, y + 24, f'Heating to {uf.FILAMENT_TEMP} C...');  y += 32   # live status line
     btn(draw, MARGIN, y, W - MARGIN, y + 40, "LOAD FILAMENT",   style='primary', icon=0xf063);   y += 48
     btn(draw, MARGIN, y, W - MARGIN, y + 40, "EXTRUDE 10 MM",   style='normal',  icon=0xf078);   y += 48
     btn(draw, MARGIN, y, W - MARGIN, y + 40, "UNLOAD FILAMENT", style='normal',  icon=0xf062);   y += 48
     btn(draw, MARGIN, y, W - MARGIN, y + 40, "STOP",            style='danger',  icon=0xf04d)
-    text_center(draw, (0, y + 46, W, y + 62), "Heats to 230 C first. Use EXTRUDE once loaded", F_TINY, GRAY)
+    text_center(draw, (0, y + 46, W, y + 62), f"Heats to {uf.FILAMENT_TEMP} C first. Use EXTRUDE once loaded", F_TINY, GRAY)
     footer_1btn(draw, "BACK", style='ghost')
     return img
 
@@ -847,8 +847,8 @@ def page_no_sd():
 def page_filament_heat():
     return _icon_page("HEAT REQUIRED",
         lambda d: _flame(d, W//2 - 16, CONTENT_Y1 + 20, size=32),
-        [("Hotend must reach 220 C", WHITE),
-         ("Heating to 230 C...", GRAY)],
+        [(f"Hotend must reach {uf.FILAMENT_TEMP - 5} C", WHITE),
+         (f"Heating to {uf.FILAMENT_TEMP} C...", GRAY)],
         btns=[("OK - START HEATING", 'warning')], title_color=WARNING)
 
 
