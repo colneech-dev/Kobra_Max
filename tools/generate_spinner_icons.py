@@ -10,7 +10,7 @@ badge this makes SPINNER_FRAMES frames of the SAME badge with a bright arc trave
 plus one resting frame identical to the static badge (the animation's "stopped" icon).
 
 These are the source images for an ICON library, built in the DGUS IDE (icon library, not the
-background-picture library) and saved as   32_SPIN.icl   (ID 32 = flash slot 32; see
+background-picture library) and saved as   33_SPIN.icl   (ID 32 = flash slot 32; see
 ui_features.SPINNER_ICON_LIB). Then set SPINNER_ANIMATION = True in tools/ui_features.py and
 regenerate 14ShowFile.bin. Icon IDs per badge are in ui_features.WAIT_BADGES.
 

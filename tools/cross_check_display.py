@@ -260,6 +260,8 @@ def main():
         bmp = DWIN_SET / f'{name}.bmp'
         if not bmp.exists():
             err(f"p{pg}: {bmp} missing")
+        elif uf.BOOT_FIRST <= pg <= uf.BOOT_LAST:
+            pass   # boot-animation frame now (the Chinese-language page 93 is not shown by the English firmware)
         elif ImageChops.difference(img, Image.open(bmp).convert('RGB')).getbbox():
             err(f"p{pg}: {bmp.name} is stale vs generate_screens.py")
 

@@ -594,9 +594,8 @@ _CONTENT = [
     (211, PAGE211),
     # Boot splash: the stock page-0 records (a message line and a temperature) would print over it
     (0,   []),
-    # Boot animation: the display plays pictures BOOT_FIRST..BOOT_LAST from page 50 (stock: 50..114)
-    *([(50, [make_image_animation_record(uf.BOOT_FIRST, uf.BOOT_LAST, uf.BOOT_FRAME_TIME, 0)])]
-      if uf.BOOT_ANIMATION else []),
+    # Boot animation: nothing to patch. The stock record on page 50 already plays pictures 50..114 and
+    # reports 114; the boot frames are simply those pictures (generate_boot_animation.py).
     # ENG mirrors
     (122, PAGE2),
     (123, PAGE3),
