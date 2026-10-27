@@ -7,7 +7,7 @@ Output: DWIN_SET/select_icons/NNN.bmp  (NNN = icon ID 0..2, one per step button,
 The display cannot keep a button lit, so each step button has a Variable Icon (record 0x5A00, guide
 7.2) laid exactly over it. The icon is the SAME button drawn in the 'primary' (orange) style; the
 firmware writes 1 to the icon's VP to show it (the step is selected) and 0 to hide it. These are the
-source images for the icon library 33_SEL.icl (built by build_icl.py --kind icons).
+source images for the icon library 34_SEL.icl (built by build_icl.py --kind icons).
 
 Run from the project root:   python tools/generate_select_icons.py
 """

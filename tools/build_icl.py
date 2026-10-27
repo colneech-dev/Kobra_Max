@@ -22,7 +22,7 @@ The output goes to DWIN_SET/auto_icl/, never over DWIN_SET/16_68_.icl.
 
 Usage (from the project root):
     python tools/build_icl.py                      # background library from DWIN_SET/*.bmp
-    python tools/build_icl.py --kind icons --src DWIN_SET/spinner_icons --out DWIN_SET/auto_icl/32_SPIN.icl
+    python tools/build_icl.py --kind icons --src DWIN_SET/spinner_icons --out DWIN_SET/auto_icl/33_SPIN.icl
     python tools/build_icl.py --selftest           # only run the checks against the template
 
 Options: --template FILE (default DWIN_SET/16_68_.icl)   --src DIR   --out FILE   --quality-check
@@ -43,7 +43,6 @@ TEMPLATE = Path("DWIN_SET/16_68_.icl")
 DEFAULT_SRC = Path("DWIN_SET")
 DEFAULT_OUT = Path("DWIN_SET/auto_icl/16_68_.icl")
 SCREEN = (272, 480)
-MAX_LIBRARY_PAGE = uf.BOOT_LAST if uf.BOOT_ANIMATION else 217   # boot frames are part of the library
 
 
 # ── JPEG segment helpers ──────────────────────────────────────────────────────────────────────
@@ -212,7 +211,7 @@ def load_sources(src, kind):
         if not p.stem.isdigit():
             continue
         i = int(p.stem)
-        if kind == "background" and (i > MAX_LIBRARY_PAGE or i in uf.HIDDEN_PAGES):
+        if kind == "background" and not uf.in_library(i):
             continue
         out[i] = Image.open(p).convert("RGB")
     return out

@@ -110,10 +110,10 @@ print("  ok")
 step("Regenerating DWIN assets")
 run_tool("generate_screens.py",      "BMP page backgrounds (000–217)")
 run_tool("generate_dwin_controls.py","13TouchFile.bin (touch zones)")
-run_tool("generate_spinner_icons.py","spinner icon frames (32_SPIN.icl)")
-run_tool("generate_select_icons.py", "selected-button icons (33_SEL.icl)")
+run_tool("generate_spinner_icons.py","spinner icon frames (33_SPIN.icl)")
+run_tool("generate_select_icons.py", "selected-button icons (34_SEL.icl)")
 if uf.BOOT_ANIMATION:
-    run_tool("generate_boot_animation.py", "boot animation frames (pictures %d-%d) and picture 50" % (uf.BOOT_FIRST, uf.BOOT_LAST))
+    run_tool("generate_boot_animation.py", "boot animation frames (pictures %d-%d)" % (uf.BOOT_FIRST, uf.BOOT_LAST))
 run_tool("patch_14showfile.py",      "14ShowFile.bin (VP display areas)")
 
 # The three display files above are hand-synchronised; refuse to package them if they disagree
@@ -156,11 +156,10 @@ print(f"  created {RELEASE_DIR}/")
 ART_OUT = os.path.join(RELEASE_DIR, "ICL_SOURCE_BMPS")
 os.makedirs(ART_OUT, exist_ok=True)
 # Only the pictures that belong in the library: pages 0-217 minus screens hidden by a feature flag.
-# That includes the "button held" pictures (IDs 35-84), picture 50 and, with BOOT_ANIMATION, the boot
-# frames (BOOT_FIRST..BOOT_LAST). The library is then about 11 flash slots (16-26).
+# That includes the "button held" pictures (35-49 and 218-252) and, with BOOT_ANIMATION, the boot frames
+# (pictures 50-114, played by the stock boot record).
 bmp_files = [p for p in sorted(glob.glob(os.path.join("DWIN_SET", "*.bmp")))
-             if int(os.path.splitext(os.path.basename(p))[0]) <= (uf.BOOT_LAST if uf.BOOT_ANIMATION else 217)
-             and int(os.path.splitext(os.path.basename(p))[0]) not in uf.HIDDEN_PAGES]
+             if uf.in_library(int(os.path.splitext(os.path.basename(p))[0]))]
 for src in bmp_files:
     copy_file(src, ART_OUT)
 with open(os.path.join(ART_OUT, "README.txt"), "w", encoding="utf-8") as f:
@@ -169,10 +168,10 @@ with open(os.path.join(ART_OUT, "README.txt"), "w", encoding="utf-8") as f:
         "The display never reads these files.\n\n"
         f"{len(bmp_files)} images, named by page number; the picture index must equal the page number.\n"
         "Import ALL of them, in numeric order, and nothing else.\n\n"
-        "These include the 'button held' pictures (035-084) and the boot animation frames (218-255).\n\n"
+        "These include the 'button held' pictures (035-049, 218-252) and the boot animation frames (050-114).\n\n"
         "SIZE LIMIT: the library must stay under 2,883,584 bytes (11 flash slots of 256 KB, slots 16-26), because\n"
-        "the icon library is shipped as 28_ICO.icl. Do NOT add the hidden pages (6, 115, 126).\n"
-        "Note: the spinner and selected-button icon libraries (32_SPIN.icl, 33_SEL.icl) cannot be made by this\n"
+        "the icon library is shipped as 29_ICO.icl. Do NOT add the hidden pages (6, 115, 126).\n"
+        "Note: the spinner and selected-button icon libraries (33_SPIN.icl, 34_SEL.icl) cannot be made by this\n"
         "route; use build_release.py --script-icl for a complete set.\n"
         "Check the result with:  python tools/check_icl.py\n")
 print(f"  copied {len(bmp_files)} BMPs to {ART_OUT} (source images for the DGUS IDE only)")
@@ -322,9 +321,9 @@ Files: everything in the DWIN_SET/ folder
      SD:/DWIN_SET/14ShowFile.bin
      SD:/DWIN_SET/16_68_.icl
      SD:/DWIN_SET/22_Config.bin
-     SD:/DWIN_SET/28_ICO.icl            (the stock icon library, moved from slot 23)
-     SD:/DWIN_SET/29_FontSong14X14.DZK  (moved from slot 24)
-     SD:/DWIN_SET/32_SPIN.icl, 33_SEL.icl  (spinner and selected-button icons; script-built sets only)
+     SD:/DWIN_SET/29_ICO.icl            (the stock icon library, moved from slot 23)
+     SD:/DWIN_SET/30_FontSong14X14.DZK  (moved from slot 24)
+     SD:/DWIN_SET/33_SPIN.icl, 34_SEL.icl  (spinner and selected-button icons; script-built sets only)
      SD:/DWIN_SET/... (fonts, config)
    (No .bmp files: the display ignores them.) After flashing, the blue screen should list non-zero
    file counts (.CFG 1, .BIN 4, .DZK 1, .HZK 1, .ICL 2 or 3).

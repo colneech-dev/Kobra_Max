@@ -148,15 +148,7 @@ def main():
     os.makedirs(dwin_set_dir, exist_ok=True)
 
     for i in range(N_FRAMES):
-        frame(i).convert("RGB").save(os.path.join(dwin_set_dir, f"{BMP_START_INDEX + i}.bmp"))
-    # The display shows picture 50 (the boot page) for an instant before the animation's first frame.
-    frame(0).convert("RGB").save(os.path.join(dwin_set_dir, "050.bmp"))
-
-    # Pictures past BOOT_LAST (the old generator wrote one more) must not stay behind in the library.
-    for n in range(uf.BOOT_LAST + 1, uf.BOOT_LAST + 10):
-        stale = os.path.join(dwin_set_dir, f"{n}.bmp")
-        if os.path.exists(stale):
-            os.remove(stale)
+        frame(i).convert("RGB").save(os.path.join(dwin_set_dir, f"{BMP_START_INDEX + i:03d}.bmp"))
 
     print(f"{N_FRAMES} boot frames written to {dwin_set_dir} "
           f"({BMP_START_INDEX}.bmp .. {BMP_START_INDEX + N_FRAMES - 1}.bmp), "

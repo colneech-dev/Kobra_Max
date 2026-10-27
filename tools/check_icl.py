@@ -104,7 +104,6 @@ def read_icl(path):
 
 
 SLOT = 256 * 1024     # DWIN T5L flash is divided into fixed 256 KB slots (guide section 2.5)
-MAX_LIBRARY_PAGE = uf.BOOT_LAST if uf.BOOT_ANIMATION else 217   # boot frames are part of the library
 
 
 def check_flash_slots(size_override=None):
@@ -138,10 +137,9 @@ def main():
     if not icl_path.exists():
         raise SystemExit(f"{icl_path} not found")
     pics = read_icl(icl_path)
-    # Source images that belong in the library: pages 0-217, minus screens hidden by a feature flag.
-    # (218..BOOT_LAST are the boot-animation frames, part of the library while BOOT_ANIMATION is on.)
+    # Source images that belong in the library (uf.in_library): pages, pressed pictures, boot frames.
     bmps = {int(p.stem): p for p in DWIN_SET.glob("*.bmp")
-            if p.stem.isdigit() and int(p.stem) <= MAX_LIBRARY_PAGE and int(p.stem) not in uf.HIDDEN_PAGES}
+            if p.stem.isdigit() and uf.in_library(int(p.stem))}
 
     stale, missing_in_icl = [], []
     for page in sorted(bmps):

@@ -8,8 +8,11 @@ buttons needs a "pressed" twin: the same art with the buttons drawn in a lit-up 
 page + 34 (Move Axes 128 -> 162).
 
 Pages with identical art share one pressed picture: an ENG page (+120) uses its CHS twin's, and the
-few other duplicates are listed in TWIN. Pressed IDs live in 35-84, which no page uses (page 16's is 84: 50 is the boot page).
+few other duplicates are listed in TWIN. Pressed IDs live in 35-49 (pages 1-15) and 218-252 (everything else): 50-114 is the stock boot animation's
+picture range (ui_features.BOOT_FIRST..BOOT_LAST), which must hold only boot frames.
 """
+
+import ui_features as uf
 
 # Pages whose art generate_screens.py also emits at +120 (the ENG mirror).
 CORE = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23,
@@ -41,18 +44,17 @@ def pressed_id(page, key=None):
     b = base_page(page)
     if 1 <= b <= 34:
         return _pic(b + 34)
-    return SPECIAL_ID.get(b)
+    return _pic(SPECIAL_ID[b]) if b in SPECIAL_ID else None
 
 
-# Picture 50 is the first picture the display shows at power-on (the page that carries the boot
-# Image Animation record), so no pressed picture may live there: page 16's moves to a free ID.
-BOOT_PAGE_PICTURE = 50
-MOVED_PRESSED = {BOOT_PAGE_PICTURE: 84}
+# The display plays pictures 50..114 at power-on (the stock boot animation, filled with our boot frames),
+# so no pressed picture may live there: those IDs move up by PRESSED_SHIFT (50..84 -> 218..252).
+PRESSED_SHIFT = 168
 
 
 def _pic(pid):
-    return MOVED_PRESSED.get(pid, pid)
+    return pid + PRESSED_SHIFT if uf.BOOT_FIRST <= pid <= uf.BOOT_LAST else pid
 
 
 def all_pressed_ids():
-    return sorted(set(list(SPECIAL_ID.values()) + [_pic(b + 34) for b in range(1, 35)]))
+    return sorted(set([_pic(v) for v in SPECIAL_ID.values()] + [_pic(b + 34) for b in range(1, 35)]))
