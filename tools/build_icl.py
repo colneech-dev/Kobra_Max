@@ -167,8 +167,11 @@ def encode_entropy(img, tpl):
     start = sos_end(jpeg)
     end = len(jpeg)
     assert jpeg[end - 2:end] == b"\xff\xd9", "missing EOI"
-    data = jpeg[start:end - 2]
-    # IDE output: zero padded so the length is a multiple of 4 and 8-11 zero bytes follow the data
+    # The EOI marker STAYS: every one of the IDE library's pictures ends "FF D9" + 8-11 zero bytes, and the
+    # display's decoder needs it to stop (without it a picture decoded only partly and the rest of the
+    # screen kept the previous picture, v11).
+    data = jpeg[start:end]
+    # IDE output: zero padded so the length is a multiple of 4 and 8-11 zero bytes follow the EOI
     padded = -(-(len(data) + 8) // 4) * 4
     return data + b"\x00" * (padded - len(data))
 
@@ -236,9 +239,21 @@ def verify(path, images):
         if n > ci.DIFF_PIXELS_MAX:
             problems.append(f"id {i}: {n} pixels differ from the source")
     data = Path(path).read_bytes()
-    first = struct.unpack(">I", data[16:20])[0]
+    words = struct.unpack(f">{(len(data) - 16) // 4}I", data[16:16 + 4 * ((len(data) - 16) // 4)])
+    first = next(w for w in words if w)
     if first % 4 or len(data) % 4:
         problems.append("file or table is not 4-byte aligned")
+    # check_icl's decoder adds a missing EOI itself, so look at the raw bytes: the display needs the IDE's
+    # ending, "FF D9" followed by 8-11 zero bytes, on every picture (v11 lacked the FF D9 and showed garbage)
+    for off in struct.unpack(f">{(first - 16) // 4}I", data[16:first]):
+        if not off:
+            continue
+        _w, _h, hl, ln = struct.unpack(">HHHI", data[off:off + 10])
+        e = data[off + 10 + hl:off + 10 + hl + ln]
+        k = e.rfind(b"\xff\xd9")
+        if k < 0 or not 8 <= len(e) - (k + 2) <= 11 or any(e[k + 2:]):
+            problems.append(f"picture at {off}: entropy data does not end FF D9 + 8-11 zero bytes")
+            break
     return problems, worst
 
 
