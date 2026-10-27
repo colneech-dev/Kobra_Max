@@ -104,7 +104,7 @@ def read_icl(path):
 
 
 SLOT = 256 * 1024     # DWIN T5L flash is divided into fixed 256 KB slots (guide section 2.5)
-MAX_LIBRARY_PAGE = 217
+MAX_LIBRARY_PAGE = uf.BOOT_LAST if uf.BOOT_ANIMATION else 217   # boot frames are part of the library
 
 
 def check_flash_slots(size_override=None):

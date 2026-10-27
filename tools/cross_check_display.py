@@ -222,6 +222,9 @@ def check_vp_addresses():
     for name in shared:
         if None not in (h[name], p[name]) and h[name] != p[name]:
             err(f"VP {name}: dgus_tft.h = 0x{h[name]:04X} but patch_14showfile.py = 0x{p[name]:04X}")
+    m = re.search(r'#define\s+BOOT_ANIM_LAST_FRAME\s+(\d+)', hdr)
+    if uf.BOOT_ANIMATION and (not m or int(m.group(1)) != uf.BOOT_LAST):
+        err(f"BOOT_ANIM_LAST_FRAME in dgus_tft.h ({m.group(1) if m else 'missing'}) != ui_features.BOOT_LAST ({uf.BOOT_LAST})")
     for name in ("TXT_WAIT_STATUS", "TXT_STEP_SEL0", "TXT_STEP_SEL1", "TXT_STEP_SEL2"):
         if name not in h:
             err(f"VP {name} is in patch_14showfile.py but missing from dgus_tft.h")

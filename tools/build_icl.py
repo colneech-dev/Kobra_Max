@@ -43,7 +43,7 @@ TEMPLATE = Path("DWIN_SET/16_68_.icl")
 DEFAULT_SRC = Path("DWIN_SET")
 DEFAULT_OUT = Path("DWIN_SET/auto_icl/16_68_.icl")
 SCREEN = (272, 480)
-MAX_LIBRARY_PAGE = 217
+MAX_LIBRARY_PAGE = uf.BOOT_LAST if uf.BOOT_ANIMATION else 217   # boot frames are part of the library
 
 
 # ── JPEG segment helpers ──────────────────────────────────────────────────────────────────────

@@ -591,6 +591,9 @@ _CONTENT = [
     (211, PAGE211),
     # Boot splash: the stock page-0 records (a message line and a temperature) would print over it
     (0,   []),
+    # Boot animation: the display plays pictures BOOT_FIRST..BOOT_LAST from page 50 (stock: 50..114)
+    *([(50, [make_image_animation_record(uf.BOOT_FIRST, uf.BOOT_LAST, uf.BOOT_FRAME_TIME, 0)])]
+      if uf.BOOT_ANIMATION else []),
     # ENG mirrors
     (122, PAGE2),
     (123, PAGE3),

@@ -160,6 +160,11 @@
 
 /****************** Lcd control **************************/
 #define REG_LCD_READY        0x0014
+// The display plays its boot animation from page 50 and then sits on the animation's last picture,
+// which REG_LCD_READY reports as 0x0100 + that picture number. Ours ends on BOOT_ANIM_LAST_FRAME (must
+// equal tools/ui_features.py BOOT_LAST); the stock animation ended on picture 114 (0x72), still accepted.
+#define BOOT_ANIM_LAST_FRAME 255
+#define BOOT_ANIM_STOCK_LAST 0x72
 
 
 /****************** TXT **************************/
