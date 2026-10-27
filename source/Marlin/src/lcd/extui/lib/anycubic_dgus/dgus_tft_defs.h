@@ -33,6 +33,7 @@
 
 // Hotend temperature the Thermal Tuning page autotunes at (keep equal to
 // PID_HOTEND_TUNE_TEMP in tools/ui_features.py, which the screen text quotes).
+#define AC_FILAMENT_TEMP        230   // Filament page: heat to this, start loading at AC_FILAMENT_TEMP - 5 (tools/ui_features.py reads it)
 #define AC_PID_HOTEND_TUNE_TEMP 200
 #define AC_PID_BED_TUNE_TEMP    60
 

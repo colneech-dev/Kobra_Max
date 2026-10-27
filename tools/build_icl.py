@@ -22,7 +22,7 @@ The output goes to DWIN_SET/auto_icl/, never over DWIN_SET/16_68_.icl.
 
 Usage (from the project root):
     python tools/build_icl.py                      # background library from DWIN_SET/*.bmp
-    python tools/build_icl.py --kind icons --src DWIN_SET/spinner_icons --out DWIN_SET/auto_icl/29_SPIN.icl
+    python tools/build_icl.py --kind icons --src DWIN_SET/spinner_icons --out DWIN_SET/auto_icl/32_SPIN.icl
     python tools/build_icl.py --selftest           # only run the checks against the template
 
 Options: --template FILE (default DWIN_SET/16_68_.icl)   --src DIR   --out FILE   --quality-check

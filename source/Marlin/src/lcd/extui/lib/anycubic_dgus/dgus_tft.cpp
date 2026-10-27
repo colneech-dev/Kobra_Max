@@ -398,10 +398,13 @@ void DgusTFT::IdleLoop()  {
   // Hold a touch for KEY_FEEDBACK_MS before acting on it, so a button that changes the page is seen
   // lit-up (the display shows the pressed picture itself) before the page changes.
   {
-    static uint32_t held_key = 0;
+    static uint32_t held_key = 0, held_page = 0;
     static millis_t held_ms = 0;
-    if (key_value) { held_key = key_value; held_ms = millis(); key_value = 0; }
-    if (held_key && millis() - held_ms >= KEY_FEEDBACK_MS) { key_value = held_key; held_key = 0; }
+    if (key_value) { held_key = key_value; held_page = page_index_now; held_ms = millis(); key_value = 0; }
+    if (held_key && millis() - held_ms >= KEY_FEEDBACK_MS) {
+      if (page_index_now == held_page) key_value = held_key;   // not for a page that replaced the one touched
+      held_key = 0;
+    }
   }
 
 #if ACDEBUG(AC_MARLIN)
@@ -1253,7 +1256,8 @@ void DgusTFT::GoPrintSettingsPage() {
 // System page for the current language and audio setting.
 void DgusTFT::GoSystemPage() {
   if (lcd_info.language == ExtUI::ENG) {
-    ChangePageOfTFT(lcd_info.audio == ExtUI::ON ? 11 : 50);   // +120 -> 131 / 170 (PAGE_SYSTEM_ENG_AUDIO_ON/OFF)
+    // Device pages, not "11 / 50 + 120": CHS-domain 50 is the boot-animation page.
+    ChangePageOfTFT_DevicePage(lcd_info.audio == ExtUI::ON ? PAGE_SYSTEM_ENG_AUDIO_ON : PAGE_SYSTEM_ENG_AUDIO_OFF);
   } else {
     ChangePageOfTFT(lcd_info.audio == ExtUI::ON ? PAGE_SYSTEM_CHS_AUDIO_ON : PAGE_SYSTEM_CHS_AUDIO_OFF);
   }
@@ -2446,21 +2450,8 @@ void DgusTFT::page11_handle(void) {// SYSTEM PAGE BUTTONS
 
     case 4:   // audio
       {
-        if (lcd_info.audio == ExtUI::ON) {
-          lcd_info.audio = ExtUI::OFF;
-          if (lcd_info.language == ExtUI::CHS) {
-            ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_OFF);
-          } else if (lcd_info.language == ExtUI::ENG) {
-            ChangePageOfTFT(50);    // PAGE_SYSTEM_ENG_AUDIO_OFF - 120
-          }
-        } else if (lcd_info.audio == ExtUI::OFF) {
-          lcd_info.audio = ExtUI::ON;
-          if (lcd_info.language == ExtUI::CHS) {
-            ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_ON);
-          } else if (lcd_info.language == ExtUI::ENG) {
-            ChangePageOfTFT(11);    // PAGE_SYSTEM_ENG_AUDIO_ON - 120
-          }
-        }
+        lcd_info.audio = (lcd_info.audio == ExtUI::ON) ? ExtUI::OFF : ExtUI::ON;
+        GoSystemPage();   // the System page drawn for the new sound state (never a literal page number: 50 is the boot-animation page)
 
         LcdAudioSet(lcd_info.audio);
       }
@@ -2764,8 +2755,8 @@ void DgusTFT::page18_handle(void) //preheat
 void DgusTFT::page19_handle(void)   // Filament
 {
   typedef enum { FILA_NO_ACT = 0, FILA_IN, FILA_OUT, FILA_EXTRUDE } filament_cmd_t;
-  static const uint16_t FILAMENT_TEMP  = 230;   // target while loading / unloading / extruding
-  static const uint16_t FILAMENT_READY = 225;   // start once the hotend is this hot
+  static const uint16_t FILAMENT_TEMP  = AC_FILAMENT_TEMP;       // target while loading / unloading / extruding
+  static const uint16_t FILAMENT_READY = AC_FILAMENT_TEMP - 5;   // start once the hotend is this hot
 
   char str_buf[28];
   static filament_cmd_t filament_cmd = FILA_NO_ACT;      // waiting for the hotend to heat

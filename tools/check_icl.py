@@ -139,7 +139,7 @@ def main():
         raise SystemExit(f"{icl_path} not found")
     pics = read_icl(icl_path)
     # Source images that belong in the library: pages 0-217, minus screens hidden by a feature flag.
-    # (218-256 are the abandoned boot-animation frames; including them overflows the library.)
+    # (218..BOOT_LAST are the boot-animation frames, part of the library while BOOT_ANIMATION is on.)
     bmps = {int(p.stem): p for p in DWIN_SET.glob("*.bmp")
             if p.stem.isdigit() and int(p.stem) <= MAX_LIBRARY_PAGE and int(p.stem) not in uf.HIDDEN_PAGES}
 
@@ -185,8 +185,8 @@ def main():
         if stale or missing_in_icl:
             print(f"ICL is STALE for {len(stale) + len(missing_in_icl)} page(s) - rebuild 16_68_.icl in the DGUS IDE")
         if overlaps:
-            print("The library is too large for its flash slots - leave out the boot-animation frames (218-256) "
-                  "and hidden pages when rebuilding it.")
+            print("The library is too large for its flash slots - leave out hidden pages (and the boot frames "
+                  "if BOOT_ANIMATION is off) when rebuilding it.")
     sys.exit(0 if ok else 1)
 
 
