@@ -40,6 +40,7 @@ NL          = chr(10)   # (kept as chr() so this file has no escape sequences to
 # --out DIR builds into another folder (e.g. a test package) and leaves ./release untouched.
 RELEASE_DIR = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else "release"
 DWIN_OUT    = os.path.join(RELEASE_DIR, "DWIN_SET")
+os.environ["DISPLAY_SET_TAG"] = os.path.basename(os.path.normpath(RELEASE_DIR))   # shown on the About page (generate_screens.py)
 FW_SRC      = os.path.join(".pio", "build", "HC32F460E_kobra_max", "firmware.bin")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

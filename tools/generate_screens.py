@@ -600,12 +600,12 @@ def page_about():
     status_bar(draw)
     title_bar(draw, "ABOUT")
     y = CONTENT_Y1 + 16
-    _ABOUT_ICONS = {'MACHINE': 0xf1b2, 'FIRMWARE': 0xf121, 'VOLUME': 0xf545, 'SUPPORT': 0xf1cd}
+    _ABOUT_ICONS = {'MACHINE': 0xf1b2, 'FIRMWARE': 0xf121, 'VOLUME': 0xf545, 'BUILD': 0xf1cd}
     _fa11 = _fa(11)
     for lbl, ph in [("MACHINE",  "Kobra Max"),
                     ("FIRMWARE", "KobraMax-HC32"),
                     ("VOLUME",   "400x400x450 mm"),
-                    ("SUPPORT",  "anycubic.com")]:
+                    ("BUILD",    "hc32-1a2b3c4-dirty")]:
         ico = _ABOUT_ICONS.get(lbl)
         if ico and _fa11:
             iw = _bbox(draw, chr(ico), _fa11)[0]
@@ -615,6 +615,8 @@ def page_about():
             draw.text((MARGIN, y + 7), lbl, font=F_TINY, fill=GRAY, anchor='lm')
         y += 14
         vp_area(draw, MARGIN, y, W - MARGIN, y + 34, ph);  y += 46
+    # which display set (release folder name) this is; the firmware shows its own build id in the BUILD box
+    draw.text((MARGIN, 410), "display set: " + os.environ.get("DISPLAY_SET_TAG", "dev"), font=F_TINY, fill=GRAY, anchor='lm')
     footer_1btn(draw, "BACK", style='ghost')
     return img
 
