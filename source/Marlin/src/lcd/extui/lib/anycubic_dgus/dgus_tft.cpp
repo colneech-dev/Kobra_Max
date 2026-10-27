@@ -158,6 +158,14 @@ static float move_dis = 1.0f;
 //   * G29 runs with the stored offset, so the mesh contains it;
 //   * saving a changed offset also adds the change to every mesh point (commit_zoffset), keeping
 //     "offset stored == offset inside the mesh" true, and undoes the live babystep it replaces.
+// Leveling and the Z-offset page heat the nozzle and bed (LEVELING_*_TEMP) and nothing else turns them off.
+// Called when leveling ends and when the Z-offset page is left; a running print keeps its heat.
+static void heaters_off_when_idle() {
+  if (isPrinting()) return;
+  setTargetTemp_celsius(0, E0);
+  setTargetTemp_celsius(0, BED);
+}
+
 static void commit_zoffset(const float offset_before) {
   const float delta = getZOffset_mm() - offset_before;
   if (fabsf(delta) < 0.0001f) return;
@@ -795,6 +803,7 @@ void DgusTFT::StatusChange(const char * const msg)  {
           if (probe_cnt == GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y) {
             probe_cnt = 0;
             injectCommands_P(PSTR("M500"));   // saves the mesh (which contains the Z offset) and the offset
+            heaters_off_when_idle();
             ChangePageOfTFT(PAGE_PreLEVEL);   // wait pages 34/154 have no touch zones: must leave them explicitly
             printer_state = AC_printer_idle;
             msg_matched = true;
@@ -806,6 +815,7 @@ void DgusTFT::StatusChange(const char * const msg)  {
           PlayTune(BEEPER_PIN, BeepBeepBeeep, 1);
           probe_cnt = 0;   // a failed run must not leave the next run's point count off
           injectCommands_P(PSTR("G1 Z50 F500"));
+          heaters_off_when_idle();
           ChangePageOfTFT(PAGE_CHS_ABNORMAL_LEVELING_SENSOR);
           //          SendtoTFTLN(AC_msg_probing_complete);
           printer_state = AC_printer_idle;
@@ -1826,18 +1836,6 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
     case 6:   // start print
       if (lcd_txtbox_index > 0 && lcd_txtbox_index  < 6) {  // 1~5
 
-        // No bed mesh in memory (the settings live in eeprom.dat on the SD card, so a freshly formatted
-        // card or a settings reset loses it): a print would use the untuned Z offset and no levelling, and
-        // come out too high. Send the user to the levelling confirmation instead.
-        if (printer_state != AC_printer_resuming_from_power_outage && !getMeshValid()) {
-#ifdef NOZZLE_AS_PROBE
-          ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);   // same entry as the Tools > Level button
-#else
-          ChangePageOfTFT(PAGE_LEVEL_ENSURE);
-#endif
-          break;
-        }
-
         if (filenavigator.filelist.seek(lcd_txtbox_page * 5 + (lcd_txtbox_index - 1))) {
 
 #if 0
@@ -2664,6 +2662,7 @@ void DgusTFT::page17_handle(void)
         z_change = false;
       }
       injectCommands_P(PSTR("G1 Z10 F600"));   // lift the nozzle off the bed
+      heaters_off_when_idle();
       ChangePageOfTFT(PAGE_PreLEVEL);
       break;
 
@@ -2701,6 +2700,7 @@ void DgusTFT::page17_handle(void)
       }
 
       injectCommands_P(PSTR("G1 Z10 F600"));   // lift the nozzle off the bed
+      heaters_off_when_idle();
       ChangePageOfTFT(PAGE_PREPARE);
       break;
   }

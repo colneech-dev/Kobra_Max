@@ -40,7 +40,9 @@ OUT_PATH  = "DWIN_SET/14ShowFile.bin"
 
 # The display's built-in ASCII font (the guide: "0# font ... 4x8 to 64x128") only has glyphs with a 1:2
 # width:height ratio. Any other size silently falls back to a smaller one (12x12 drew 6x12 text).
-ASCII_SIZES = ((16, 32), (14, 28), (12, 24), (10, 20), (8, 16), (7, 14), (6, 12))
+# Only sizes proven on the hardware: 12x24 (status bar, labels), the stock file's 10x20 / 8x16 / 7x14 / 6x12.
+# 14x28 and 16x32 are in the font file on paper, but the 16x32 Z-offset value drew nothing on the display.
+ASCII_SIZES = ((12, 24), (10, 20), (8, 16), (7, 14), (6, 12))
 
 
 def fit_font(w, h, chars):
