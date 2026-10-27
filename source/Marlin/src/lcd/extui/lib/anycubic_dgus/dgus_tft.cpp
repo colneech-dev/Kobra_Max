@@ -145,6 +145,13 @@ static void center_pad(char * const buf, const size_t size, const uint8_t slots)
 // the - / + buttons are ignored meanwhile (babystepping during a homing move would be wrong).
 static bool zoffset_moving = false;
 
+// printf("%f") prints NOTHING on this toolchain (newlib-nano without float support), so a value formatted with
+// "%.2f" shows up blank (the Z-offset value, the print page's X/Y/Z line). Format fixed-point by hand.
+static void fmt_mm(char * const out, const size_t size, const float v, const bool plus = false) {
+  const long n = lroundf(fabsf(v) * 100.0f);
+  snprintf(out, size, "%s%ld.%02ld", (v < 0 && n) ? "-" : (plus ? "+" : ""), n / 100, n % 100);
+}
+
 // Build id for the About page (tools/build_id.py: git hash, "-dirty" if uncommitted changes), so it is always
 // clear which firmware is on the printer. Without the "2.0.8-" prefix it fits the 21-character box.
 static const char * about_build_id() {
@@ -2091,7 +2098,9 @@ void DgusTFT::page4_handle(void) {
   }
 
   if (isPrintingFromMedia()) {
-		  sprintf(str_buf, "X:%3.0f Y:%3.0f Z:%3.2f", getAxisPosition_mm(X), getAxisPosition_mm(Y), getAxisPosition_mm(Z));// MELS MOD
+		  char zs[14];
+		  fmt_mm(zs, sizeof(zs), getAxisPosition_mm(Z));
+		  sprintf(str_buf, "X:%d Y:%d Z:%s", (int)lroundf(getAxisPosition_mm(X)), (int)lroundf(getAxisPosition_mm(Y)), zs);// MELS MOD
 			SendTxtToTFT(str_buf, TXT_PRINT_COMMENT);// this will show the Z height
 			
     if (progress_last != getProgress_percent()) {
@@ -2101,7 +2110,9 @@ void DgusTFT::page4_handle(void) {
       progress_last = getProgress_percent();
     }
   } else { // we are printing from a HOST
-    sprintf(str_buf, "Z:%3.2f", getAxisPosition_mm(Z));// MELS MOD
+    char zs[14];
+    fmt_mm(zs, sizeof(zs), getAxisPosition_mm(Z));
+    sprintf(str_buf, "Z:%s", zs);// MELS MOD
     SendTxtToTFT(str_buf, TXT_PRINT_NAME);// this will show the Z height
 		SendTxtToTFT(gcodeComment, TXT_PRINT_COMMENT);// MEL_MOD malebuffy
     //sprintf(str_buf, "%d", getProgress_percent());
@@ -2663,13 +2674,17 @@ void DgusTFT::page17_handle(void)
       if (zoffset_moving && !commandsInQueue()) zoffset_moving = false;
       char st[28];
       if (zoffset_moving) strcpy_P(st, PSTR("Homing and moving..."));
-      else sprintf_P(st, PSTR("Z offset %+.2f mm"), getZOffset_mm());   // shown here too: the value box above has been unreliable
+      else {
+        char zs[14];
+        fmt_mm(zs, sizeof(zs), getZOffset_mm(), true);
+        sprintf_P(st, PSTR("Z offset %s mm"), zs);   // shown here too, in the line that is known to draw
+      }
       center_pad(st, sizeof(st), 25);
       SendTxtToTFT(st, TXT_WAIT_STATUS);
       // The value box goes blank when a button press makes the display redraw the page (it only draws a
       // text field when it is written), so send it again with every status refresh.
       char zv[10];
-      sprintf(zv, "%.2f", getZOffset_mm());
+      fmt_mm(zv, sizeof(zv), getZOffset_mm());
       SendTxtToTFT(zv, TXT_LEVEL_OFFSET);
     }
   }
@@ -2707,7 +2722,7 @@ void DgusTFT::page17_handle(void)
         babystepAxis_steps(mmToWholeSteps(plus ? step : -step, Z), Z);
         setZOffset_mm(z_off + (plus ? step : -step));
 
-        sprintf(str_buf, "%.2f", getZOffset_mm());
+        fmt_mm(str_buf, sizeof(str_buf), getZOffset_mm());
         SendTxtToTFT(str_buf, TXT_LEVEL_OFFSET);
 
         z_change = true;
@@ -3830,7 +3845,7 @@ void DgusTFT::page211_212_handle(void)
         z_off += step;
         setZOffset_mm(z_off);
 
-        sprintf(str_buf, "%.2f", getZOffset_mm());
+        fmt_mm(str_buf, sizeof(str_buf), getZOffset_mm());
         SendTxtToTFT(str_buf, TXT_LEVEL_OFFSET);
 
         z_change = true;
