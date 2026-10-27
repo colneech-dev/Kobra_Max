@@ -143,6 +143,23 @@ def make_icon_animation_record(x, y, start_icon, end_icon, icon_lib,
     return hdr + reset_icon_en + vrange + icons + tail + b'\x00' * 2
 
 
+def make_variable_icon_record(vp_addr, x, y, icon_id, icon_lib, show_when=1):
+    """Build a 32-byte 0x5A00 Variable Icon record (DWIN T5L DGUS II guide 7.2.1).
+
+      5A00 FFFF 000A [vp] [x] [y] [V_Min] [V_Max] [Icon_Min] [Icon_Max] [Icon_Lib:1B] [Mode:1B]
+      [Layer_Mode:1B] [ICON_Gamma:1B] [PIC_Gamma:1B] [Filter_Set:1B]
+
+    The icon is shown only while the VP value lies between V_Min and V_Max ("values smaller than V_Min /
+    greater than V_Max show no icons"), so V_Min = V_Max = show_when makes it an on/off switch. Mode 0x01 =
+    opaque (any non-zero mode is "background display"; 0 would colour-key the icon).
+    """
+    hdr = struct.pack('>HHHHHH', 0x5A00, 0xFFFF, 0x000A, vp_addr, x, y)
+    rng = struct.pack('>HHHH', show_when, show_when, icon_id, icon_id)
+    tail = bytes([icon_lib & 0xFF, 0x01, 0x00, 0x00, 0x00, 0x00])
+    rec = hdr + rng + tail
+    return rec.ljust(32, bytes(1))
+
+
 def make_process_bar_record(vp_addr, x0, y0, x1, y1, border, fg, bg, vmax=100, vmin=0):
     """Build a 32-byte 0x5A23 Process Bar record (DWIN T5L DGUS II guide 7.23.1).
 
@@ -259,16 +276,13 @@ TXT_WAIT_ANIM = 0x2B00
 TXT_PRINT_BAR = 0x2B20      # print progress, pages 3/4
 TXT_WAIT_BAR  = 0x2B30      # leveling progress, pages 34/154
 
-# Move Axes: the three step buttons carry no label in the art. Each has two text variables laid over it:
-# *_W (white, shown when not selected) and *_O (orange, shown when selected). The firmware blanks the other.
 TXT_FILAMENT_STATUS = 0x2BA0   # Filament page status line (Heating... / Loading... / Ready)
 
-TXT_STEP_W0 = 0x2B40
-TXT_STEP_W1 = 0x2B50
-TXT_STEP_W2 = 0x2B60
-TXT_STEP_O0 = 0x2B70
-TXT_STEP_O1 = 0x2B80
-TXT_STEP_O2 = 0x2B90
+# Move Axes: each step button has a Variable Icon (an orange copy of the button) laid over it; the firmware
+# writes 1 to its VP to show it (step selected) and 0 to hide it.
+TXT_STEP_SEL0 = 0x2BB0
+TXT_STEP_SEL1 = 0x2BC0
+TXT_STEP_SEL2 = 0x2BD0
 
 # Terminal (215)
 TXT_TERM_INPUT = 0x2A10
@@ -356,18 +370,13 @@ PAGE6 = STATUS_BAR + [
     make_text_record(TXT_IS_ZETA_Y, 66, 318, 140, 34, chars=7),
 ]
 
-# Pages 8/128 — Move Axes: labels of the three step buttons (see generate_screens.page_move).
-# 10x20 dot ASCII font (the guide: 0# font has every ASCII glyph from 4x8 to 64x128).
-# Buttons: x = 8 / 94 / 182, width 82, y = 114; label x = button centre - 5 px per character.
+# Pages 8/128 — Move Axes: one Variable Icon per step button (see generate_select_icons.py).
 def _step_records():
-    recs = []
-    for i, (bx, n) in enumerate(((8, 6), (94, 6), (182, 5))):
-        x = bx + (82 - 10 * n) // 2 - 3   # make_text_record insets text by 3 px
-        recs.append(make_text_record((TXT_STEP_W0, TXT_STEP_W1, TXT_STEP_W2)[i], x, 119, 10 * n, 20,
-                                     color=0xFFFF, cw=10, ch=20))
-        recs.append(make_text_record((TXT_STEP_O0, TXT_STEP_O1, TXT_STEP_O2)[i], x, 119, 10 * n, 20,
-                                     color=COLOR_ORANGE, cw=10, ch=20))
-    return recs
+    if not uf.STEP_SELECT_ICONS:
+        return []
+    return [make_variable_icon_record((TXT_STEP_SEL0, TXT_STEP_SEL1, TXT_STEP_SEL2)[i], b[0], b[1],
+                                      icon_id=i, icon_lib=uf.STEP_ICON_LIB, show_when=1)
+            for i, b in enumerate(uf.STEP_BUTTONS)]
 
 PAGE8 = STATUS_BAR + _step_records()
 

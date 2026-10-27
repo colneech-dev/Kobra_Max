@@ -134,6 +134,9 @@ static void center_pad(char * const buf, const size_t size, const uint8_t slots)
   memset(buf, ' ', pad);
 }
 
+// How long a touch is held back so the pressed look can be seen (see IdleLoop).
+#define KEY_FEEDBACK_MS 120
+
 // Highest target Marlin accepts (it faults at MAXTEMP, and its own limit is MAXTEMP-15 / -10).
 #define HOTEND_TARGET_MAX (HEATER_0_MAXTEMP - 15)
 #define BED_TARGET_MAX    (BED_MAXTEMP - 10)
@@ -390,6 +393,15 @@ void DgusTFT::IdleLoop()  {
   if (ReadTFTCommand()) {
     ProcessPanelRequest();
     command_len = 0;
+  }
+
+  // Hold a touch for KEY_FEEDBACK_MS before acting on it, so a button that changes the page is seen
+  // lit-up (the display shows the pressed picture itself) before the page changes.
+  {
+    static uint32_t held_key = 0;
+    static millis_t held_ms = 0;
+    if (key_value) { held_key = key_value; held_ms = millis(); key_value = 0; }
+    if (held_key && millis() - held_ms >= KEY_FEEDBACK_MS) { key_value = held_key; held_key = 0; }
   }
 
 #if ACDEBUG(AC_MARLIN)
@@ -1248,14 +1260,10 @@ void DgusTFT::GoSystemPage() {
 }
 
 void DgusTFT::SendMoveStepText() {
-  static const char * const label[3] = { "0.1 mm", "1.0 mm", "10 mm" };
-  static const uint16_t white[3]  = { TXT_STEP_W0, TXT_STEP_W1, TXT_STEP_W2 };
-  static const uint16_t orange[3] = { TXT_STEP_O0, TXT_STEP_O1, TXT_STEP_O2 };
-  const uint8_t sel = move_dis < 0.5f ? 0 : (move_dis < 5.0f ? 1 : 2);
-  for (uint8_t i = 0; i < 3; i++) {
-    SendTxtToTFT(i == sel ? "" : label[i], white[i]);    // the selected step is drawn orange instead
-    SendTxtToTFT(i == sel ? label[i] : "", orange[i]);
-  }
+  // Steps 1 / 10 / 50 mm; the selected button's orange copy (a Variable Icon) is shown by writing 1 to it.
+  static const uint16_t icon[3] = { TXT_STEP_SEL0, TXT_STEP_SEL1, TXT_STEP_SEL2 };
+  const uint8_t sel = move_dis < 5.0f ? 0 : (move_dis < 25.0f ? 1 : 2);
+  for (uint8_t i = 0; i < 3; i++) SendValueToTFT(i == sel ? 1 : 0, icon[i]);
 }
 
 void DgusTFT::GoMovePage() {
@@ -1818,6 +1826,14 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
     case 6:   // start print
       if (lcd_txtbox_index > 0 && lcd_txtbox_index  < 6) {  // 1~5
 
+        // No bed mesh in memory (the settings live in eeprom.dat on the SD card, so a freshly formatted
+        // card or a settings reset loses it): a print would use the untuned Z offset and no levelling, and
+        // come out too high. Send the user to the levelling confirmation instead.
+        if (printer_state != AC_printer_resuming_from_power_outage && !getMeshValid()) {
+          ChangePageOfTFT(PAGE_LEVEL_ENSURE);
+          break;
+        }
+
         if (filenavigator.filelist.seek(lcd_txtbox_page * 5 + (lcd_txtbox_index - 1))) {
 
 #if 0
@@ -2252,17 +2268,17 @@ void DgusTFT::page8_handle(void) {
       break;
 
     case 3:
-      move_dis = 0.1f ;
-      SendMoveStepText();
-      break;
-
-    case 7:
       move_dis = 1.0f ;
       SendMoveStepText();
       break;
 
-    case 11:
+    case 7:
       move_dis = 10.0f ;
+      SendMoveStepText();
+      break;
+
+    case 11:
+      move_dis = 50.0f ;
       SendMoveStepText();
       break;
 

@@ -222,8 +222,7 @@ def check_vp_addresses():
     for name in shared:
         if None not in (h[name], p[name]) and h[name] != p[name]:
             err(f"VP {name}: dgus_tft.h = 0x{h[name]:04X} but patch_14showfile.py = 0x{p[name]:04X}")
-    for name in ("TXT_WAIT_STATUS", "TXT_STEP_W0", "TXT_STEP_W1", "TXT_STEP_W2",
-                 "TXT_STEP_O0", "TXT_STEP_O1", "TXT_STEP_O2"):
+    for name in ("TXT_WAIT_STATUS", "TXT_STEP_SEL0", "TXT_STEP_SEL1", "TXT_STEP_SEL2"):
         if name not in h:
             err(f"VP {name} is in patch_14showfile.py but missing from dgus_tft.h")
 
