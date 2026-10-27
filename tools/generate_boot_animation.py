@@ -27,16 +27,19 @@ from generate_screens import (   # noqa: E402
     F_HUGE, F_TITLE, F_SMALL, _fa, _bbox,
 )
 from PIL import Image, ImageDraw  # noqa: E402
+import ui_features as uf  # noqa: E402
 
 OUT_DIR = os.path.abspath(os.environ.get("BOOT_ANIM_OUT", r"C:\temp\boot_anim\JPG"))
 
-FPS = 15
-DURATION_S = 2.6
-N_FRAMES = int(FPS * DURATION_S)
+# The frames are pictures BOOT_FIRST..BOOT_LAST of the main library, played by the Image Animation record
+# patch_14showfile.py puts on page 50 (see ui_features.BOOT_*). Frame time is in units of 8 ms.
+N_FRAMES = uf.BOOT_LAST - uf.BOOT_FIRST + 1
+FPS = 1000.0 / (8 * uf.BOOT_FRAME_TIME)
+DURATION_S = N_FRAMES / FPS
 
 TITLE_TEXT = "KOBRA MAX"
 SUB_TEXT = "KobraMax-HC32"
-VER_TEXT = "Marlin 2.1.2.7  HC32F460"
+VER_TEXT = "Marlin 2.0.8  HC32F460"
 
 # Timeline (in frames)
 TITLE_FADE_START, TITLE_FADE_END = 0, 8
@@ -88,6 +91,20 @@ def frame(i):
     ver_t = _ease((i - VER_FADE_START) / max(1, VER_FADE_END - VER_FADE_START))
     bar_t = _ease((i - BAR_FILL_START) / max(1, BAR_FILL_END - BAR_FILL_START))
 
+    # Flame mark above the title: fades in, with a ring that pulses outwards and fades (a "heartbeat").
+    flame_t = _ease(i / 10.0)
+    cx, cy = W // 2, 84
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+    for k in range(2):
+        ph = ((i / 12.0) + k * 0.5) % 1.0                 # 0..1 along the pulse
+        r = 26 + 26 * ph
+        ld.ellipse([(cx - r, cy - r), (cx + r, cy + r)], outline=(*ORANGE, int(150 * (1 - ph) * flame_t)), width=2)
+    img.paste(Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB"), (0, 0))
+    fa_big = _fa(44)
+    if fa_big:
+        _alpha_text(img, (cx - 40, cy - 40, cx + 40, cy + 40), chr(0xF06D), fa_big, ORANGE, flame_t)
+
     _alpha_text(img, (0, 130, W, 196), TITLE_TEXT, F_HUGE, ORANGE, title_t)
     _alpha_text(img, (0, 202, W, 246), SUB_TEXT, F_TITLE, TEAL, sub_t)
     _alpha_text(img, (0, 252, W, 278), VER_TEXT, F_SMALL, GRAY, ver_t)
@@ -101,7 +118,7 @@ def frame(i):
 
     # Rotating spinner next to "Loading..." text
     dots = "." * (1 + i % 3)
-    label = f"Loading{dots}"
+    label = "Ready" if i >= N_FRAMES - 3 else f"Loading{dots}"
     lw, lh = _bbox(draw, "Loading...", F_SMALL)  # fixed width against longest variant
     total_w = 24 + 6 + lw
     cx0 = (W - total_w) // 2
@@ -122,41 +139,28 @@ def frame(i):
 # highest existing page number (217), so they sit in the same 16_68_ library
 # as every other page background. Must match the "start picture position"
 # entered for the Picture Animation control in the DGUS IDE page editor.
-BMP_START_INDEX = 218
-DWIN_SET_DIR = os.path.join(os.path.dirname(__file__), "..", "DWIN_SET")
+BMP_START_INDEX = uf.BOOT_FIRST
+DWIN_SET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "DWIN_SET")
 
 
 def main():
-    os.makedirs(OUT_DIR, exist_ok=True)
-    for f in os.listdir(OUT_DIR):
-        if f.lower().endswith((".jpeg", ".jpg")):
-            os.remove(os.path.join(OUT_DIR, f))
-
     dwin_set_dir = os.path.abspath(DWIN_SET_DIR)
     os.makedirs(dwin_set_dir, exist_ok=True)
 
     for i in range(N_FRAMES):
-        img = frame(i).convert("RGB")
-        img.save(os.path.join(OUT_DIR, f"{i + 1}.jpeg"), "JPEG", quality=92)
-        bmp_index = BMP_START_INDEX + i
-        img.save(os.path.join(dwin_set_dir, f"{bmp_index}.bmp"))
+        frame(i).convert("RGB").save(os.path.join(dwin_set_dir, f"{BMP_START_INDEX + i}.bmp"))
+    # The display shows picture 50 (the boot page) for an instant before the animation's first frame.
+    frame(0).convert("RGB").save(os.path.join(dwin_set_dir, "050.bmp"))
 
-    print(f"{N_FRAMES} frames written to {OUT_DIR} (JPEG, for Movie2ICL.exe if needed)")
-    print(f"  {FPS} fps, {DURATION_S:.1f}s total")
-    print(f"{N_FRAMES} BMPs written to {dwin_set_dir} "
-          f"({BMP_START_INDEX}.bmp .. {BMP_START_INDEX + N_FRAMES - 1}.bmp)")
-    print()
-    print("In the DGUS IDE:")
-    print("  1. Re-run the ICL Tool import including ALL DWIN_SET/*.bmp files")
-    print("     (000-217 plus the new "
-          f"{BMP_START_INDEX}-{BMP_START_INDEX + N_FRAMES - 1}), in ascending")
-    print("     numeric order, so indices land where the page editor expects them.")
-    print("  2. Open the boot page (page 0) in the page editor, add a")
-    print("     'Picture Animation' display control:")
-    print(f"       start picture position = {BMP_START_INDEX}")
-    print(f"       end picture position   = {BMP_START_INDEX + N_FRAMES - 1}")
-    print(f"       frame time             = {round(1000 / FPS / 8)}  (x8ms "
-          f"~= {1000 / FPS:.0f}ms/frame)")
+    # Pictures past BOOT_LAST (the old generator wrote one more) must not stay behind in the library.
+    for n in range(uf.BOOT_LAST + 1, uf.BOOT_LAST + 10):
+        stale = os.path.join(dwin_set_dir, f"{n}.bmp")
+        if os.path.exists(stale):
+            os.remove(stale)
+
+    print(f"{N_FRAMES} boot frames written to {dwin_set_dir} "
+          f"({BMP_START_INDEX}.bmp .. {BMP_START_INDEX + N_FRAMES - 1}.bmp), "
+          f"{FPS:.1f} fps, {DURATION_S:.1f} s")
 
 
 if __name__ == "__main__":

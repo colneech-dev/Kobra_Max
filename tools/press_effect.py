@@ -40,9 +40,19 @@ def pressed_id(page, key=None):
         return None
     b = base_page(page)
     if 1 <= b <= 34:
-        return b + 34
+        return _pic(b + 34)
     return SPECIAL_ID.get(b)
 
 
+# Picture 50 is the first picture the display shows at power-on (the page that carries the boot
+# Image Animation record), so no pressed picture may live there: page 16's moves to a free ID.
+BOOT_PAGE_PICTURE = 50
+MOVED_PRESSED = {BOOT_PAGE_PICTURE: 84}
+
+
+def _pic(pid):
+    return MOVED_PRESSED.get(pid, pid)
+
+
 def all_pressed_ids():
-    return sorted(set(list(SPECIAL_ID.values()) + [b + 34 for b in range(1, 35)]))
+    return sorted(set(list(SPECIAL_ID.values()) + [_pic(b + 34) for b in range(1, 35)]))

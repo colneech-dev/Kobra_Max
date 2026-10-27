@@ -1608,7 +1608,8 @@ void DgusTFT::ProcessPanelRequest() {
         *p_u8 = data_buf[4];
         p_u8++;
         *p_u8 = data_buf[3];
-        if ((control_value & 0x00FFFFFF) == 0x010072) { // startup last gif
+        if ((control_value & 0x00FFFFFF) == (0x010000UL | BOOT_ANIM_LAST_FRAME) ||
+            (control_value & 0x00FFFFFF) == (0x010000UL | BOOT_ANIM_STOCK_LAST)) { // startup last gif
           // Only "animation finished" ends IdleLoop's boot-sync poll. Stopping on the first reply
           // (0x010000 = animation still running) would leave a display whose own push of 0x010072
           // was dropped sitting on the boot animation forever.
@@ -1830,7 +1831,11 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
         // card or a settings reset loses it): a print would use the untuned Z offset and no levelling, and
         // come out too high. Send the user to the levelling confirmation instead.
         if (printer_state != AC_printer_resuming_from_power_outage && !getMeshValid()) {
+#ifdef NOZZLE_AS_PROBE
+          ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);   // same entry as the Tools > Level button
+#else
           ChangePageOfTFT(PAGE_LEVEL_ENSURE);
+#endif
           break;
         }
 

@@ -637,3 +637,27 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 * Z-offset page (17/137): opening it homes (G28), lifts to Z5, moves to the bed centre and lowers to Z0, with a status
   line ("Homing and moving..." / "Adjust Z with - / +", `TXT_WAIT_STATUS`). The - / + buttons are ignored until the nozzle
   has arrived. Adjust until a sheet of paper just drags, then SAVE (M500). BACK undoes the change; both lift Z to 10 mm.
+
+## Boot animation, spinner, selected-button icons (2026-10-27)
+
+* **Boot animation.** The stock show file carries an Image Animation record (0x5A04) on page 50 that plays pictures 50..114
+  of the main library (in our library those were real screens, hence the "scrolling screens" at power-on). We rewrite that
+  record to play `ui_features.BOOT_FIRST..BOOT_LAST` (218..255, `BOOT_FRAME_TIME` x 8 ms) - frames drawn by
+  `generate_boot_animation.py`, part of `16_68_.icl`. Picture 50 (shown for an instant before the first frame) is a copy of
+  frame 0, so page 16's pressed picture moved from 50 to 84 (`press_effect.MOVED_PRESSED`). The firmware leaves the boot
+  page when `REG_LCD_READY` reports 0x0100 + last picture (`BOOT_ANIM_LAST_FRAME`, also accepts the stock 0x72); the 30 s
+  timeout still applies. UNPROVEN on the display: how the display reaches page 50 at power-on was not established. If the
+  animation does not play, set `BOOT_ANIMATION = False`.
+* **Spinner** (`SPINNER_ANIMATION = True`): Animation Icon (0x5A01) over the badge on every wait screen, frames in
+  `32_SPIN.icl`.
+* **Selected button** (`STEP_SELECT_ICONS`): Move Axes steps are 1 / 10 / 50 mm. Each button has a Variable Icon (0x5A00,
+  guide 7.2; shown only while its VP == 1) holding an orange copy of the button, in `33_SEL.icl`
+  (`generate_select_icons.py`). The firmware writes 1 to the selected step's VP, 0 to the others.
+* **Flash layout** (256 KB slots): picture library 16-26, icon library 28, font 29-31, spinner 32, select icons 33
+  (`ui_features.FLASH_RENAMES`; `build_release.py` checks for overlaps).
+* **Libraries are script-built** (`build_release.py --script-icl`): the DGUS IDE cannot be scripted and has no use for the
+  new icon libraries. Everything decodes back to its source images; the display has accepted `16_68_.icl` (v3-v7) but
+  not yet the boot frames or the two icon libraries.
+* **Print start without a bed mesh** shows the leveling prompt: settings (mesh, Z offset) live in `eeprom.dat` on the SD
+  card, so a freshly formatted card loses them and prints come out too high. Do not format the printer's own SD card.
+* **Touch feedback:** a key is acted on 120 ms after the touch (`KEY_FEEDBACK_MS`) so a page-changing button is seen lit.

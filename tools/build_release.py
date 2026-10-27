@@ -34,6 +34,8 @@ except ImportError:
     sys.exit(1)
 
 PYTHON      = sys.executable
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+import ui_features as uf
 NL          = chr(10)   # (kept as chr() so this file has no escape sequences to mangle)
 # --out DIR builds into another folder (e.g. a test package) and leaves ./release untouched.
 RELEASE_DIR = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else "release"
@@ -108,7 +110,10 @@ print("  ok")
 step("Regenerating DWIN assets")
 run_tool("generate_screens.py",      "BMP page backgrounds (000–217)")
 run_tool("generate_dwin_controls.py","13TouchFile.bin (touch zones)")
-run_tool("generate_spinner_icons.py","spinner icon frames (for the optional 29_SPIN.icl)")
+run_tool("generate_spinner_icons.py","spinner icon frames (32_SPIN.icl)")
+run_tool("generate_select_icons.py", "selected-button icons (33_SEL.icl)")
+if uf.BOOT_ANIMATION:
+    run_tool("generate_boot_animation.py", "boot animation frames (pictures %d-%d) and picture 50" % (uf.BOOT_FIRST, uf.BOOT_LAST))
 run_tool("patch_14showfile.py",      "14ShowFile.bin (VP display areas)")
 
 # The three display files above are hand-synchronised; refuse to package them if they disagree
@@ -117,19 +122,22 @@ run_tool("cross_check_display.py",   "art / touch zones / show-file / handler cr
 
 # The display shows the compiled 16_68_.icl, NOT the BMPs. If it is older than the BMPs, the touch
 # zones and text records generated above will not line up with what is on screen.
-step("Checking 16_68_.icl against the BMPs")
+SCRIPT_ICL = "--script-icl" in sys.argv   # libraries are built by script (tools/build_icl.py) below
 ICL_STALE = False
-_icl = subprocess.run([PYTHON, os.path.join("tools", "check_icl.py")], capture_output=True, text=True)
-print(_icl.stdout.strip().splitlines()[-1] if _icl.stdout.strip() else "check_icl produced no output")
-if _icl.returncode != 0:
-    print()
-    print("  The picture library is out of date, so this release would show OLD art with NEW touch zones.")
-    print("  Rebuild DWIN_SET/16_68_.icl in the DGUS IDE from the current DWIN_SET/*.bmp (see")
-    print("  tools/check_icl.py for the list of stale pages), or pass --allow-stale-icl to override.")
-    if "--allow-stale-icl" not in sys.argv:
-        sys.exit(1)
-    print("  --allow-stale-icl given: continuing.")
-    ICL_STALE = True
+if not SCRIPT_ICL:
+    step("Checking 16_68_.icl against the BMPs")
+    _icl = subprocess.run([PYTHON, os.path.join("tools", "check_icl.py")], capture_output=True, text=True)
+    print(_icl.stdout.strip().splitlines()[-1] if _icl.stdout.strip() else "check_icl produced no output")
+    if _icl.returncode != 0:
+        print()
+        print("  The picture library is out of date, so this release would show OLD art with NEW touch zones.")
+        print("  Rebuild DWIN_SET/16_68_.icl in the DGUS IDE from the current DWIN_SET/*.bmp (see")
+        print("  tools/check_icl.py for the list of stale pages), or pass --allow-stale-icl to override.")
+        if "--allow-stale-icl" not in sys.argv:
+            sys.exit(1)
+        print("  --allow-stale-icl given: continuing.")
+        ICL_STALE = True
+
 
 # ── 2. Create clean release directory ────────────────────────────────────────
 
@@ -147,13 +155,11 @@ print(f"  created {RELEASE_DIR}/")
 # own folder, not into DWIN_SET (which is what gets copied to the display's SD card).
 ART_OUT = os.path.join(RELEASE_DIR, "ICL_SOURCE_BMPS")
 os.makedirs(ART_OUT, exist_ok=True)
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
-import ui_features as uf
 # Only the pictures that belong in the library: pages 0-217 minus screens hidden by a feature flag.
 # That includes the "button held" pictures (IDs 35-83). The abandoned boot-animation frames (218-256)
 # are left out ON PURPOSE: they would push the library past its 9 flash slots (16-24).
 bmp_files = [p for p in sorted(glob.glob(os.path.join("DWIN_SET", "*.bmp")))
-             if int(os.path.splitext(os.path.basename(p))[0]) <= 217
+             if int(os.path.splitext(os.path.basename(p))[0]) <= (uf.BOOT_LAST if uf.BOOT_ANIMATION else 217)
              and int(os.path.splitext(os.path.basename(p))[0]) not in uf.HIDDEN_PAGES]
 for src in bmp_files:
     copy_file(src, ART_OUT)
@@ -201,31 +207,50 @@ for fname in ["13TouchFile.bin", "14ShowFile.bin", "16_68_.icl", "22_Config.bin"
         size = os.path.getsize(os.path.join(DWIN_OUT, fname))
         print(f"  copied {fname}  ({size:,} bytes)")
 
-# ── 3b. EXPERIMENTAL: a second, complete display set whose picture library was built by script ──────
-# (tools/build_icl.py) instead of in the DGUS IDE. Flash it to test the script-built library; if the
-# display shows garbage, power off 15-20 s and reflash the normal set. Not part of the normal output.
-if "--script-icl" in sys.argv:
-    step("Building the script-made picture library (EXPERIMENTAL)")
-    _bi = subprocess.run([PYTHON, os.path.join("tools", "build_icl.py")], capture_output=True, text=True)
-    print("  " + NL.join("  " + ln for ln in (_bi.stdout or _bi.stderr).strip().splitlines()[-4:]).lstrip())
-    if _bi.returncode == 0:
-        exp = os.path.join(RELEASE_DIR, "EXPERIMENTAL_SCRIPT_ICL")
-        shutil.copytree(DWIN_OUT, os.path.join(exp, "DWIN_SET"))
-        shutil.copy2(os.path.join("DWIN_SET", "auto_icl", "16_68_.icl"), os.path.join(exp, "DWIN_SET", "16_68_.icl"))
-        note = [
-            "EXPERIMENTAL display set: identical to ../DWIN_SET except 16_68_.icl, which was built by",
-            "tools/build_icl.py (no DGUS IDE). It decodes back to every source image with an independent",
-            "decoder, but nobody has seen the display accept it yet.",
-            "",
-            "Test:  flash this DWIN_SET (SD card: FAT32, 4096-byte allocation unit), then walk the screens.",
-            "If anything is garbled or blank: power the printer OFF for 15-20 seconds, then flash ../DWIN_SET",
-            "(or your IDE-built library) again. Report what you saw so the builder can be corrected.",
-        ]
-        with open(os.path.join(exp, "README.txt"), "w", encoding="utf-8") as f:
-            f.write(NL.join(note) + NL)
-        print(f"  wrote {exp}/  (a full display set with the script-built library)")
-    else:
-        print("  build_icl.py FAILED - no experimental set written")
+# ── 3b. Script-built libraries (tools/build_icl.py) instead of the DGUS-IDE-built 16_68_.icl ─────────
+# The picture library (with the boot frames and pressed pictures) and the icon libraries (spinner, selected
+# button) are built straight from the BMPs. Nobody has seen every one of them accepted by the display yet:
+# if it shows garbage, power off 15-20 s, then flash a known-good older set.
+if SCRIPT_ICL:
+    step("Building the picture and icon libraries by script")
+    libs = [
+        ("16_68_.icl", []),
+        ("%d_SPIN.icl" % uf.SPINNER_ICON_LIB, ["--kind", "icons", "--src", os.path.join("DWIN_SET", "spinner_icons")]),
+        ("%d_SEL.icl" % uf.STEP_ICON_LIB, ["--kind", "icons", "--src", os.path.join("DWIN_SET", "select_icons")]),
+    ]
+    for name, extra in libs:
+        out = os.path.join("DWIN_SET", "auto_icl", name)
+        r = subprocess.run([PYTHON, os.path.join("tools", "build_icl.py")] + extra + ["--out", out],
+                           capture_output=True, text=True)
+        lines = (r.stdout or r.stderr).strip().splitlines()
+        print("  " + (lines[-3] if len(lines) >= 3 else NL.join(lines)))
+        if r.returncode != 0:
+            print(f"  build_icl.py FAILED for {name}")
+            sys.exit(1)
+        shutil.copy2(out, os.path.join(DWIN_OUT, name))
+
+    # Every library must have its own flash slots (256 KB each, slot = number in the file name).
+    SLOT = 256 * 1024
+    spans = []
+    for f in sorted(os.listdir(DWIN_OUT)):
+        head = f.split("_", 1)[0]
+        if f.lower().endswith((".icl", ".dzk", ".hzk")) and head.isdigit():
+            first = int(head)
+            spans.append((first, first + -(-os.path.getsize(os.path.join(DWIN_OUT, f)) // SLOT) - 1, f))
+    clash = [(a, b) for i, a in enumerate(spans) for b in spans[i + 1:] if b[0] <= a[1] and a[0] <= b[1]]
+    for a, b in clash:
+        print(f"  FLASH OVERLAP: {a[2]} (slots {a[0]}-{a[1]}) and {b[2]} (slots {b[0]}-{b[1]})")
+    if clash:
+        sys.exit(1)
+    print("  flash slots: " + ", ".join(f"{f} {a}-{b}" for a, b, f in spans))
+    with open(os.path.join(RELEASE_DIR, "DWIN_SET_README.txt"), "w", encoding="utf-8") as f:
+        f.write(NL.join([
+            "DWIN_SET in this package uses libraries built by script (tools/build_icl.py), not the DGUS IDE:",
+            "16_68_.icl (screens, pressed-button pictures, boot animation frames), %d_SPIN.icl (spinner) and"
+            % uf.SPINNER_ICON_LIB,
+            "%d_SEL.icl (selected-button highlight). Each decodes back to its source images, but the display" % uf.STEP_ICON_LIB,
+            "may still reject one. If anything is garbled or blank: power the printer OFF for 15-20 seconds, then",
+            "flash a known-good older DWIN_SET. Report what you saw so the builder can be corrected.", ""]))
 
 # ── 4. Copy firmware binary ───────────────────────────────────────────────────
 
@@ -246,11 +271,13 @@ stale_banner = ("""
 !!! WARNING: THE PICTURE LIBRARY IN THIS PACKAGE (16_68_.icl) IS OUT OF DATE !!!
 It was built before the latest artwork. It will show OLD pictures under NEW touch zones and
 text records (missing button art, no pressed-button effect). Rebuild it first (STEP 0).
-""" + ("""
-A freshly built but UNPROVEN script-made library is in EXPERIMENTAL_SCRIPT_ICL/ (its own README):
-flash that DWIN_SET folder instead if you want to test the new artwork.
-""" if "--script-icl" in sys.argv else "") + """=======================================================
-""" if ICL_STALE else "")
+=======================================================
+""" if ICL_STALE else ("""
+NOTE: the picture and icon libraries in DWIN_SET were built by script, not the DGUS IDE (STEP 0 below is
+not needed). If the display shows garbage after flashing it: power off 15-20 s and flash an older set.
+See DWIN_SET_README.txt.
+=======================================================
+""" if SCRIPT_ICL else ""))
 
 readme = f"""\
 KobraMax-HC32 Firmware
