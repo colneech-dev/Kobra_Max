@@ -1326,7 +1326,7 @@ void DgusTFT::WaitStatus() {
   // Keep every line <= 20 characters so it fits the 256 px box at any plausible font width.
   char buf[40];
   if (homing)
-    sprintf(buf, "Homing%s X%d Y%d Z%d", dots[phase], (int)getAxisPosition_mm(X), (int)getAxisPosition_mm(Y), (int)getAxisPosition_mm(Z));   // X/Y/Z = current position in mm
+    sprintf(buf, "Homing%s", dots[phase]);   // no positions: Marlin only updates them when a homing move ends, so they never moved
   else if (leveling) {
     const unsigned total = GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y;
     sprintf(buf, "Probing %u/%u%s", (unsigned)probe_cnt, total, dots[phase]);
