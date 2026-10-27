@@ -145,6 +145,16 @@ static void center_pad(char * const buf, const size_t size, const uint8_t slots)
 // the - / + buttons are ignored meanwhile (babystepping during a homing move would be wrong).
 static bool zoffset_moving = false;
 
+// Build id for the About page (tools/build_id.py: git hash, "-dirty" if uncommitted changes), so it is always
+// clear which firmware is on the printer. Without the "2.0.8-" prefix it fits the 21-character box.
+static const char * about_build_id() {
+#ifdef DETAILED_BUILD_VERSION
+  return DETAILED_BUILD_VERSION + 6;
+#else
+  return "unknown build";
+#endif
+}
+
 // Selected Move Axes step (mm); file scope so the step text can be re-sent when the page opens.
 static float move_dis = 1.0f;
 
@@ -161,6 +171,9 @@ static float move_dis = 1.0f;
 static void save_zoffset() {
   injectCommands_P(PSTR("M500"));
 }
+// NOTE: injectCommands_P() keeps ONE pointer, so a second call before the first has run REPLACES it. Anything
+// that must happen together goes into one string (an M500 followed by a lift used to lose the M500, so the
+// Z offset was never saved to the SD card and came back as the old value after a reboot).
 
 // Leveling and the Z-offset page heat the nozzle and bed (LEVELING_*_TEMP) and nothing else turns them off.
 // Called when leveling ends and when the Z-offset page is left; a running print keeps its heat.
@@ -792,7 +805,7 @@ void DgusTFT::StatusChange(const char * const msg)  {
         if (strcmp_P(msg + strlen(CUSTOM_MACHINE_NAME), MARLIN_msg_ready) == 0) {
           if (probe_cnt == GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y) {
             probe_cnt = 0;
-            injectCommands_P(PSTR("M500"));   // saves the mesh and the Z offset
+            injectCommands_P(PSTR("M500\nM104 S0\nM140 S0"));   // save the mesh and Z offset, then heaters off
             heaters_off_when_idle();
             ChangePageOfTFT(PAGE_PreLEVEL);   // wait pages 34/154 have no touch zones: must leave them explicitly
             printer_state = AC_printer_idle;
@@ -804,7 +817,7 @@ void DgusTFT::StatusChange(const char * const msg)  {
         if (strcmp_P(msg, MARLIN_msg_probing_failed) == 0) {
           PlayTune(BEEPER_PIN, BeepBeepBeeep, 1);
           probe_cnt = 0;   // a failed run must not leave the next run's point count off
-          injectCommands_P(PSTR("G1 Z50 F500"));
+          injectCommands_P(PSTR("G1 Z50 F500\nM104 S0\nM140 S0"));
           heaters_off_when_idle();
           ChangePageOfTFT(PAGE_CHS_ABNORMAL_LEVELING_SENSOR);
           //          SendtoTFTLN(AC_msg_probing_complete);
@@ -2461,7 +2474,7 @@ void DgusTFT::page11_handle(void) {// SYSTEM PAGE BUTTONS
       SendTxtToTFT(DEVICE_NAME, TXT_ABOUT_DEVICE_NAME);
       SendTxtToTFT(FIRMWARE_VER, TXT_ABOUT_FW_VERSION);
       SendTxtToTFT(BUILD_VOLUME, TXT_ABOUT_PRINT_VOLUMN);
-      SendTxtToTFT(TECH_SUPPORT, TXT_ABOUT_TECH_SUPPORT);
+      SendTxtToTFT(about_build_id(), TXT_ABOUT_TECH_SUPPORT);
 
       ChangePageOfTFT(PAGE_ABOUT);
       break;
@@ -2673,7 +2686,7 @@ void DgusTFT::page17_handle(void)
         setZOffset_mm(z_orig);
         z_change = false;
       }
-      injectCommands_P(PSTR("G1 Z10 F600"));   // lift the nozzle off the bed
+      injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift the nozzle off the bed, heaters off
       heaters_off_when_idle();
       ChangePageOfTFT(PAGE_PreLEVEL);
       break;
@@ -2706,12 +2719,13 @@ void DgusTFT::page17_handle(void)
 #if ACDEBUG(AC_MARLIN)
       SERIAL_ECHOLNPAIR("z off: ", ftostr(getZOffset_mm()));
 #endif
+      // ONE injection: save (if changed), lift the nozzle off the bed, heaters off
       if (z_change) {
         z_change = false;
-        save_zoffset();
+        injectCommands_P(PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0"));
       }
-
-      injectCommands_P(PSTR("G1 Z10 F600"));   // lift the nozzle off the bed
+      else
+        injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));
       heaters_off_when_idle();
       ChangePageOfTFT(PAGE_PREPARE);
       break;
@@ -3315,7 +3329,7 @@ void DgusTFT::page117_handle(void)  // Page CHS Mute handler
       SendTxtToTFT(DEVICE_NAME, TXT_ABOUT_DEVICE_NAME);
       SendTxtToTFT(FIRMWARE_VER, TXT_ABOUT_FW_VERSION);
       SendTxtToTFT(BUILD_VOLUME, TXT_ABOUT_PRINT_VOLUMN);
-      SendTxtToTFT(TECH_SUPPORT, TXT_ABOUT_TECH_SUPPORT);
+      SendTxtToTFT(about_build_id(), TXT_ABOUT_TECH_SUPPORT);
 
       ChangePageOfTFT(PAGE_ABOUT);
 
@@ -3377,7 +3391,7 @@ void DgusTFT::page170_handle(void) { // ENG Mute handler
       SendTxtToTFT(DEVICE_NAME, TXT_ABOUT_DEVICE_NAME);
       SendTxtToTFT(FIRMWARE_VER, TXT_ABOUT_FW_VERSION);
       SendTxtToTFT(BUILD_VOLUME, TXT_ABOUT_PRINT_VOLUMN);
-      SendTxtToTFT(TECH_SUPPORT, TXT_ABOUT_TECH_SUPPORT);
+      SendTxtToTFT(about_build_id(), TXT_ABOUT_TECH_SUPPORT);
 
       ChangePageOfTFT(PAGE_ABOUT);
       break;

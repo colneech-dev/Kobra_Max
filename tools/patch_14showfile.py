@@ -314,9 +314,14 @@ STATUS_BAR = [
 def rgb565(r, g, b):
     return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
 
-COLOR_BAR_BORDER = rgb565(50, 50, 55)
-COLOR_BAR_BG     = rgb565(42, 42, 42)
-COLOR_ORANGE     = rgb565(255, 107, 53)   # 0xFB46
+# This display draws the Process Bar colours with red and blue swapped: the leveling bar, written as orange
+# 0xFB46, came out blue (v18 photo). So the colours are written as rgb565(b, g, r).
+def bar_rgb565(r, g, b):
+    return rgb565(b, g, r)
+
+COLOR_BAR_BORDER = bar_rgb565(50, 50, 55)
+COLOR_BAR_BG     = bar_rgb565(42, 42, 42)
+COLOR_ORANGE     = bar_rgb565(255, 107, 53)   # shows as orange (255, 107, 53)
 
 # ── Page record sets (coordinates from generate_screens.py vp_area() calls) ───
 
