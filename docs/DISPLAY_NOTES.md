@@ -666,19 +666,19 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 * **Libraries are script-built** (`build_release.py --script-icl`): the DGUS IDE cannot be scripted and has no use for the
   new icon libraries. Everything decodes back to its source images; the display has accepted `16_68_.icl` (v3-v7) but
   not yet the boot frames or the two icon libraries.
-* **Print start without a bed mesh** shows the leveling prompt: settings (mesh, Z offset) live in `eeprom.dat` on the SD
+* **Print start without a bed mesh** shows a warning in the file row (a second PRINT starts anyway): settings (mesh, Z offset) live in `eeprom.dat` on the SD
   card, so a freshly formatted card loses them and prints come out too high. Do not format the printer's own SD card.
 * **Touch feedback:** a key is acted on 120 ms after the touch (`KEY_FEEDBACK_MS`) so a page-changing button is seen lit.
 
-## Z offset: how it works in this firmware (2026-10-27, found by reading Marlin)
+## Z offset: how it works in this firmware (corrected 2026-10-27 evening, by reading Marlin)
 
-* Z homes on the Z-min endstop (`USE_ZMIN_PLUG`; `USE_PROBE_FOR_Z_HOMING` is off), so `probe.offset.z` (M851) is used in
-  one place only: `probe_at_point()` returns `trigger_z + offset.z` and G29 stores that in every mesh point. The nozzle at
-  logical Z0 then sits `offset` above the trigger height. Nothing re-applies the offset after G29, and a babystep is lost at
-  the next home or reboot.
-* The old flow zeroed the offset for G29 (`M851 Z0`) and restored it afterwards, so the saved offset never reached the
-  mesh: prints came out at the bare trigger height and the Z-offset page "did not work". Now G29 runs with the stored offset,
-  and saving a changed offset (Z-offset page or Print Settings) adds the change to every mesh point and undoes the live
-  babystep (`commit_zoffset`), keeping "stored offset == offset inside the mesh" true. Default offset is 0 (nozzle probe).
-* Positive offset = nozzle higher at Z0, negative = closer to the bed. If prints are too high, make the offset more negative.
-* After flashing this version: run LEVEL once (rebuilds the mesh with the stored offset), then tune on the Z-offset page and SAVE.
+* Z homes on the Z-min endstop, and `set_axis_is_at_home()` (motion.cpp) then sets Z to `-probe.offset.z`. So the stored
+  offset (M851 Z, saved by M500) shifts the nozzle height on **every G28**: positive = nozzle higher, negative = closer to
+  the bed, with or without a mesh.
+* G29 stores `run_z_probe() + offset.z` per mesh point; `run_z_probe()` already contains the same `-offset`, so the mesh
+  holds the plain contact height and does not depend on the offset. At Z0 the nozzle is at mesh + offset.
+* So: LEVEL first (the mesh removes the big error between the endstop plane and the bed), then fine-tune the offset on the
+  Z-offset page and SAVE (`save_zoffset()` = M500). The live babystep on that page only previews the change until the next
+  home applies the saved value. (An earlier version also added the change to every mesh point: every change was applied
+  twice. That was wrong.)
+* Without a mesh, Z0 is at endstop height + offset, i.e. too high by the distance between endstop plane and bed.
