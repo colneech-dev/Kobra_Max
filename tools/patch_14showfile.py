@@ -77,7 +77,10 @@ def make_text_record(vp_addr, x, y, w, h, color=0xFFFF, font=0x001E,
         '>HHHHHHHHHHHH',
         0x5A11, 0xFFFF, 0x000D, vp_addr,
         sx, sy, color, x, y, x2, y2, font,
-    ) + struct.pack('>H', unk) + bytes([cw, ch]) + struct.pack('>I', flags)
+    # The record's X dots are the FULL-width cell; an ASCII glyph is half of it (the stock file only has
+    # 12x12, 14x14, 16x16, 20x20: ASCII 6x12 .. 10x20). cw/ch here are the ASCII glyph size, so X = 2*cw.
+    # Writing cw itself made 12x24 into 6x24, a size the font does not have, and every number drew as noise.
+    ) + struct.pack('>H', unk) + bytes([2 * cw, ch]) + struct.pack('>I', flags)
 
 
 def make_integer_record(vp_addr, x, y, digits=3):
