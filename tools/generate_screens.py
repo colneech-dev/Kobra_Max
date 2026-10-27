@@ -691,10 +691,14 @@ def page_level_advance():
     title_bar(draw, "Z OFFSET ADJUST")
     y = CONTENT_Y1 + 24
     text_left(draw, MARGIN, y, "CURRENT OFFSET (mm)", F_SMALL, GRAY);  y += 18
-    vp_area(draw, MARGIN, y, W - MARGIN, y + 54, '+0.050');  y += 68
-    btn(draw, MARGIN, y,       W // 2 - 4, y + 48, "- 0.01 mm",  style='normal',  icon=0xf068)
-    btn(draw, W // 2 + 4, y, W - MARGIN,   y + 48, "+ 0.01 mm",  style='primary', icon=0xf067)
-    y += 62
+    vp_area(draw, MARGIN, y, W - MARGIN, y + 54, '+0.050');  y += 62
+    # coarse (0.1 mm) row for big corrections, fine (0.01 mm) row below it
+    btn(draw, MARGIN, y,       W // 2 - 4, y + 40, "- 0.1 mm",   style='normal',  icon=0xf068)
+    btn(draw, W // 2 + 4, y, W - MARGIN,   y + 40, "+ 0.1 mm",   style='primary', icon=0xf067)
+    y += 48
+    btn(draw, MARGIN, y,       W // 2 - 4, y + 40, "- 0.01 mm",  style='normal',  icon=0xf068)
+    btn(draw, W // 2 + 4, y, W - MARGIN,   y + 40, "+ 0.01 mm",  style='primary', icon=0xf067)
+    y += 48
     vp_area(draw, MARGIN, y + 2, W - MARGIN, y + 26, 'Homing...')   # live status line
     text_center(draw, (0, y + 32, W, y + 48), "Nozzle goes to the bed centre at Z0", F_TINY, GRAY)
     text_center(draw, (0, y + 50, W, y + 66), "Adjust until paper just drags, then SAVE", F_TINY, GRAY)

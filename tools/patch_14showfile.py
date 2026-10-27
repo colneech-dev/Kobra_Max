@@ -450,7 +450,7 @@ PAGE13 = STATUS_BAR + [
 #   vp(8,134,264,188) w=256 h=54
 PAGE17 = STATUS_BAR + [
     make_text_record(TXT_LEVEL_OFFSET, 8, 134, 256, 54, chars=8),
-    make_text_record(TXT_WAIT_STATUS, 8, 266, 256, 24, chars=25),   # "Homing..." / "Adjust Z"
+    make_text_record(TXT_WAIT_STATUS, 8, 294, 256, 24, chars=25),   # "Homing..." / "Adjust Z"
 ]
 
 # Pages 18/138 — Preheat

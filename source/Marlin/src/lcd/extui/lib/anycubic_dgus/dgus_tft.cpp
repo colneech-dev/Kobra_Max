@@ -2664,7 +2664,7 @@ void DgusTFT::page17_handle(void)
       SendTxtToTFT(st, TXT_WAIT_STATUS);
     }
   }
-  if (zoffset_moving && (key_value == 2 || key_value == 3)) return;   // wait for the nozzle to arrive
+  if (zoffset_moving && (key_value == 2 || key_value == 3 || key_value == 5 || key_value == 6)) return;   // wait for the nozzle to arrive
 
   switch (key_value)
   {
@@ -2681,44 +2681,27 @@ void DgusTFT::page17_handle(void)
       ChangePageOfTFT(PAGE_PreLEVEL);
       break;
 
-    case 2: // - MEL MOD 0.01mm
-      z_off = getZOffset_mm();
+    case 2: // - 0.01 mm
+    case 3: // + 0.01 mm
+    case 5: // - 0.1 mm
+    case 6: // + 0.1 mm
+      {
+        const float step = (key_value == 5 || key_value == 6) ? 0.1f : BABYSTEP_MULTIPLICATOR_Z;
+        const bool plus = (key_value == 3 || key_value == 6);
+        z_off = getZOffset_mm();
 
-      if (z_off <= -5) {
-        return ;
+        if (plus ? (z_off >= 5) : (z_off <= -5)) return;
+        if (!z_change) z_orig = z_off;
+
+        // Move the nozzle now (babystep) and record the same change in the stored offset.
+        babystepAxis_steps(mmToWholeSteps(plus ? step : -step, Z), Z);
+        setZOffset_mm(z_off + (plus ? step : -step));
+
+        sprintf(str_buf, "%.2f", getZOffset_mm());
+        SendTxtToTFT(str_buf, TXT_LEVEL_OFFSET);
+
+        z_change = true;
       }
-      if (!z_change) z_orig = z_off;
-
-      steps = mmToWholeSteps(-BABYSTEP_MULTIPLICATOR_Z, Z);
-      babystepAxis_steps(steps, Z);
-
-      z_off -= BABYSTEP_MULTIPLICATOR_Z;
-      setZOffset_mm(z_off);
-
-      sprintf(str_buf, "%.2f", getZOffset_mm());
-      SendTxtToTFT(str_buf, TXT_LEVEL_OFFSET);
-
-      z_change = true;
-      break;
-
-    case 3: // + MEL MOD 0.01mm
-      z_off = getZOffset_mm();
-
-      if (z_off >= 5) {
-        return ;
-      }
-      if (!z_change) z_orig = z_off;
-
-      steps = mmToWholeSteps(BABYSTEP_MULTIPLICATOR_Z, Z);
-      babystepAxis_steps(steps, Z);
-
-      z_off += BABYSTEP_MULTIPLICATOR_Z;
-      setZOffset_mm(z_off);
-
-      sprintf(str_buf, "%.2f", getZOffset_mm());
-      SendTxtToTFT(str_buf, TXT_LEVEL_OFFSET);
-
-      z_change = true;
       break;
 
     case 4:
