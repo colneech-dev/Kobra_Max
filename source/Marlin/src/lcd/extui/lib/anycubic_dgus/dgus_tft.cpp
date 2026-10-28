@@ -242,6 +242,20 @@ static void send_print_setting_values() {
   DgusTFT::SendValueToTFT((uint16_t)getTargetFan_percent(FAN0), TXT_FAN_SPEED_TARGET);
 }
 
+// Name of the file being printed, kept so the print / pause pages can re-send it (a text field is blank after a page redraw).
+static char print_name_txt[28] = "";
+
+// Everything on the print / pause pages that must survive a redraw, sent every cycle (not only on change).
+static void send_print_page_values(const bool name) {
+  char b[12];
+  if (name) DgusTFT::SendTxtToTFT(print_name_txt, TXT_PRINT_NAME);
+  sprintf(b, "%d", (int)getFeedrate_percent());
+  DgusTFT::SendTxtToTFT(b, TXT_PRINT_SPEED);
+  sprintf(b, "%d", (int)getProgress_percent());
+  DgusTFT::SendTxtToTFT(b, TXT_PRINT_PROGRESS);
+  send_progress_bar(TXT_PRINT_BAR, getProgress_percent(), 20);
+}
+
 static void start_leveling_run() {
   injectCommands_P(PSTR("G28\nG29"));   // with the stored Z offset, which G29 bakes into the mesh
   probe_cnt = 0;
@@ -463,6 +477,21 @@ void DgusTFT::IdleLoop()  {
     if (held_key && millis() - held_ms >= KEY_FEEDBACK_MS) {
       if (page_index_now == held_page) key_value = held_key;   // not for a page that replaced the one touched
       held_key = 0;
+    }
+  }
+
+  // Idle heater timeout: heaters left on with no print, no job and no touch for AC_IDLE_HEATER_TIMEOUT_MS
+  // (a preheat that was forgotten, a slicer G29 that ended with the heaters on) are switched off.
+  {
+    static millis_t idle_since = 0;
+    const bool active = key_value || isPrinting() || isPrintingFromMedia() || isPrintingPaused() ||
+                        printer_state != AC_printer_idle || commandsInQueue() ||
+                        (getTargetTemp_celsius(E0) <= 0 && getTargetTemp_celsius(BED) <= 0);
+    if (active) idle_since = millis();
+    else if (millis() - idle_since > AC_IDLE_HEATER_TIMEOUT_MS) {
+      setTargetTemp_celsius(0, E0);
+      setTargetTemp_celsius(0, BED);
+      idle_since = millis();
     }
   }
 
@@ -851,8 +880,8 @@ void DgusTFT::StatusChange(const char * const msg)  {
 
         // If probing completes ok save the mesh and park
         // Ignore the custom machine name
-        if (strcmp_P(msg + strlen(CUSTOM_MACHINE_NAME), MARLIN_msg_ready) == 0) {
-          if (probe_cnt == GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y) {
+        if (strlen(msg) >= strlen(CUSTOM_MACHINE_NAME) && strcmp_P(msg + strlen(CUSTOM_MACHINE_NAME), MARLIN_msg_ready) == 0) {
+          if (probe_cnt >= GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y) {   // >=: an extra message must not leave the page stuck
             probe_cnt = 0;
             injectCommands_P(PSTR("M500\nM104 S0\nM140 S0"));   // save the mesh and Z offset, then heaters off
             heaters_off_when_idle();
@@ -1695,6 +1724,10 @@ void DgusTFT::ProcessPanelRequest() {
             SendTxtToTFT(filename, TXT_OUTAGE_RECOVERY_FILE);
             SendTxtToTFT(ui8tostr3rj(recovery.info.print_progress), TXT_OUTAGE_RECOVERY_PROGRESS);
             PlayTune(BEEPER_PIN, SOS, 1);
+          } else if (isPrintingPaused()) {
+            ChangePageOfTFT(PAGE_STATUS1);   // the display restarted mid-print: back to the print / pause page, not Main
+          } else if (isPrintingFromMedia() || isPrinting()) {
+            ChangePageOfTFT(PAGE_STATUS2);
           } else {
             ChangePageOfTFT(PAGE_MAIN);
           }
@@ -1931,6 +1964,8 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
           char str_buf[28];
           fit_text(str_buf, filenavigator.filelist.longFilename(), PRINT_NAME_CHARS);
           SendTxtToTFT(str_buf, TXT_PRINT_NAME);
+          strncpy(print_name_txt, str_buf, sizeof(print_name_txt) - 1);
+          print_name_txt[sizeof(print_name_txt) - 1] = '\0';
 
           sprintf(str_buf, "%d", (uint16_t)getFeedrate_percent());
           SendTxtToTFT(str_buf, TXT_PRINT_SPEED);
@@ -2063,18 +2098,11 @@ void DgusTFT::page3_handle(void) {
   }
   flash_time = millis();
 
-  if (feedrate_last != (uint16_t)getFeedrate_percent()) {
-    feedrate_last = (uint16_t)getFeedrate_percent();
-    sprintf(str_buf, "%d", feedrate_last);
-    SendTxtToTFT(str_buf, TXT_PRINT_SPEED);
-  }
-
-  if (progress_last != getProgress_percent()) {
-    progress_last = getProgress_percent();
-    sprintf(str_buf, "%u", progress_last);
-    SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
-    send_progress_bar(TXT_PRINT_BAR, getProgress_percent(), 20);
-  }
+  // Paused page: name, speed, progress and bar every cycle (they were only sent on change, so they stayed blank
+  // after PAUSE or a return from Print Settings).
+  feedrate_last = (uint16_t)getFeedrate_percent();
+  progress_last = getProgress_percent();
+  send_print_page_values(true);
 
   // Get Printing Time
   uint32_t time = getProgress_seconds_elapsed() / 60;
@@ -2135,11 +2163,7 @@ void DgusTFT::page4_handle(void) {
   }
   flash_time = millis();
 
-  if (feedrate_last != (uint16_t)getFeedrate_percent()) {
-    feedrate_last = (uint16_t)getFeedrate_percent();
-    sprintf(str_buf, "%d", feedrate_last);
-    SendTxtToTFT(str_buf, TXT_PRINT_SPEED);
-  }
+  feedrate_last = (uint16_t)getFeedrate_percent();
 
   if (isPrintingFromMedia()) {
 		  char zs[14];
@@ -2149,11 +2173,11 @@ void DgusTFT::page4_handle(void) {
 			
     // Sent every time round, not only when the percentage changes: a text field is only drawn when it is
     // written, so a page redraw (e.g. back from Print Settings) would otherwise leave it blank for minutes.
-    sprintf(str_buf, "%d", getProgress_percent());
-    SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
-    send_progress_bar(TXT_PRINT_BAR, getProgress_percent(), 20);
     progress_last = getProgress_percent();
+    send_print_page_values(true);
   } else { // we are printing from a HOST
+    sprintf(str_buf, "%d", (int)getFeedrate_percent());
+    SendTxtToTFT(str_buf, TXT_PRINT_SPEED);
     char zs[14];
     fmt_mm(zs, sizeof(zs), getAxisPosition_mm(Z));
     sprintf(str_buf, "Z:%s", zs);// MELS MOD
@@ -2409,8 +2433,7 @@ void DgusTFT::page9_handle(void)
       break;
 
     case 6: // cooling
-      setTargetTemp_celsius(0, E0);
-      setTargetTemp_celsius(0, BED);
+      heaters_off_when_idle();   // not during a print
 
       GoToolsPage();
 
@@ -2430,6 +2453,8 @@ void DgusTFT::page9_handle(void)
 
   SendValueToTFT( (uint16_t)getActualTemp_celsius(E0), TXT_HOTNED_NOW);
   SendValueToTFT( (uint16_t)getActualTemp_celsius(BED), TXT_BED_NOW);
+  SendValueToTFT( (uint16_t)getTargetTemp_celsius(E0), TXT_HOTEND_TARGET);   // targets too: blank after a button redraw
+  SendValueToTFT( (uint16_t)getTargetTemp_celsius(BED), TXT_BED_TARGET);
 }
 
 void DgusTFT::page10_handle(void)
@@ -2482,6 +2507,8 @@ void DgusTFT::page10_handle(void)
 
   SendValueToTFT((uint16_t)getActualFan_percent(FAN0), TXT_FAN_SPEED_NOW);
   SendValueToTFT((uint16_t)getFeedrate_percent(), TXT_PRINT_SPEED_NOW);
+  SendValueToTFT((uint16_t)getTargetFan_percent(FAN0), TXT_FAN_SPEED_TARGET);   // targets too: blank after a button redraw
+  SendValueToTFT((uint16_t)getFeedrate_percent(), TXT_PRINT_SPEED_TARGET);
 }
 
 void DgusTFT::page11_handle(void) {// SYSTEM PAGE BUTTONS
@@ -2549,7 +2576,7 @@ void DgusTFT::page12_handle(void)
       break;
     case 1://return
       {
-        ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_ON);
+        GoSystemPage();
       }
       break;
 
@@ -2641,8 +2668,7 @@ void DgusTFT::page15_handle(void)
 
     case 5: // COOL DOWN — both heaters off. (Was SHAPING; M593 input shaping does not exist in
             // Marlin 2.0.8, so the button and its page 6 are hidden — see tools/ui_features.py.)
-      setTargetTemp_celsius(0, E0);
-      setTargetTemp_celsius(0, BED);
+      heaters_off_when_idle();   // not during a print
       break;
 
     case 6: // THERMAL TUNING
@@ -2745,7 +2771,7 @@ void DgusTFT::page17_handle(void)
         setZOffset_mm(z_orig);
         z_change = false;
       }
-      injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift the nozzle off the bed, heaters off
+      if (!isPrinting()) injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift off the bed, heaters off (never into a host print)
       heaters_off_when_idle();
       ChangePageOfTFT(PAGE_PreLEVEL);
       break;
@@ -2779,7 +2805,10 @@ void DgusTFT::page17_handle(void)
       SERIAL_ECHOLNPAIR("z off: ", ftostr(getZOffset_mm()));
 #endif
       // ONE injection: save (if changed), lift the nozzle off the bed, heaters off
-      if (z_change) {
+      if (isPrinting()) {
+        if (z_change) { z_change = false; injectCommands_P(PSTR("M500")); }
+      }
+      else if (z_change) {
         z_change = false;
         injectCommands_P(PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0"));
       }
@@ -2862,8 +2891,8 @@ void DgusTFT::page19_handle(void)   // Filament
       flash_time = 0;   // refresh the status line now
       break;
 
-    case 4:   // stop: cancel a pending start and stop heating
-      setTargetTemp_celsius(0, E0);
+    case 4:   // stop: cancel a pending start and stop heating (a running print keeps its heat)
+      if (!isPrinting()) setTargetTemp_celsius(0, E0);
       filament_cmd = FILA_NO_ACT;
       flash_time = 0;
       break;
@@ -3371,13 +3400,8 @@ void DgusTFT::page117_handle(void)  // Page CHS Mute handler
 
     case 4:   // audio
       {
-        if (lcd_info.audio == ExtUI::ON) {
-          lcd_info.audio = ExtUI::OFF;
-          ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_OFF);
-        } else if (lcd_info.audio == ExtUI::OFF) {
-          lcd_info.audio = ExtUI::ON;
-          ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_ON);
-        }
+        lcd_info.audio = (lcd_info.audio == ExtUI::ON) ? ExtUI::OFF : ExtUI::ON;
+        GoSystemPage();   // language-aware, as on page 11
 
         LcdAudioSet(lcd_info.audio);
       }
@@ -3432,13 +3456,8 @@ void DgusTFT::page170_handle(void) { // ENG Mute handler
 
     case 4:   // audio
       {
-        if (lcd_info.audio == ExtUI::ON) {
-          lcd_info.audio = ExtUI::OFF;
-          ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_OFF);
-        } else if (lcd_info.audio == ExtUI::OFF) {
-          lcd_info.audio = ExtUI::ON;
-          ChangePageOfTFT(PAGE_SYSTEM_CHS_AUDIO_ON);
-        }
+        lcd_info.audio = (lcd_info.audio == ExtUI::ON) ? ExtUI::OFF : ExtUI::ON;
+        GoSystemPage();   // language-aware, as on page 11
 
         LcdAudioSet(lcd_info.audio);
       }

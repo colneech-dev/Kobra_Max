@@ -33,6 +33,7 @@
 #include "../../../sd/cardreader.h"
 
 #define EEPROM_FILENAME "eeprom.dat"
+#define EEPROM_TMP_FILENAME "eeprom.tmp"
 
 #ifndef MARLIN_EEPROM_SIZE
   #define MARLIN_EEPROM_SIZE 0x1000 // 4KB
@@ -47,7 +48,9 @@ bool PersistentStore::access_start() {
   if (!card.isMounted()) return false;
 
   MediaFile file, root = card.getroot();
-  if (!file.open(&root, EEPROM_FILENAME, O_RDONLY))
+  // If power went away between removing the old file and renaming the new one (see access_finish), the complete
+  // copy is still there as eeprom.tmp.
+  if (!file.open(&root, EEPROM_FILENAME, O_RDONLY) && !file.open(&root, EEPROM_TMP_FILENAME, O_RDONLY))
     return true; // False aborts the save
 
   int bytes_read = file.read(HAL_eeprom_data, MARLIN_EEPROM_SIZE);
@@ -63,15 +66,22 @@ bool PersistentStore::access_start() {
 bool PersistentStore::access_finish() {
   if (!card.isMounted()) return false;
 
+  // Write a complete copy to eeprom.tmp first and swap it in only when that worked: truncating eeprom.dat in
+  // place lost the mesh and the Z offset if the power failed mid-write.
   MediaFile file, root = card.getroot();
   int bytes_written = 0;
-  if (file.open(&root, EEPROM_FILENAME, O_CREAT | O_WRITE | O_TRUNC)) {
-    bytes_written = file.write(HAL_eeprom_data, MARLIN_EEPROM_SIZE);
-    file.sync();
-    file.close();
-  }
+  if (!file.open(&root, EEPROM_TMP_FILENAME, O_CREAT | O_WRITE | O_TRUNC)) return false;
+  bytes_written = file.write(HAL_eeprom_data, MARLIN_EEPROM_SIZE);
+  const bool synced = file.sync();
+  file.close();
+  if (bytes_written != MARLIN_EEPROM_SIZE || !synced) return false;   // eeprom.dat is untouched
 
-  return (bytes_written == MARLIN_EEPROM_SIZE);
+  MediaFile old;
+  if (old.open(&root, EEPROM_FILENAME, O_WRITE)) old.remove();       // remove() closes it
+  if (!file.open(&root, EEPROM_TMP_FILENAME, O_RDWR)) return false;
+  const bool renamed = file.rename(&root, EEPROM_FILENAME);
+  file.close();
+  return renamed;
 }
 
 bool PersistentStore::write_data(int &pos, const uint8_t *value, size_t size, uint16_t *crc) {

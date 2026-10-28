@@ -288,7 +288,7 @@ TXT_WAIT_STATUS = 0x2A80
 # text VPs around it.
 TXT_WAIT_ANIM = 0x2B00
 
-# Integer values that drive Process Bar controls (0-100 %). Written by the firmware.
+# VPs of the progress bars (text bars, or Basic Graphics commands with AC_PROGRESS_GFX). Written by the firmware.
 TXT_PRINT_BAR = 0x2B20      # print progress, pages 3/4
 TXT_WAIT_BAR  = 0x2B30      # leveling progress, pages 34/154
 
@@ -321,19 +321,6 @@ STATUS_BAR = [
     make_text_record(TXT_MAIN_BED,   176,  13, 92, 28, chars=7),
 ]
 
-# RGB565 colours for Process Bar controls (match generate_screens: DIVIDER, ORANGE, BG_ELEVATED)
-def rgb565(r, g, b):
-    return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
-
-# This display draws the Process Bar colours with red and blue swapped: the leveling bar, written as orange
-# 0xFB46, came out blue (v18 photo). So the colours are written as rgb565(b, g, r).
-def bar_rgb565(r, g, b):
-    return rgb565(b, g, r)
-
-COLOR_BAR_BORDER = bar_rgb565(50, 50, 55)
-COLOR_BAR_BG     = bar_rgb565(42, 42, 42)
-COLOR_ORANGE     = bar_rgb565(255, 107, 53)   # shows as orange (255, 107, 53)
-
 # ── Page record sets (coordinates from generate_screens.py vp_area() calls) ───
 
 # Pages 2/122 — File Browser
@@ -355,7 +342,7 @@ PAGE2 = STATUS_BAR + [
 #   ELAPSED/SPEED at y=212: vp(8,212,138,240) w=130 h=28 ; vp(142,212,264,240) w=122 h=28 ; +38→250
 #   STATUS label (+14→264): vp(8,264,264,294) w=256 h=30
 #   (verified against the art by tools/cross_check_display.py)
-#   Progress track (8,168)-(218,192): a Process Bar control driven by TXT_PRINT_BAR (0-100)
+#   Progress track (8,168)-(218,192): a progress bar driven by TXT_PRINT_BAR (text bar or Basic Graphics, see uf.PROGRESS_GFX)
 PAGE3 = STATUS_BAR + [
     make_text_record(TXT_PRINT_NAME,     8,   114, 256, 30, chars=24),
     make_text_record(TXT_PRINT_PROGRESS, 222, 168,  42, 24, chars=3),
@@ -406,7 +393,7 @@ PAGE8 = STATUS_BAR + _step_records()
 # 'Please wait' pages — homing 177/189, leveling 34/154, probe preheat 175/176, pausing 32/152,
 # stopping 23/143, probe test 201/204 (no status line). One entry per badge in ui_features.WAIT_BADGES:
 #   - status line: art box (8,340)-(264,364), written by DgusTFT::WaitStatus
-#   - leveling also gets a Process Bar (art track (8,312)-(264,332)) showing probe points done
+#   - leveling also gets a progress bar (art track (8,312)-(264,336)) showing probe points done
 #   - with SPINNER_ANIMATION, an Animation Icon laid exactly over the static badge
 def _spinner_record(b):
     s = uf.SPINNER_SIZE
