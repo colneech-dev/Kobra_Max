@@ -1128,8 +1128,7 @@ def _build_page_map():
         m[f'{n + 120:03d}'] = fn  # ENG mirror
 
     # Special standalone pages
-    if not (uf.BOOT_ANIMATION and uf.BOOT_FIRST <= 93 <= uf.BOOT_LAST):   # 93 is a boot frame now (CHS statistics page, never shown)
-        m['093'] = page_stats
+    m['093'] = page_stats   # (its picture is not written while it is a boot frame; the map entry is still the base of a pressed picture)
     m['115'] = page_auto_offset
     m['117'] = lambda: page_system(audio_on=False)   # CHS mute
     m['170'] = lambda: page_system(audio_on=False)   # ENG mute
@@ -1239,6 +1238,10 @@ def main():
         path = os.path.join(OUT_DIR, f'{name}.bmp')
         try:
             img = fn()
+            if uf.BOOT_ANIMATION and uf.BOOT_FIRST <= int(name) <= uf.BOOT_LAST:
+                print(f"  {name}.bmp skipped: a boot frame (generate_boot_animation.py)")
+                ok += 1
+                continue
             img.save(path)
             print(f"  {name}.bmp")
             ok += 1
