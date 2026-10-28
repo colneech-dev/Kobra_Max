@@ -93,19 +93,8 @@ _ZONES = [
     ([5, 125, 211, 212],   8, 429, 132, 473, 1),   # BACK (not saved)
     ([5, 125, 211, 212], 140, 429, 264, 473, 7),   # SAVE
 
-    # ── PAGE 6 / 126  Input Shaping — only when the firmware has M593 (see ui_features) ──
-    *([] if not uf.HAS_INPUT_SHAPING else [
-        ([6, 126],   8, 120,  58, 154,  3), # X_FREQ  −
-        ([6, 126], 214, 120, 264, 154,  4), # X_FREQ  +
-        ([6, 126],   8, 186,  58, 220,  5), # Y_FREQ  −
-        ([6, 126], 214, 186, 264, 220,  6), # Y_FREQ  +
-        ([6, 126],   8, 252,  58, 286,  7), # X_ZETA  −
-        ([6, 126], 214, 252, 264, 286,  8), # X_ZETA  +
-        ([6, 126],   8, 318,  58, 352,  9), # Y_ZETA  −
-        ([6, 126], 214, 318, 264, 352, 10), # Y_ZETA  +
-        ([6, 126],   8, 429, 132, 473,  1), # BACK
-        ([6, 126], 140, 429, 264, 473,  2), # SAVE
-    ]),
+    # ── PAGE 6  On-screen keyboard (Terminal) — one zone per key, codes from ui_features.keyboard_keys() ──
+    *[([uf.KEYBOARD_PAGE], _x1, _y1, _x2, _y2, _code) for _x1, _y1, _x2, _y2, _l, _code, _s in uf.keyboard_keys()],
 
     # ── PAGE 7 / 127 / 207 / 209  Tools (with or without case-light) ─────────
     ([7, 127, 207, 209],   8, 106, 132, 168, 2), # MOVE AXES
@@ -265,8 +254,9 @@ _ZONES = [
     ([215],   8, 306,  90, 350, 3), # G28 HOME  (KEY_TERM_G28  = 3)
     ([215],  94, 306, 176, 350, 4), # G29 LEVEL (KEY_TERM_G29  = 4)
     ([215], 180, 306, 262, 350, 5), # M105 TEMPS(KEY_TERM_M105 = 5)
-    ([215],   8, 358, 132, 402, 6), # M502 RESET(KEY_TERM_M502 = 6)  (306+52=358)
-    ([215], 140, 358, 264, 402, 7), # M500 SAVE (KEY_TERM_M500 = 7)
+    ([215],   8, 358,  90, 402, 6), # M502 RESET(KEY_TERM_M502 = 6)  (306+52=358)
+    ([215],  94, 358, 176, 402, 7), # M500 SAVE (KEY_TERM_M500 = 7)
+    ([215], 180, 358, 262, 402, 8), # KEYBOARD  (opens page 6)
     ([215],   8, 429, 264, 473, 1), # BACK      (KEY_TERM_BACK = 1)
 
     # ── PAGE 216  Thermal Tuning ──────────────────────────────────────────────

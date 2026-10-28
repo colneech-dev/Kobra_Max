@@ -36,6 +36,11 @@
 // Progress bars: 1 = drawn by the display's Basic Graphics control (0x5A21, record patched by tools/patch_14showfile.py;
 // the firmware writes "fill rectangle" commands into its VP), 0 = text bars [####....]. tools/ui_features.py reads it.
 #define AC_PROGRESS_GFX         1
+// On-screen keyboard (page 6, opened from the Terminal): the keys in draw order, rows of 10. A key returns
+// its index + 16 as the touch key code (1 CANCEL, 2 SEND, 3 DEL, 4 CLR, 5 SPACE). tools/ui_features.py reads this
+// string for the art and the touch zones, so the three can never disagree.
+#define AC_KB_CHARS             "1234567890QWERTYUIOPASDFGHJKL.ZXCVBNM-,/"
+#define AC_KB_MAX               40      // longest command that can be typed (the inject buffer holds 64)
 #define AC_IDLE_HEATER_TIMEOUT_MS (30UL * 60UL * 1000UL)   // heaters on with nothing happening for this long are switched off
 #define AC_FILAMENT_TEMP        230   // Filament page: heat to this, start loading at AC_FILAMENT_TEMP - 5 (tools/ui_features.py reads it)
 #define AC_PID_HOTEND_TUNE_TEMP 200

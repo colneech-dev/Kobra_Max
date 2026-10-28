@@ -592,6 +592,10 @@ void DgusTFT::IdleLoop()  {
 
     page215_handle();
 
+  } else if (page_index_now == PAGE_KEYBPARD) {
+
+    page6_handle();   // the Terminal's on-screen keyboard, one page for both languages
+
   } else if (page_index_now == PAGE_THERMAL_TUNING) {
 
     page216_handle();
@@ -1163,7 +1167,7 @@ uint32_t DgusTFT::TranslatePage(uint32_t page_index) {
   if (PAGE_CHS_PROBE_PRECHECK <= page_index && page_index <= PAGE_CHS_PROBE_PRECHECK_FAILED) return page_index + 3;
   if (PAGE_CHS_TOOL_CASELIGHT == page_index)    return page_index + 2;
   if (PAGE_CHS_PRINTING_SETTING == page_index)  return page_index + 1;
-  if (page_index == PAGE_THUMBNAIL || page_index == PAGE_TERMINAL ||
+  if (page_index == PAGE_THUMBNAIL || page_index == PAGE_TERMINAL || page_index == PAGE_KEYBPARD ||
       page_index == PAGE_THERMAL_TUNING || page_index == PAGE_FACTORY_RESET ||
       page_index == PAGE_AUTO_OFFSET)           return page_index;  // single-language pages, no ENG mirror
   return page_index + 120;
@@ -2203,22 +2207,93 @@ void DgusTFT::page5_handle(void)          // print settings (the variant without
   page211_212_handle();
 }
 
+// Page 6 — on-screen keyboard for the Terminal. Every key is an ordinary return-key-code zone, so this uses only
+// mechanisms that are proven on this display: the firmware keeps the text, shows it in the TXT_TERM_INPUT text
+// field and, on SEND, injects it as a G-code line. (The display's own Text Input control would need keyboard
+// pictures and a read-back of the typed text.) Key codes: 1 CANCEL, 2 SEND, 3 DEL, 4 CLR, 5 SPACE, 16.. = AC_KB_CHARS.
+static char kb_buf[AC_KB_MAX + 1] = "";
+
+// The Terminal's 5-line log (page 215), shared with the keyboard page.
+static char term_log[5][24] = { "", "", "", "", "" };
+
+static void term_log_push(const char * const cmd) {
+  for (uint8_t i = 0; i < 4; i++) strcpy(term_log[i], term_log[i + 1]);   // older lines up, newest at the bottom
+  snprintf(term_log[4], sizeof(term_log[4]), "> %s", cmd);
+}
+
+static void term_log_send() {
+  static const uint16_t vps[5] = { TXT_TERM_L0, TXT_TERM_L1, TXT_TERM_L2, TXT_TERM_L3, TXT_TERM_L4 };
+  for (uint8_t i = 0; i < 5; i++) DgusTFT::SendTxtToTFT(term_log[i], vps[i]);
+}
+
+static void kb_show() {
+  char s[26];
+  const size_t len = strlen(kb_buf), shown = len > 23 ? 23 : len;   // the field holds 25 characters: show the tail + a cursor
+  memcpy(s, kb_buf + len - shown, shown);
+  s[shown] = '_';
+  s[shown + 1] = '\0';
+  DgusTFT::SendTxtToTFT(s, TXT_TERM_INPUT);
+}
+
+// While a print runs only commands that read something are accepted.
+static bool kb_allowed_while_printing(const char * const c) {
+  return !strncmp(c, "M105", 4) || !strncmp(c, "M114", 4) || !strncmp(c, "M115", 4) || !strncmp(c, "M503", 4);
+}
+
 void DgusTFT::page6_handle(void)
 {
-  // Input Shaping tuning has no backend on this branch: it's a Marlin
-  // 2.1.x-era feature (M593 / feature/input_shaping.*) that doesn't exist in
-  // this Marlin 2.0.8 core — no config option, no source file. The frequency/
-  // zeta adjust buttons are intentionally left unwired rather than faking a
-  // result; only BACK works, so the page is at least not a dead end.
+  static millis_t flash_time = 0;
+  size_t len = strlen(kb_buf);
+
   switch (key_value)
   {
     case 0:
       break;
 
-    case 1: // return
-      ChangePageOfTFT(PAGE_PREPARE);
+    case 1: // CANCEL — back to the Terminal, the typed text is dropped
+      kb_buf[0] = '\0';
+      ChangePageOfTFT(PAGE_TERMINAL);
+      term_log_send();
+      return;
+
+    case 2: // SEND
+      if (len) {
+        if ((isPrinting() || isPrintingFromMedia() || isPrintingPaused()) && !kb_allowed_while_printing(kb_buf)) {
+          BlockedWhilePrinting();   // shows NOT ALLOWED
+          return;
+        }
+        injectCommands(kb_buf);     // copied into the queue's own buffer
+        term_log_push(kb_buf);
+        kb_buf[0] = '\0';
+      }
+      ChangePageOfTFT(PAGE_TERMINAL);
+      term_log_send();
+      return;
+
+    case 3: // DEL
+      if (len) kb_buf[--len] = '\0';
+      break;
+
+    case 4: // CLR
+      kb_buf[0] = '\0';
+      break;
+
+    case 5: // SPACE
+      if (len < AC_KB_MAX) { kb_buf[len] = ' '; kb_buf[len + 1] = '\0'; }
+      break;
+
+    default:
+      if (key_value >= 16 && key_value < 16 + strlen(AC_KB_CHARS) && len < AC_KB_MAX) {
+        kb_buf[len] = AC_KB_CHARS[key_value - 16];
+        kb_buf[len + 1] = '\0';
+      }
       break;
   }
+
+  // A text field blanks when a key is pressed (the page is redrawn): write it after every key and now and then.
+  if (key_value == 0 && millis() < flash_time + 400) return;
+  flash_time = millis();
+  kb_show();
 }
 
 void DgusTFT::page7_handle(void) // tools
@@ -4002,14 +4077,14 @@ void DgusTFT::page214_handle(void) {
 // entry — the display's zone list has no keyboard-input record for this
 // page), each logging into a 5-line rolling display via TXT_TERM_L0-L4.
 void DgusTFT::page215_handle(void) {
-  static char term_log[5][24] = { "", "", "", "", "" };
+  static millis_t flash_time = 0;
 
   auto log_and_send = [](PGM_P cmd) {
-    // shift older lines up, insert newest at the bottom
-    for (uint8_t i = 0; i < 4; i++) strcpy(term_log[i], term_log[i + 1]);
-    snprintf_P(term_log[4], sizeof(term_log[4]), PSTR("> %s"), cmd);
-    const uint16_t vps[5] = { TXT_TERM_L0, TXT_TERM_L1, TXT_TERM_L2, TXT_TERM_L3, TXT_TERM_L4 };
-    for (uint8_t i = 0; i < 5; i++) SendTxtToTFT(term_log[i], vps[i]);
+    char c[24];
+    strncpy_P(c, cmd, sizeof(c) - 1);
+    c[sizeof(c) - 1] = '\0';
+    term_log_push(c);
+    term_log_send();
   };
 
   switch (key_value) {
@@ -4043,7 +4118,17 @@ void DgusTFT::page215_handle(void) {
       injectCommands_P(PSTR("M500"));
       log_and_send(PSTR("M500"));
       break;
+    case 8: // KEYBOARD — type any command (page 6)
+      kb_buf[0] = '\0';
+      ChangePageOfTFT(PAGE_KEYBPARD);
+      kb_show();
+      return;
   }
+
+  // The log is only drawn when written, so re-send it now and then (it was blank on every visit to the page).
+  if (millis() < flash_time + 1000) return;
+  flash_time = millis();
+  term_log_send();
 }
 
 // Page 216 — Thermal Tuning. This Marlin 2.0.8 build has no MPC (M306), so both buttons run PID

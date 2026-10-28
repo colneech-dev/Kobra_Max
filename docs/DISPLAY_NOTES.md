@@ -596,7 +596,7 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 
 ## Known limits and accepted risks (review of 2026-10-25)
 
-* Not verified on hardware: Basic Graphics progress bars, Print Settings -/+, file-row marker, Terminal/Factory-Reset paths.
+* Not verified on hardware: the on-screen keyboard (page 6, opened from the Terminal; keys in `AC_KB_CHARS`), Basic Graphics progress bars, Print Settings -/+, file-row marker, Terminal/Factory-Reset paths.
   (Spinner, step highlight, boot animation, script-built `16_68_.icl` and the Z-offset save are confirmed.)
 * The ICL CRC and layout were reproduced with our own decoder (same assumptions as the builder), not by a DWIN tool.
 * `cross_check_display.py` does not read the *shipped* `13TouchFile.bin` bytes, font/colour fields, `0x5A01`/`0x5A23`

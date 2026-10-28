@@ -34,8 +34,7 @@ HAS_M1024         = False   # stock-Anycubic Z-offset wizard command; no G-code 
 # Screens that exist as BMPs but are unreachable while their feature flag is off.
 # They are not drawn into the cross-check and get no touch zones.
 HIDDEN_PAGES = set()
-if not HAS_INPUT_SHAPING:
-    HIDDEN_PAGES |= {6, 126}
+HIDDEN_PAGES |= {126}      # page 6 is the Terminal's on-screen keyboard now (single page for both languages)
 if not HAS_M1024:
     HIDDEN_PAGES |= {115}
 
@@ -165,6 +164,35 @@ _cfg_text = _read(_CFG)
 _defs_text = _read(_DEFS)
 PID_HOTEND_TUNE_TEMP = _define(_defs_text, "AC_PID_HOTEND_TUNE_TEMP", PID_HOTEND_TUNE_TEMP)
 PID_BED_TUNE_TEMP    = _define(_defs_text, "AC_PID_BED_TUNE_TEMP", PID_BED_TUNE_TEMP)
+
+# ── On-screen keyboard (Terminal -> page 6) ────────────────────────────────────────────────────
+# The key list is read from the firmware (AC_KB_CHARS in dgus_tft_defs.h), so art, touch zones and firmware agree.
+# Key codes: 1 CANCEL, 2 SEND, 3 DEL, 4 CLR, 5 SPACE, 16 + index into KB_CHARS for the character keys.
+KEYBOARD_PAGE = 6
+_m = re.search(r'^\s*#define\s+AC_KB_CHARS\s+"([^"]+)"', _defs_text, re.M)
+KB_CHARS = _m.group(1) if _m else "1234567890QWERTYUIOPASDFGHJKL.ZXCVBNM-,/"
+KB_X0, KB_KEY_W, KB_PITCH_X = 2, 25, 27            # ten keys across 272 px
+KB_Y0, KB_KEY_H, KB_PITCH_Y = 108, 44, 48
+KB_INPUT_BOX = (4, 60, 268, 100)                    # the text field showing what is being typed
+
+
+def keyboard_keys():
+    """[(x1, y1, x2, y2, label, key code, style)] for every key on page 6."""
+    keys = []
+    for i, ch in enumerate(KB_CHARS):
+        r, c = divmod(i, 10)
+        x1, y1 = KB_X0 + c * KB_PITCH_X, KB_Y0 + r * KB_PITCH_Y
+        keys.append((x1, y1, x1 + KB_KEY_W, y1 + KB_KEY_H, ch, 16 + i, 'ghost' if ch.isdigit() else 'normal'))
+    y = KB_Y0 + 4 * KB_PITCH_Y
+    keys += [(2, y, 146, y + KB_KEY_H, "SPACE", 5, 'normal'),
+             (150, y, 208, y + KB_KEY_H, "DEL", 3, 'warning'),
+             (212, y, 270, y + KB_KEY_H, "CLR", 4, 'danger')]
+    y += KB_PITCH_Y
+    keys += [(2, y, 134, y + KB_KEY_H, "CANCEL", 1, 'ghost'),
+             (138, y, 270, y + KB_KEY_H, "SEND", 2, 'success')]
+    return keys
+
+
 FILAMENT_TEMP        = _define(_defs_text, "AC_FILAMENT_TEMP", FILAMENT_TEMP)
 PROGRESS_GFX         = _define(_defs_text, "AC_PROGRESS_GFX", 0)   # 1: progress bars via Basic Graphics control, 0: text bars
 

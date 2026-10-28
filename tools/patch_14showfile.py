@@ -373,11 +373,11 @@ PAGE5 = STATUS_BAR + [make_text_record(TXT_LEVEL_OFFSET, 68, uf.PRINT_SETTINGS_R
 # Pages 6/126 — Input Shaping
 # page_input_shaping(): y starts at CONTENT_Y1+10=102; per row: label(+18), vp(66,y,206,y+34)(+48)
 # Row 0 X_FREQ: y=120; Row 1 Y_FREQ: y=186; Row 2 X_ZETA: y=252; Row 3 Y_ZETA: y=318
+# Page 6 is the Terminal's on-screen keyboard now: one text field showing the command being typed
+# (page_keyboard(): ui_features.KB_INPUT_BOX; 25 characters of 10 px).
 PAGE6 = STATUS_BAR + [
-    make_text_record(TXT_IS_FREQ_X, 66, 120, 140, 34, chars=7),
-    make_text_record(TXT_IS_FREQ_Y, 66, 186, 140, 34, chars=7),
-    make_text_record(TXT_IS_ZETA_X, 66, 252, 140, 34, chars=7),
-    make_text_record(TXT_IS_ZETA_Y, 66, 318, 140, 34, chars=7),
+    make_text_record(TXT_TERM_INPUT, uf.KB_INPUT_BOX[0], uf.KB_INPUT_BOX[1],
+                     uf.KB_INPUT_BOX[2] - uf.KB_INPUT_BOX[0], uf.KB_INPUT_BOX[3] - uf.KB_INPUT_BOX[1], cw=10, ch=20),
 ]
 
 # Pages 8/128 — Move Axes: one Variable Icon per step button (see generate_select_icons.py).

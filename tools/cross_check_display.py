@@ -315,6 +315,8 @@ def main():
                 err(f'p{pg}: handler page{h}_handle not found')
             else:
                 dead = keys - handlers[h]
+                if pg == uf.KEYBOARD_PAGE:   # the character keys (16..) are handled by the handler's default branch
+                    dead -= set(range(16, 16 + len(uf.KB_CHARS)))
                 if dead:
                     err(f'p{pg}: zone keys {sorted(dead)} have no case in page{h}_handle')
 
