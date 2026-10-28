@@ -384,9 +384,11 @@ def _page_status(paused):
     vp_area(draw, MARGIN, y, W - MARGIN, y + 30, 'print_file.gcode');  y += 40
 
     text_left(draw, MARGIN, y, "PROGRESS", F_TINY, GRAY);  y += 14
-    draw.rounded_rectangle([(MARGIN, y), (W - MARGIN - 46, y + 24)],
-                            radius=4, fill=BG_ELEVATED)
-    if not uf.PROGRESS_BARS:   # otherwise the display's Process Bar control fills this track
+    if uf.PROGRESS_BARS:   # the bar is a text field, [####....] (firmware: send_progress_bar)
+        vp_area(draw, MARGIN, y, W - MARGIN - 46, y + 24, '[#####.....]')
+    else:
+        draw.rounded_rectangle([(MARGIN, y), (W - MARGIN - 46, y + 24)],
+                                radius=4, fill=BG_ELEVATED)
         draw.rounded_rectangle([(MARGIN, y), (MARGIN + 120, y + 24)],
                                 radius=4, fill=ORANGE)
     vp_area(draw, W - MARGIN - 42, y, W - MARGIN, y + 24, '72%')
@@ -884,7 +886,7 @@ def page_leveling():
     n = int(round(uf.GRID_POINTS ** 0.5))
     text_center(draw, (0, CONTENT_Y1+156, W, CONTENT_Y1+178), f"{n}x{n} = {uf.GRID_POINTS} points", F_SMALL, GRAY)
     if uf.PROGRESS_BARS:
-        draw.rounded_rectangle([(MARGIN, 312), (W - MARGIN, 332)], radius=4, fill=BG_ELEVATED)
+        vp_area(draw, MARGIN, 312, W - MARGIN, 336, '[#####.....] 12/49')   # text field, see send_progress_bar
     wait_status_box(draw, 'Probing point 12 / 49')
     return img
 
