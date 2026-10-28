@@ -351,8 +351,9 @@ PAGE3 = STATUS_BAR + [
     make_text_record(TXT_PRINT_TIME,     8,   212, 130, 28, chars=9),
     make_text_record(TXT_PRINT_SPEED,    142, 212, 122, 28, chars=6),
     make_text_record(TXT_PRINT_COMMENT,  8,   264, 256, 30, chars=24),
-] + ([make_process_bar_record(TXT_PRINT_BAR, 8, 168, 218, 192,
-                              COLOR_BAR_BORDER, COLOR_ORANGE, COLOR_BAR_BG)] if uf.PROGRESS_BARS else [])
+] + ([make_text_record(TXT_PRINT_BAR, 8, 168, 210, 24, cw=10, ch=20)] if uf.PROGRESS_BARS else [])
+# The progress "bar" is a text field, [#####.....] (firmware: send_progress_bar, 20 characters here): the DWIN
+# Process Bar control (0x5A23) never drew a fill on this display, text fields are the proven control.
 PAGE4 = PAGE3   # paused vs printing — identical VP layout
 
 # Pages 5/125 — Print Adjust
@@ -410,8 +411,7 @@ def _wait_records(name, b):
     if name != 'probe':
         recs.append(make_text_record(TXT_WAIT_STATUS, 8, 342, 256, 20, cw=10, ch=20))
     if name == 'leveling' and uf.PROGRESS_BARS:
-        recs.append(make_process_bar_record(TXT_WAIT_BAR, 8, 312, 264, 332,
-                                            COLOR_BAR_BORDER, COLOR_ORANGE, COLOR_BAR_BG))
+        recs.append(make_text_record(TXT_WAIT_BAR, 8, 312, 256, 24, cw=10, ch=20))   # 24 characters, see send_progress_bar
     if uf.SPINNER_ANIMATION:
         recs.append(_spinner_record(b))
     return recs
