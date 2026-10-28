@@ -165,6 +165,7 @@ _defs_text = _read(_DEFS)
 PID_HOTEND_TUNE_TEMP = _define(_defs_text, "AC_PID_HOTEND_TUNE_TEMP", PID_HOTEND_TUNE_TEMP)
 PID_BED_TUNE_TEMP    = _define(_defs_text, "AC_PID_BED_TUNE_TEMP", PID_BED_TUNE_TEMP)
 FILAMENT_TEMP        = _define(_defs_text, "AC_FILAMENT_TEMP", FILAMENT_TEMP)
+PROGRESS_GFX         = _define(_defs_text, "AC_PROGRESS_GFX", 0)   # 1: progress bars via Basic Graphics control, 0: text bars
 
 PREHEAT = {
     1: (_define(_cfg_text, "PREHEAT_1_LABEL", "PLA"),
