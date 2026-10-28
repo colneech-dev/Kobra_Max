@@ -8,7 +8,7 @@ buttons needs a "pressed" twin: the same art with the buttons drawn in a lit-up 
 page + 34 (Move Axes 128 -> 162).
 
 Pages with identical art share one pressed picture: an ENG page (+120) uses its CHS twin's, and the
-few other duplicates are listed in TWIN. Pressed IDs live in 35-49 (pages 1-15) and 218-252 (everything else): 50-114 is the stock boot animation's
+few other duplicates are listed in TWIN. Pressed IDs live in 35-49 (pages 1-15) and 218-251 (everything else): 50-114 is the stock boot animation's
 picture range (ui_features.BOOT_FIRST..BOOT_LAST), which must hold only boot frames.
 """
 
@@ -48,7 +48,7 @@ def pressed_id(page, key=None):
 
 
 # The display plays pictures 50..114 at power-on (the stock boot animation, filled with our boot frames),
-# so no pressed picture may live there: those IDs move up by PRESSED_SHIFT (50..84 -> 218..252).
+# so no pressed picture may live there: those IDs move up by PRESSED_SHIFT (50..83 -> 218..251).
 PRESSED_SHIFT = 168
 
 

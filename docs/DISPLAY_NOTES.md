@@ -102,9 +102,9 @@ touch. `tools/cross_check_display.py` checks the first three against each other 
 | 211 / 212 | Print settings, case light **off / on** | 214 | Thumbnail (**unreachable stub**) |
 | 215 | Terminal | 216 | Thermal tuning |
 | 217 | Factory reset | **35–84** | *"button held" pictures — never navigated to* (see 3.5; page 16's is 84) |
-| 50 | *boot page* (Image Animation record) | **218–255** | *boot animation frames; picture 50 = frame 0* (see the boot animation section) |
+| 50 | *boot page* (stock Image Animation record, untouched) | **50–114** | *boot animation frames, pictures 50..114; "button held" pictures live at 35–49 and 218–251* (see the boot animation section) |
 
-The *boot animation* frames (218–255) ARE part of the picture library again (`ui_features.BOOT_*`; see the boot animation section at the end).
+The *boot animation* frames (pictures 50–114) ARE part of the picture library (`ui_features.BOOT_*`; see the boot animation section at the end).
 
 ## 1.4 Flash slots — the rule that bit us
 
@@ -115,11 +115,11 @@ Picture space is slots 16–63; fonts/icons/configs share the 4–12 MB region (
 | File on the SD card | Slot(s) | What it is |
 |---|---|---|
 | `0_DWIN_ASC.HZK` | 0–11 | Built-in ASCII fonts (4×8 up to 64×128 dots) |
-| `16_68_.icl` | 16–26 (about 2.8 MB, 11 slots) | Background picture library: pages, pressed pictures, boot frames |
-| `29_ICO.icl` | 28 | Stock Anycubic icon library (popup dialogs, toggles, bulbs). *Was `23_ICO.icl`.* |
-| `30_FontSong14X14.DZK` | 29–31 | Chinese 14×14 font. *Was `24_...`.* |
-| `33_SPIN.icl` | 32 | Spinner icon library (script-built) |
-| `34_SEL.icl` | 33 | "Selected button" icons (script-built) |
+| `16_68_.icl` | 16–28 (about 3.1 MB, 13 slots) | Background picture library: pages, pressed pictures, boot frames |
+| `29_ICO.icl` | 29 | Stock Anycubic icon library (popup dialogs, toggles, bulbs). *Was `23_ICO.icl`.* |
+| `30_FontSong14X14.DZK` | 30–32 | Chinese 14×14 font. *Was `24_...`.* |
+| `33_SPIN.icl` | 33 | Spinner icon library (script-built) |
+| `34_SEL.icl` | 34 | "Selected button" icons (script-built) |
 | `13TouchFile.bin`, `14ShowFile.bin`, `22_Config.bin`, `T5LCFG.CFG`, `DWINOS.bin` | (configuration area) | touch zones, display records, initial values, hardware config, OS |
 
 **Why `23_ICO.icl` and `24_Font…` were renamed:** the stock picture library is 7 slots (16–22) so the
@@ -418,7 +418,7 @@ by the display (its flasher counts only CFG/Code/BIN/DZK/HZK/ICL/LIB/WAE/UIC/GTF
 1. `python tools/build_release.py --allow-stale-icl --out release_vN` (or just
    `python tools/generate_screens.py`) to make the BMPs. The packager puts exactly the images that
    belong in the library into `ICL_SOURCE_BMPS/` (pages 0–217 minus hidden pages, plus pressed pictures
-   35–84, picture 50 and the boot frames 218–255).
+   35–49 and 218–251, and the boot frames 50–114).
 2. Run the DGUS IDE (`DGUS/DGUS_V7649/DGUS_V7.649.exe`, or `DWprj.hmi` for the project), use the **ICL
    tool**, import every image in `ICL_SOURCE_BMPS/` in numeric order (the picture index must equal the
    number in the file name), generate, and save as `DWIN_SET/16_68_.icl`.
@@ -460,8 +460,8 @@ by the display (its flasher counts only CFG/Code/BIN/DZK/HZK/ICL/LIB/WAE/UIC/GTF
 | `HAS_INPUT_SHAPING`, `HAS_MPC`, `HAS_M1024` | Whether the firmware really has `M593`, `M306`, `M1024`. If `False` the screens that need them are hidden (no buttons, no zones). |
 | `SPINNER_ANIMATION` | Spinner animation icons on wait screens (needs `33_SPIN.icl`). |
 | `STEP_SELECT_ICONS`, `STEP_SIZES`, `STEP_BUTTONS` | Highlighted Move Axes step button (needs `34_SEL.icl`); the three step sizes and button rectangles. |
-| `BOOT_ANIMATION`, `BOOT_FIRST/LAST/FRAME_TIME` | Custom boot animation (pictures 218-255 through the page-50 Image Animation record). `False` = stock behaviour. |
-| `PROGRESS_BARS` | Process-bar controls on Printing and Leveling. |
+| `BOOT_ANIMATION`, `BOOT_FIRST/LAST/FRAME_TIME` | Custom boot animation: our frames are pictures 50-114, played by the stock page-50 Image Animation record (not modified). `False` = no boot pictures. |
+| `PROGRESS_BARS` | Progress bars on Printing and Leveling: Basic Graphics control (`AC_PROGRESS_GFX` in dgus_tft_defs.h, experimental) or text bars `[####....]`. The Process Bar control (0x5A23) never drew a fill. |
 | `PRESS_EFFECT` | Pressed-button pictures + `Pic_On` in the touch file. |
 | `PRINT_SETTINGS_ROWS` | The layout (y positions, key codes) of the Print Settings screen. |
 | `WAIT_BADGES` | Position/glyph/colour/icon IDs of the wait-screen badges. |
@@ -482,9 +482,8 @@ Values the art quotes (preheat temperatures, grid size, Marlin version) are **re
 * `ChangePageOfTFT_DevicePage()` for "back" navigation.
 
 ## Built, build-verified, **not yet tested on the printer**
-Pressed-button effect, process bars, the spinner animation, the Print Settings −/+ rework, the file-list
-selection marker, the Terminal font, the Z-offset preservation across leveling, the flash re-layout
-(`25_`/`26_` names, bigger library).
+The Basic Graphics progress bars (`AC_PROGRESS_GFX`), the Print Settings −/+ rework, the file-list
+selection marker, the Terminal font. (Proven on hardware since: spinner, Move Axes 1/10/50 highlight, boot animation, text fields.)
 
 ## Experimental, decoder-verified only
 `tools/build_icl.py` (script-built picture/icon library). Test set: `release_v2/EXPERIMENTAL_SCRIPT_ICL/`.
@@ -597,8 +596,8 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 
 ## Known limits and accepted risks (review of 2026-10-25)
 
-* Not verified on hardware: pressed-button effect, process bars, spinner, Print Settings -/+, file-row marker,
-  Z-offset restore, script-built `16_68_.icl`, Terminal/Factory-Reset paths.
+* Not verified on hardware: Basic Graphics progress bars, Print Settings -/+, file-row marker, Terminal/Factory-Reset paths.
+  (Spinner, step highlight, boot animation, script-built `16_68_.icl` and the Z-offset save are confirmed.)
 * The ICL CRC and layout were reproduced with our own decoder (same assumptions as the builder), not by a DWIN tool.
 * `cross_check_display.py` does not read the *shipped* `13TouchFile.bin` bytes, font/colour fields, `0x5A01`/`0x5A23`
   records or runtime navigation (it checks SP slots only). Its mirror of the IdleLoop dispatch scans a limited text span.
@@ -648,20 +647,18 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 
 ## Boot animation, spinner, selected-button icons (2026-10-27)
 
-* **Boot animation.** The stock show file carries an Image Animation record (0x5A04) on page 50 that plays pictures 50..114
-  of the main library (in our library those were real screens, hence the "scrolling screens" at power-on). We rewrite that
-  record to play `ui_features.BOOT_FIRST..BOOT_LAST` (218..255, `BOOT_FRAME_TIME` x 8 ms) - frames drawn by
-  `generate_boot_animation.py`, part of `16_68_.icl`. Picture 50 (shown for an instant before the first frame) is a copy of
-  frame 0, so page 16's pressed picture moved from 50 to 84 (`press_effect.MOVED_PRESSED`). The firmware leaves the boot
-  page when `REG_LCD_READY` reports 0x0100 + last picture (`BOOT_ANIM_LAST_FRAME`, also accepts the stock 0x72); the 30 s
-  timeout still applies. UNPROVEN on the display: how the display reaches page 50 at power-on was not established. If the
-  animation does not play, set `BOOT_ANIMATION = False`.
+* **Boot animation (works, confirmed on hardware).** The stock show file carries an Image Animation record (0x5A04) on page 50
+  that plays pictures 50..114 and reports 0x72 (=114) in `REG_LCD_READY` when done. That record is NOT touched: our 65 frames
+  (`generate_boot_animation.py`) are simply pictures 50..114 of `16_68_.icl`, so the "button held" pictures moved to 218..251
+  (`press_effect.PRESSED_SHIFT = 168`; `ui_features.in_library()`, `LIBRARY_MAX_ID = 251`). The firmware leaves the boot page
+  when the display reports 0x010072 (`BOOT_ANIM_LAST_FRAME`); the 30 s timeout still applies. Retargeting the record to
+  pictures 218-255 was tried and made the display show rotated pages with a leftover strip - do not retry.
 * **Spinner** (`SPINNER_ANIMATION = True`): Animation Icon (0x5A01) over the badge on every wait screen, frames in
   `33_SPIN.icl`.
 * **Selected button** (`STEP_SELECT_ICONS`): Move Axes steps are 1 / 10 / 50 mm. Each button has a Variable Icon (0x5A00,
   guide 7.2; shown only while its VP == 1) holding an orange copy of the button, in `34_SEL.icl`
   (`generate_select_icons.py`). The firmware writes 1 to the selected step's VP, 0 to the others.
-* **Flash layout** (256 KB slots): picture library 16-26, icon library 28, font 29-31, spinner 32, select icons 33
+* **Flash layout** (256 KB slots): picture library 16-28 (13 slots), icon library 29, font 30-32, spinner 33, select icons 34
   (`ui_features.FLASH_RENAMES`; `build_release.py` checks for overlaps).
 * **Libraries are script-built** (`build_release.py --script-icl`): the DGUS IDE cannot be scripted and has no use for the
   new icon libraries. Everything decodes back to its source images; the display has accepted `16_68_.icl` (v3-v7) but

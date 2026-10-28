@@ -32,6 +32,7 @@
 
 #include "ui_api.h"
 #include "lib/anycubic_dgus/dgus_tft.h"
+#include "lib/anycubic_dgus/dgus_Tunes.h"
 
 using namespace Anycubic;
 
@@ -98,6 +99,7 @@ namespace ExtUI {
   void onConfigurationStoreWritten(bool success) {
     // Called after the entire EEPROM has been written,
     // whether successful or not.
+    if (!success) PlayTune(BEEPER_PIN, BeepBeepBeeep, 1);   // the settings (mesh, Z offset) did NOT reach the SD card
   }
 
   void onConfigurationStoreRead(bool success) {

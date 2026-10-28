@@ -157,7 +157,7 @@ print(f"  created {RELEASE_DIR}/")
 ART_OUT = os.path.join(RELEASE_DIR, "ICL_SOURCE_BMPS")
 os.makedirs(ART_OUT, exist_ok=True)
 # Only the pictures that belong in the library: pages 0-217 minus screens hidden by a feature flag.
-# That includes the "button held" pictures (35-49 and 218-252) and, with BOOT_ANIMATION, the boot frames
+# That includes the "button held" pictures (35-49 and 218-251) and, with BOOT_ANIMATION, the boot frames
 # (pictures 50-114, played by the stock boot record).
 bmp_files = [p for p in sorted(glob.glob(os.path.join("DWIN_SET", "*.bmp")))
              if uf.in_library(int(os.path.splitext(os.path.basename(p))[0]))]
@@ -169,8 +169,8 @@ with open(os.path.join(ART_OUT, "README.txt"), "w", encoding="utf-8") as f:
         "The display never reads these files.\n\n"
         f"{len(bmp_files)} images, named by page number; the picture index must equal the page number.\n"
         "Import ALL of them, in numeric order, and nothing else.\n\n"
-        "These include the 'button held' pictures (035-049, 218-252) and the boot animation frames (050-114).\n\n"
-        "SIZE LIMIT: the library must stay under 2,883,584 bytes (11 flash slots of 256 KB, slots 16-26), because\n"
+        "These include the 'button held' pictures (035-049, 218-251) and the boot animation frames (050-114).\n\n"
+        "SIZE LIMIT: the library must stay under 3,407,872 bytes (13 flash slots of 256 KB, slots 16-28), because\n"
         "the icon library is shipped as 29_ICO.icl. Do NOT add the hidden pages (6, 115, 126).\n"
         "Note: the spinner and selected-button icon libraries (33_SPIN.icl, 34_SEL.icl) cannot be made by this\n"
         "route; use build_release.py --script-icl for a complete set.\n"

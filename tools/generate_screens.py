@@ -1128,7 +1128,8 @@ def _build_page_map():
         m[f'{n + 120:03d}'] = fn  # ENG mirror
 
     # Special standalone pages
-    m['093'] = page_stats
+    if not (uf.BOOT_ANIMATION and uf.BOOT_FIRST <= 93 <= uf.BOOT_LAST):   # 93 is a boot frame now (CHS statistics page, never shown)
+        m['093'] = page_stats
     m['115'] = page_auto_offset
     m['117'] = lambda: page_system(audio_on=False)   # CHS mute
     m['170'] = lambda: page_system(audio_on=False)   # ENG mute

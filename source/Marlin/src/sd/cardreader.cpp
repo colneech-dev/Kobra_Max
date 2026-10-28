@@ -377,10 +377,10 @@ void CardReader::ls() {
       selectByName(diveDir, segment);
       diveDir.close();
 
-      if(longFilename[0] && strlen_P(longFilename) < 64) {
-        strcpy_P(pathLong, longFilename);
-        break;
-      }
+      // Always leave the loop (it used to spin forever when the name was empty or too long, which boot-looped
+      // the printer through the watchdog on power-loss recovery). On no usable long name pathLong is left as is.
+      if (longFilename[0] && strlen(longFilename) < 64) strcpy(pathLong, longFilename);
+      break;
     }
   }
 

@@ -52,8 +52,9 @@ SPINNER_FRAMES    = 10
 SPINNER_FRAME_TIME = 5      # DGUS cycles (20 ms each) per frame -> 1 revolution = 1 s
 SPINNER_SIZE      = 82      # frames are SPINNER_SIZE square, centred on the static badge (ring radius 40 + rim)
 
-# PROGRESS_BARS: DWIN Process Bar controls (record 0x5A23, guide 7.23) on the print-status screens and
-#   the leveling screen, driven by firmware-written percentages. Needs no extra file.
+# PROGRESS_BARS: progress bars on the print-status screens and the leveling screen, driven by the firmware
+#   (send_progress_bar): text bars [####....], or the Basic Graphics control when AC_PROGRESS_GFX is 1 (see
+#   dgus_tft_defs.h; the Process Bar control 0x5A23 never drew a fill on this display). Needs no extra file.
 PROGRESS_BARS = True
 
 # PRESS_EFFECT: touch zones name a "pressed" picture (guide 6.6, Pic_On field) that the display shows
