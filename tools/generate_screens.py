@@ -384,7 +384,9 @@ def _page_status(paused):
     vp_area(draw, MARGIN, y, W - MARGIN, y + 30, 'print_file.gcode');  y += 40
 
     text_left(draw, MARGIN, y, "PROGRESS", F_TINY, GRAY);  y += 14
-    if uf.PROGRESS_BARS:   # the bar is a text field, [####....] (firmware: send_progress_bar)
+    if uf.PROGRESS_BARS and uf.PROGRESS_GFX:   # drawn by the display's Basic Graphics control (firmware: send_progress_bar)
+        draw.rounded_rectangle([(MARGIN, y), (W - MARGIN - 46, y + 24)], radius=4, fill=BG_ELEVATED)
+    elif uf.PROGRESS_BARS:   # the bar is a text field, [####....] (firmware: send_progress_bar)
         vp_area(draw, MARGIN, y, W - MARGIN - 46, y + 24, '[#####.....]')
     else:
         draw.rounded_rectangle([(MARGIN, y), (W - MARGIN - 46, y + 24)],
@@ -886,7 +888,10 @@ def page_leveling():
     n = int(round(uf.GRID_POINTS ** 0.5))
     text_center(draw, (0, CONTENT_Y1+156, W, CONTENT_Y1+178), f"{n}x{n} = {uf.GRID_POINTS} points", F_SMALL, GRAY)
     if uf.PROGRESS_BARS:
-        vp_area(draw, MARGIN, 312, W - MARGIN, 336, '[#####.....] 12/49')   # text field, see send_progress_bar
+        if uf.PROGRESS_GFX:
+            draw.rounded_rectangle([(MARGIN, 312), (W - MARGIN, 336)], radius=4, fill=BG_ELEVATED)
+        else:
+            vp_area(draw, MARGIN, 312, W - MARGIN, 336, '[#####.....] 12/49')   # text field, see send_progress_bar
     wait_status_box(draw, 'Probing point 12 / 49')
     return img
 

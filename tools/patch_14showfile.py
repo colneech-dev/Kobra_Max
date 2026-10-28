@@ -165,6 +165,17 @@ def make_variable_icon_record(vp_addr, x, y, icon_id, icon_lib, show_when=1):
     return rec.ljust(32, bytes(1))
 
 
+def make_basic_graphics_record(vp_addr, x0, y0, x1, y1):
+    """Build a 32-byte 0x5A21 Basic Graphics ("drawing board") record (guide 7.22.1, layout inferred from the
+    other controls: type, SP, length, VP, area, then the dash settings, all zero = solid lines).
+
+      5A21 FFFF 0008 [vp] [Xs] [Ys] [Xe] [Ye] [dash enable/set] [dash pattern x4 bytes] 00...
+
+    The firmware draws into it by writing commands to `vp_addr` (e.g. 0004 = fill rectangle). EXPERIMENT."""
+    rec = struct.pack('>8H', 0x5A21, 0xFFFF, 0x0008, vp_addr, x0, y0, x1, y1)
+    return rec.ljust(32, bytes(1))
+
+
 def make_process_bar_record(vp_addr, x0, y0, x1, y1, border, fg, bg, vmax=100, vmin=0):
     """Build a 32-byte 0x5A23 Process Bar record (DWIN T5L DGUS II guide 7.23.1).
 
@@ -351,7 +362,8 @@ PAGE3 = STATUS_BAR + [
     make_text_record(TXT_PRINT_TIME,     8,   212, 130, 28, chars=9),
     make_text_record(TXT_PRINT_SPEED,    142, 212, 122, 28, chars=6),
     make_text_record(TXT_PRINT_COMMENT,  8,   264, 256, 30, chars=24),
-] + ([make_text_record(TXT_PRINT_BAR, 8, 168, 210, 24, cw=10, ch=20)] if uf.PROGRESS_BARS else [])
+] + ([(make_basic_graphics_record(TXT_PRINT_BAR, 8, 168, 218, 192) if uf.PROGRESS_GFX
+       else make_text_record(TXT_PRINT_BAR, 8, 168, 210, 24, cw=10, ch=20))] if uf.PROGRESS_BARS else [])
 # The progress "bar" is a text field, [#####.....] (firmware: send_progress_bar, 20 characters here): the DWIN
 # Process Bar control (0x5A23) never drew a fill on this display, text fields are the proven control.
 PAGE4 = PAGE3   # paused vs printing — identical VP layout
@@ -411,7 +423,8 @@ def _wait_records(name, b):
     if name != 'probe':
         recs.append(make_text_record(TXT_WAIT_STATUS, 8, 342, 256, 20, cw=10, ch=20))
     if name == 'leveling' and uf.PROGRESS_BARS:
-        recs.append(make_text_record(TXT_WAIT_BAR, 8, 312, 256, 24, cw=10, ch=20))   # 24 characters, see send_progress_bar
+        recs.append(make_basic_graphics_record(TXT_WAIT_BAR, 8, 312, 264, 336) if uf.PROGRESS_GFX
+                    else make_text_record(TXT_WAIT_BAR, 8, 312, 256, 24, cw=10, ch=20))   # 24 characters, see send_progress_bar
     if uf.SPINNER_ANIMATION:
         recs.append(_spinner_record(b))
     return recs

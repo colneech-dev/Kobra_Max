@@ -155,7 +155,36 @@ static void fmt_mm(char * const out, const size_t size, const float v, const boo
 // Progress "bar" as text, [####......] 44/49: the display's Process Bar control never drew a fill on this panel.
 // `width` is the text width of the field in characters (20 on the print page, 24 on the leveling page); the
 // optional `suffix` (e.g. " 44/49") is part of that width.
+// With AC_PROGRESS_GFX the bar is drawn by the display's Basic Graphics control instead (guide 7.22.7 "fill
+// rectangle", written to the control's VP): the whole track, then the filled part. EXPERIMENT: if the bar stays
+// empty/blue on the panel, set AC_PROGRESS_GFX to 0 (text bars).
+#if AC_PROGRESS_GFX
+static void send_progress_gfx(const uint32_t address, const uint8_t percent, const uint16_t x0, const uint16_t y0, const uint16_t x1, const uint16_t y1) {
+  const uint16_t track = 0x2945, fillc = 0xFB46;                  // RGB565: (42,42,42) and orange (255,107,53)
+  const uint16_t fx1 = x0 + 2 + (uint32_t)(x1 - x0 - 4) * constrain(percent, 0, 100) / 100;
+  const bool fill = fx1 > x0 + 2;
+  uint8_t b[40], n = 0;
+  auto w16 = [&](const uint16_t v) { b[n++] = v >> 8; b[n++] = v & 0xFF; };
+  b[n++] = 0x5A; b[n++] = 0xA5;
+  b[n++] = fill ? 0x1D : 0x13;                                    // length: 0x82 + VP + 8 or 13 words
+  b[n++] = 0x82;
+  w16(address);
+  w16(0x0004);                                                    // fill rectangle(s)
+  w16(fill ? 2 : 1);
+  w16(x0); w16(y0); w16(x1); w16(y1); w16(track);                 // the track
+  if (fill) { w16(x0 + 2); w16(y0 + 2); w16(fx1); w16(y1 - 2); w16(fillc); }   // the filled part
+  w16(0xFF00);                                                    // end of drawing
+  for (uint8_t i = 0; i < n; i++) TFTSer.write(b[i]);
+}
+#endif
+
 static void send_progress_bar(const uint32_t address, const uint8_t percent, const uint8_t width, const char * const suffix = "") {
+#if AC_PROGRESS_GFX
+  // rectangle of the bar for this VP (must match the 0x5A21 records in tools/patch_14showfile.py)
+  if (address == TXT_WAIT_BAR) send_progress_gfx(address, percent, 8, 312, 264, 336);
+  else                         send_progress_gfx(address, percent, 8, 168, 218, 192);
+  return;
+#endif
   char bar[40];
   const uint8_t sfx = strlen(suffix), inner = width - sfx - 2, fill = (uint16_t)constrain(percent, 0, 100) * inner / 100;
   bar[0] = '[';
