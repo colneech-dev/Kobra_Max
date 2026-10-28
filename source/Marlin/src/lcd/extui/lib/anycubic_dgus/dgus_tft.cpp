@@ -125,10 +125,12 @@ static void fit_text(char * const out, const char * const src, const uint8_t cha
 
 // The display only left-aligns text, and its characters are fixed width, so pad with leading spaces to
 // centre a short string in a box that holds `slots` characters.
-static void center_pad(char * const buf, const size_t size, const uint8_t slots) {
+// Measured on the panel (v23 photos): in the 10 px status lines a leading space is drawn about 15 px wide, not 10,
+// so `wide_space` pads with 1/3 of the free slots instead of 1/2 (the text then lands in the middle).
+static void center_pad(char * const buf, const size_t size, const uint8_t slots, const bool wide_space = false) {
   const size_t len = strlen(buf);
   if (len >= slots || len + 1 >= size) return;
-  size_t pad = (slots - len) / 2;
+  size_t pad = wide_space ? (slots - len + 1) / 3 : (slots - len) / 2;
   if (len + pad + 1 > size) pad = size - len - 1;
   memmove(buf + pad, buf, len + 1);
   memset(buf, ' ', pad);
@@ -1422,7 +1424,7 @@ void DgusTFT::WaitStatus() {
     sprintf(buf, "Pausing%s", dots[phase]);
   else
     sprintf(buf, "Stopping%s", dots[phase]);
-  center_pad(buf, sizeof(buf), 25);   // 25 characters of 10 px in the 256 px status line
+  center_pad(buf, sizeof(buf), 25, true);   // 25 characters of 10 px in the 256 px status line
   SendTxtToTFT(buf, TXT_WAIT_STATUS);
 }
 
@@ -2749,7 +2751,7 @@ void DgusTFT::page17_handle(void)
         fmt_mm(zs, sizeof(zs), getZOffset_mm(), true);
         sprintf_P(st, PSTR("Z offset %s mm"), zs);   // shown here too, in the line that is known to draw
       }
-      center_pad(st, sizeof(st), 25);
+      center_pad(st, sizeof(st), 25, true);
       SendTxtToTFT(st, TXT_WAIT_STATUS);
       // The value box goes blank when a button press makes the display redraw the page (it only draws a
       // text field when it is written), so send it again with every status refresh.
@@ -2922,7 +2924,7 @@ void DgusTFT::page19_handle(void)   // Filament
   else if (filament_running == FILA_OUT)     strcpy_P(str_buf, PSTR("Unloading filament..."));
   else if (filament_running == FILA_EXTRUDE) strcpy_P(str_buf, PSTR("Extruding 10 mm..."));
   else                                       strcpy_P(str_buf, PSTR("Ready"));
-  center_pad(str_buf, sizeof(str_buf), 25);
+  center_pad(str_buf, sizeof(str_buf), 25, true);
   SendTxtToTFT(str_buf, TXT_FILAMENT_STATUS);
 }
 
