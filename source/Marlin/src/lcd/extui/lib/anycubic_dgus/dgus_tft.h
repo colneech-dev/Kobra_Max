@@ -299,6 +299,7 @@
 
 // Terminal page (215) rolling 5-line log — addresses must match
 // tools/patch_14showfile.py's TXT_TERM_L0-L4 exactly.
+#define TXT_TERM_INPUT 0x2A10   // the command being typed on the keyboard page (page 6)
 #define TXT_TERM_L0    0x2920
 #define TXT_TERM_L1    0x2950
 #define TXT_TERM_L2    0x2980

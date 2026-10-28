@@ -463,6 +463,17 @@ def page_input_shaping():
     return img
 
 
+def page_keyboard():
+    """On-screen keyboard for the Terminal (page 6). Layout and key list: ui_features.keyboard_keys()."""
+    img, draw = new_page()
+    status_bar(draw)
+    x1, y1, x2, y2 = uf.KB_INPUT_BOX
+    vp_area(draw, x1, y1, x2, y2, 'G28')
+    for kx1, ky1, kx2, ky2, label, _code, style in uf.keyboard_keys():
+        btn(draw, kx1, ky1, kx2, ky2, label, style=style, fnt=F_SMALL if len(label) > 1 else F_BODY)
+    return img
+
+
 def page_tools():
     img, draw = new_page()
     status_bar(draw)
@@ -1071,9 +1082,11 @@ def page_terminal():
         btn(draw, x1, y, x2, y + 44, lbl, style=sty, fnt=F_TINY, icon=_TERM_ICONS.get(lbl))
     y += 52  # y = 358
 
-    # 2 preset buttons: M502  M500
-    btn(draw, MARGIN,       y, W // 2 - 4, y + 44, "M502 RESET", style='warning', fnt=F_TINY, icon=0xf1f8)
-    btn(draw, W // 2 + 4,  y, W - MARGIN,  y + 44, "M500 SAVE",  style='success', fnt=F_TINY, icon=0xf0c7)
+    # 3 more buttons: M502  M500  KEYBOARD
+    for i, (lbl, sty) in enumerate([("M502 RESET", 'warning'), ("M500 SAVE", 'success'), ("KEYBOARD", 'teal')]):
+        x1 = MARGIN + i * (bw + 4)
+        x2 = (W - MARGIN) if i == 2 else (x1 + bw)
+        btn(draw, x1, y, x2, y + 44, lbl, style=sty, fnt=F_TINY)
 
     footer_1btn(draw, "BACK", style='ghost')
     return img
@@ -1098,7 +1111,7 @@ def _build_page_map():
         3:  page_status_paused,
         4:  page_status_printing,
         5:  page_print_adjust,
-        6:  page_input_shaping,
+        6:  page_keyboard,
         7:  page_tools,
         8:  page_move,
         9:  page_temp,
