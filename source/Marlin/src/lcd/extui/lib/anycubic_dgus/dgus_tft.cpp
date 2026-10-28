@@ -152,6 +152,19 @@ static void fmt_mm(char * const out, const size_t size, const float v, const boo
   snprintf(out, size, "%s%ld.%02ld", (v < 0 && n) ? "-" : (plus ? "+" : ""), n / 100, n % 100);
 }
 
+// Progress "bar" as text, [####......] 44/49: the display's Process Bar control never drew a fill on this panel.
+// `width` is the text width of the field in characters (20 on the print page, 24 on the leveling page); the
+// optional `suffix` (e.g. " 44/49") is part of that width.
+static void send_progress_bar(const uint32_t address, const uint8_t percent, const uint8_t width, const char * const suffix = "") {
+  char bar[40];
+  const uint8_t sfx = strlen(suffix), inner = width - sfx - 2, fill = (uint16_t)constrain(percent, 0, 100) * inner / 100;
+  bar[0] = '[';
+  for (uint8_t i = 0; i < inner; i++) bar[1 + i] = i < fill ? '#' : '.';
+  bar[1 + inner] = ']';
+  strcpy(&bar[2 + inner], suffix);
+  DgusTFT::SendTxtToTFT(bar, address);
+}
+
 // Build id for the About page (tools/build_id.py: git hash, "-dirty" if uncommitted changes), so it is always
 // clear which firmware is on the printer. Without the "2.0.8-" prefix it fits the 21-character box.
 static const char * about_build_id() {
@@ -1340,7 +1353,9 @@ void DgusTFT::WaitStatus() {
   else if (leveling) {
     const unsigned total = GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y;
     sprintf(buf, "Probing %u/%u%s", (unsigned)probe_cnt, total, dots[phase]);
-    SendValueToTFT(constrain(probe_cnt * 100U / total, 0U, 100U), TXT_WAIT_BAR);   // Process Bar on the Leveling page
+    char sfx[12];
+    sprintf(sfx, " %u/%u", (unsigned)probe_cnt, total);
+    send_progress_bar(TXT_WAIT_BAR, constrain(probe_cnt * 100U / total, 0U, 100U), 24, sfx);   // Leveling page: [####....] 44/49
   }
   else if (preheat)
     sprintf(buf, "Hotend %u/%u Bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)getTargetTemp_celsius(E0),
@@ -1893,7 +1908,7 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
 
           sprintf(str_buf, "%d", (uint16_t)getProgress_percent());
           SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
-          SendValueToTFT(getProgress_percent(), TXT_PRINT_BAR);   // Process Bar control
+          send_progress_bar(TXT_PRINT_BAR, getProgress_percent(), 20);
 
           uint32_t time = 0;
           sprintf(str_buf, "%s H ", utostr3(time / 60));
@@ -2029,7 +2044,7 @@ void DgusTFT::page3_handle(void) {
     progress_last = getProgress_percent();
     sprintf(str_buf, "%u", progress_last);
     SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
-    SendValueToTFT(getProgress_percent(), TXT_PRINT_BAR);   // Process Bar control
+    send_progress_bar(TXT_PRINT_BAR, getProgress_percent(), 20);
   }
 
   // Get Printing Time
@@ -2103,12 +2118,12 @@ void DgusTFT::page4_handle(void) {
 		  sprintf(str_buf, "X:%d Y:%d Z:%s", (int)lroundf(getAxisPosition_mm(X)), (int)lroundf(getAxisPosition_mm(Y)), zs);// MELS MOD
 			SendTxtToTFT(str_buf, TXT_PRINT_COMMENT);// this will show the Z height
 			
-    if (progress_last != getProgress_percent()) {
-      sprintf(str_buf, "%d", getProgress_percent());
-      SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
-      SendValueToTFT(getProgress_percent(), TXT_PRINT_BAR);   // Process Bar control
-      progress_last = getProgress_percent();
-    }
+    // Sent every time round, not only when the percentage changes: a text field is only drawn when it is
+    // written, so a page redraw (e.g. back from Print Settings) would otherwise leave it blank for minutes.
+    sprintf(str_buf, "%d", getProgress_percent());
+    SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
+    send_progress_bar(TXT_PRINT_BAR, getProgress_percent(), 20);
+    progress_last = getProgress_percent();
   } else { // we are printing from a HOST
     char zs[14];
     fmt_mm(zs, sizeof(zs), getAxisPosition_mm(Z));
@@ -3439,7 +3454,7 @@ void DgusTFT::page171_handle(void)  // CHS power outage resume handler
 
         sprintf(str_buf, "%u", (uint16_t)getProgress_percent());
         SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
-        SendValueToTFT(getProgress_percent(), TXT_PRINT_BAR);   // Process Bar control
+        send_progress_bar(TXT_PRINT_BAR, getProgress_percent(), 20);
 
         ChangePageOfTFT(PAGE_STATUS2);               // show pause
 #ifdef CASE_LIGHT_ENABLE
@@ -3487,7 +3502,7 @@ void DgusTFT::page173_handle(void)  // ENG power outage resume handler
 
         sprintf(str_buf, "%u", (uint16_t)getProgress_percent());
         SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
-        SendValueToTFT(getProgress_percent(), TXT_PRINT_BAR);   // Process Bar control
+        send_progress_bar(TXT_PRINT_BAR, getProgress_percent(), 20);
 
         ChangePageOfTFT(PAGE_STATUS2);      // show pause
 
