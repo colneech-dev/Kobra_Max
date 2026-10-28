@@ -162,7 +162,7 @@ static void fmt_mm(char * const out, const size_t size, const float v, const boo
 // empty/blue on the panel, set AC_PROGRESS_GFX to 0 (text bars).
 #if AC_PROGRESS_GFX
 static void send_progress_gfx(const uint32_t address, const uint8_t percent, const uint16_t x0, const uint16_t y0, const uint16_t x1, const uint16_t y1) {
-  const uint16_t track = 0x2945, fillc = 0xFB46;                  // RGB565: (42,42,42) and orange (255,107,53)
+  const uint16_t track = 0x1082, fillc = 0xFB46;                  // RGB565: dark grey (16,16,16) and orange (255,107,53); the grey is neutral, so a red/blue swap cannot tint it
   const uint16_t fx1 = x0 + 2 + (uint32_t)(x1 - x0 - 4) * constrain(percent, 0, 100) / 100;
   const bool fill = fx1 > x0 + 2;
   uint8_t b[40], n = 0;
