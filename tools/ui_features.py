@@ -216,6 +216,10 @@ LEVELING_NOZZLE_TEMP = _define(_cfg_text, "LEVELING_NOZZLE_TEMP", 190)
 LEVELING_BED_TEMP    = _define(_cfg_text, "LEVELING_BED_TEMP", 60)
 
 # Terminal log (page 215): rows of 6x12 text. Shared by generate_screens.py (art) and patch_14showfile.py (text fields).
-TERM_LINES, TERM_ROW_H, TERM_Y0, TERM_COLS = 13, 14, 92, 40   # TERM_COLS = characters per row (AC_TERM_COLS - 1 in the firmware)
+TERM_LINES, TERM_ROW_H, TERM_Y0, TERM_COLS = 13, 14, 92, 36   # TERM_COLS = characters per row (AC_TERM_COLS - 1 in the firmware)
+TERM_TEXT_X, TERM_TEXT_W = 8, 224                              # the log text box; the scroll buttons take the strip to its right
+TERM_SCROLL_X1, TERM_SCROLL_X2 = 236, 264
+TERM_SCROLL_UP   = (TERM_SCROLL_X1, TERM_Y0, TERM_SCROLL_X2, TERM_Y0 + 86)
+TERM_SCROLL_DOWN = (TERM_SCROLL_X1, TERM_Y0 + 96, TERM_SCROLL_X2, TERM_Y0 + TERM_LINES * TERM_ROW_H)
 _hdr_text = _read(ROOT / "source/Marlin/src/lcd/extui/lib/anycubic_dgus/dgus_tft.h")
 assert (_define(_hdr_text, "AC_TERM_LINES", -1), _define(_hdr_text, "AC_TERM_COLS", -1)) == (TERM_LINES, TERM_COLS + 1),     "Terminal log size differs between dgus_tft.h (AC_TERM_LINES / AC_TERM_COLS) and tools/ui_features.py"

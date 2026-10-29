@@ -26,17 +26,6 @@
 #include <core_hooks.h>
 #include <drivers/panic/panic.h>
 
-// Anycubic Kobra Max uses fan_pwm_set_ratio() in controllerfan.cpp.
-// Map fan indices to the board's physical fan pins.
-void fan_pwm_set_ratio(uint8_t fan, uint8_t ratio) {
-  switch (fan) {
-    case 0: analogWrite(pin_t(FAN_PIN),  ratio); break;
-    case 1: analogWrite(pin_t(FAN1_PIN), ratio); break;
-    case 2: analogWrite(pin_t(FAN2_PIN), ratio); break;
-    default: break;
-  }
-}
-
 //
 // Emergency Parser
 //

@@ -25,6 +25,7 @@
 #if ENABLED(ADVANCED_PAUSE_FEATURE)
 
 #include "../../gcode.h"
+#include "../../../MarlinCore.h"   // activeFilamentChange
 #include "../../../feature/pause.h"
 #include "../../../module/motion.h"
 #include "../../../module/printcounter.h"
@@ -71,6 +72,8 @@
  *  Default values are used for omitted arguments.
  */
 void GcodeSuite::M600() {
+  activeFilamentChange = true;   // Kobra Max: show the filament-change page on the display
+
 
   #if ENABLED(MIXING_EXTRUDER)
     const int8_t eindex = get_target_e_stepper_from_command();

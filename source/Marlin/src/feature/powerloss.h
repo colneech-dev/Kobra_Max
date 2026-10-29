@@ -128,6 +128,8 @@ typedef struct {
     #endif
   } flag;
 
+  uint8_t print_progress;       // Anycubic: percent done when saved (shown on the recovery page)
+
   uint8_t valid_foot;
 
   bool valid() { return valid_head && valid_head == valid_foot; }

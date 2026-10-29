@@ -64,6 +64,8 @@ namespace ExtUI {
   enum heater_t   : uint8_t { H0, H1, H2, H3, H4, H5, BED, CHAMBER, COOLER };
   enum fan_t      : uint8_t { FAN0, FAN1, FAN2, FAN3, FAN4, FAN5, FAN6, FAN7 };
   enum result_t   : uint8_t { PID_STARTED, PID_BAD_EXTRUDER_NUM, PID_TEMP_TOO_HIGH, PID_TUNING_TIMEOUT, PID_DONE };
+  enum language_t : uint8_t { ENG, CHS };   // Anycubic DGUS
+  enum audio_t    : uint8_t { ON, OFF };   // Anycubic DGUS
 
   constexpr uint8_t extruderCount = EXTRUDERS;
   constexpr uint8_t hotendCount   = HOTENDS;
@@ -181,6 +183,7 @@ namespace ExtUI {
     inline uint16_t getProgress_permyriad() { return ui.get_progress_permyriad(); }
   #endif
   uint32_t getProgress_seconds_elapsed();
+  void clearProgress_seconds_elapsed();   // Anycubic DGUS: restart the print timer
 
   // Material Preheat Presets
   #if HAS_PREHEAT
@@ -338,6 +341,8 @@ namespace ExtUI {
   #if HAS_BED_PROBE
     float getProbeOffset_mm(const axis_t);
     void setProbeOffset_mm(const_float_t, const axis_t);
+    bool getProbeState();                                       // Anycubic DGUS probe test
+    void ProbeTare();                                           // Anycubic: reset the level sensor
   #endif
 
   // Backlash Control
@@ -359,6 +364,7 @@ namespace ExtUI {
     bool getFilamentRunoutEnabled();
     void setFilamentRunoutEnabled(const bool);
     bool getFilamentRunoutState();
+    uint8_t getFilamentRunoutOriginState();   // Anycubic: sensor reading at boot
     void setFilamentRunoutState(const bool);
 
     #if HAS_FILAMENT_RUNOUT_DISTANCE
@@ -475,6 +481,7 @@ namespace ExtUI {
   void onSteppersDisabled();
   void onSteppersEnabled();
   void onFactoryReset();
+  void onParamInit();   // Anycubic DGUS: after settings are loaded at startup
   void onStoreSettings(char *);
   void onLoadSettings(const char *);
   void onPostprocessSettings();

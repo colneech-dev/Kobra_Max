@@ -723,6 +723,7 @@ namespace ExtUI {
     bool getFilamentRunoutEnabled()                 { return runout.enabled; }
     void setFilamentRunoutEnabled(const bool value) { runout.enabled = value; }
     bool getFilamentRunoutState()                   { return runout.filament_ran_out; }
+    uint8_t getFilamentRunoutOriginState()          { return runout.get_state_original(); }
     void setFilamentRunoutState(const bool value)   { runout.filament_ran_out = value; }
 
     #if HAS_FILAMENT_RUNOUT_DISTANCE
@@ -931,6 +932,17 @@ namespace ExtUI {
   #if HAS_BED_PROBE
     float getProbeOffset_mm(const axis_t axis) { return probe.offset.pos[axis]; }
     void setProbeOffset_mm(const_float_t val, const axis_t axis) { probe.offset.pos[axis] = val; }
+
+    bool getProbeState() { return PROBE_TRIGGERED(); }
+
+    void ProbeTare() {
+      #ifdef NOZZLE_AS_PROBE
+        OUT_WRITE(AUTO_LEVEL_TX_PIN, LOW);
+        delay(300);
+        OUT_WRITE(AUTO_LEVEL_TX_PIN, HIGH);
+        delay(100);
+      #endif
+    }
   #endif
 
   #if ENABLED(BACKLASH_GCODE)
@@ -946,6 +958,10 @@ namespace ExtUI {
       void setBacklashSmoothing_mm(const_float_t value) { backlash.set_smoothing_mm(constrain(value, 0, 999)); }
     #endif
   #endif
+
+  void clearProgress_seconds_elapsed() {
+    print_job_timer.reset();
+  }
 
   uint32_t getProgress_seconds_elapsed() {
     const duration_t elapsed = print_job_timer.duration();
@@ -1219,6 +1235,9 @@ namespace ExtUI {
 // At the moment we hook into MarlinUI methods, but this could be cleaned up in the future
 
 void MarlinUI::init_lcd() { ExtUI::onStartup(); }
+#if ENABLED(ANYCUBIC_LCD_DGUS)
+  void MarlinUI::param_init() { ExtUI::onParamInit(); }
+#endif
 
 void MarlinUI::update() { ExtUI::onIdle(); }
 

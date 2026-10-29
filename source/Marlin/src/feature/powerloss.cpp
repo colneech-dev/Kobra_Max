@@ -204,6 +204,7 @@ void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=POW
     info.feedrate = uint16_t(MMS_TO_MMM(feedrate_mm_s));
     info.zraise = zraise;
     info.flag.raised = raised;                      // Was Z raised before power-off?
+    info.print_progress = card.percentDone();       // Anycubic: for the recovery page
 
     TERN_(GCODE_REPEAT_MARKERS, info.stored_repeat = repeat);
     TERN_(HAS_HOME_OFFSET, info.home_offset = home_offset);

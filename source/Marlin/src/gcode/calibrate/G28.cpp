@@ -23,6 +23,7 @@
 #include "../../inc/MarlinConfig.h"
 
 #include "../gcode.h"
+#include "../../MarlinCore.h"   // activeFilamentChange
 
 #include "../../module/endstops.h"
 #include "../../module/planner.h"
@@ -202,6 +203,8 @@
  *  Z   Home to the Z endstop
  */
 void GcodeSuite::G28() {
+  activeFilamentChange = false;   // Kobra Max: any homing ends a filament change
+
   DEBUG_SECTION(log_G28, "G28", DEBUGGING(LEVELING));
   if (DEBUGGING(LEVELING)) log_machine_info();
 

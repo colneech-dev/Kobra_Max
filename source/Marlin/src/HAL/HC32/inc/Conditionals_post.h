@@ -21,37 +21,10 @@
  */
 #pragma once
 
-// Map 2.0.8 USE_xMIN/MAX_PLUG defines to the 2.1.x USE_X_MIN/MAX form
-// expected by the HC32 endstop_interrupts driver.
-#if ENABLED(USE_XMIN_PLUG) && PIN_EXISTS(X_MIN)
-  #define USE_X_MIN 1
-#endif
-#if ENABLED(USE_XMAX_PLUG) && PIN_EXISTS(X_MAX)
-  #define USE_X_MAX 1
-#endif
-#if ENABLED(USE_YMIN_PLUG) && PIN_EXISTS(Y_MIN)
-  #define USE_Y_MIN 1
-#endif
-#if ENABLED(USE_YMAX_PLUG) && PIN_EXISTS(Y_MAX)
-  #define USE_Y_MAX 1
-#endif
-#if ENABLED(USE_ZMIN_PLUG) && PIN_EXISTS(Z_MIN)
-  #define USE_Z_MIN 1
-#endif
-#if ENABLED(USE_ZMAX_PLUG) && PIN_EXISTS(Z_MAX)
-  #define USE_Z_MAX 1
-#endif
-#if PIN_EXISTS(Z_MIN_PROBE)
-  #define USE_Z_MIN_PROBE 1
-#endif
-
-// 2.0.8 uses SDSUPPORT; 2.1.x uses HAS_MEDIA. Bridge so HC32 SanityCheck.h doesn't
-// undef SDCARD_EEPROM_EMULATION when the SD card is present.
-#if ENABLED(SDSUPPORT) && !defined(HAS_MEDIA)
-  #define HAS_MEDIA 1
-#endif
-
-#if ANY(I2C_EEPROM, SPI_EEPROM)
+// If no real EEPROM, Flash emulation, or SRAM emulation is available fall back to SD emulation
+#if USE_FALLBACK_EEPROM
+  #define SDCARD_EEPROM_EMULATION
+#elif ANY(I2C_EEPROM, SPI_EEPROM)
   #define USE_SHARED_EEPROM 1
 #endif
 

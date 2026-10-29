@@ -31,6 +31,7 @@
 #include "runout.h"
 
 FilamentMonitor runout;
+uint8_t FilamentSensorBase::state_original = FIL_RUNOUT_STATE;
 
 bool FilamentMonitorBase::enabled = true,
      FilamentMonitorBase::filament_ran_out;  // = false

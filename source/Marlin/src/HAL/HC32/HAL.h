@@ -29,12 +29,7 @@
 
 #define CPU_32_BIT
 
-// Forward declarations needed before MarlinConfig.h circular include.
-// The top-level HAL/HAL.h defines watchdog_refresh() calling HAL_watchdog_refresh(),
-// which isn't defined until later in this file. Declaring it here breaks the cycle.
-inline void HAL_watchdog_refresh();
-
-#include "../../inc/MarlinConfig.h"
+#include "../../inc/MarlinConfigPre.h"
 
 #include "../shared/Marduino.h"
 #include "../shared/math_32bit.h"
@@ -130,39 +125,3 @@ inline void HAL_watchdog_refresh();
 // MarlinHAL implementation
 //
 #include "MarlinHAL.h"
-
-//
-// 2.0.8 free-function HAL API bridged to 2.1.x MarlinHAL class methods
-//
-inline void HAL_init()                { MarlinHAL::init(); }
-inline void HAL_init_board()          { MarlinHAL::init_board(); }
-inline void HAL_idletask()            { MarlinHAL::idletask(); }
-inline void HAL_watchdog_init()       { MarlinHAL::watchdog_init(); }
-inline void HAL_watchdog_refresh()    { MarlinHAL::watchdog_refresh(); }
-inline void watchdog_init()           { MarlinHAL::watchdog_init(); }
-inline void HAL_reboot()              { MarlinHAL::reboot(); }
-inline uint8_t HAL_get_reset_source() { return MarlinHAL::get_reset_source(); }
-inline void HAL_clear_reset_source()  { MarlinHAL::clear_reset_source(); }
-inline void HAL_adc_init()            { MarlinHAL::adc_init(); }
-
-inline void set_pwm_duty(const pin_t pin, const uint16_t v,
-                         const uint16_t scale=255, const bool invert=false) {
-  MarlinHAL::set_pwm_duty(pin, v, scale, invert);
-}
-inline void set_pwm_frequency(const pin_t pin, const uint16_t f) {
-  MarlinHAL::set_pwm_frequency(pin, f);
-}
-
-#define HAL_START_ADC(pin)  do { MarlinHAL::adc_enable(pin); MarlinHAL::adc_start(pin); } while(0)
-#define HAL_ADC_READY()     MarlinHAL::adc_ready()
-#define HAL_READ_ADC()      MarlinHAL::adc_value()
-
-// 2.0.8 ADC vref alias: 2.1.x HC32 HAL uses HAL_ADC_VREF_MV
-#ifndef HAL_ADC_VREF
-  #define HAL_ADC_VREF HAL_ADC_VREF_MV
-#endif
-
-// 2.0.8 free-function alias for MarlinHAL::freeMemory()
-inline int freeMemory() { return MarlinHAL::freeMemory(); }
-
-#define HAL_IDLETASK 1
