@@ -1231,7 +1231,13 @@ void setup() {
 
   #if ENABLED(CASE_LIGHT_ENABLE)
     #if DISABLED(CASE_LIGHT_USE_NEOPIXEL)
-      if (PWM_PIN(CASE_LIGHT_PIN)) SET_PWM(CASE_LIGHT_PIN); else SET_OUTPUT(CASE_LIGHT_PIN);
+      #if CASELIGHT_USES_BRIGHTNESS
+        if (PWM_PIN(CASE_LIGHT_PIN)) SET_PWM(CASE_LIGHT_PIN); else SET_OUTPUT(CASE_LIGHT_PIN);
+      #else
+        // Plain on/off: caselight.update() drives the pin with WRITE(), which a pin left in timer (PWM) mode ignores,
+        // so the HC32 build (where PB8 can be a timer pin) never lit the light.
+        SET_OUTPUT(CASE_LIGHT_PIN);
+      #endif
     #endif
     SETUP_RUN(caselight.update_brightness());
   #endif
