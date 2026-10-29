@@ -39,7 +39,13 @@ public:
 
   static void init() {
     #if NEED_CASE_LIGHT_PIN
-      if (pin_is_pwm()) SET_PWM(CASE_LIGHT_PIN); else SET_OUTPUT(CASE_LIGHT_PIN);
+      #if CASELIGHT_USES_BRIGHTNESS
+        if (pin_is_pwm()) SET_PWM(CASE_LIGHT_PIN); else SET_OUTPUT(CASE_LIGHT_PIN);
+      #else
+        // Plain on/off: update() drives the pin with WRITE(), which a pin left in timer (PWM) mode ignores. On the HC32
+        // PB8 can be a timer pin, which is why the Kobra Max light never came on until this was forced to plain output.
+        SET_OUTPUT(CASE_LIGHT_PIN);
+      #endif
     #endif
     update_brightness();
   }
