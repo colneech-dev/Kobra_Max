@@ -45,11 +45,11 @@ DISPLAY_NEW = {
     ],
     214: [  # Page 215 — Terminal (new)
         ['214', 'Text', '0x2A10', '0xFFFF', 'Text', 'Terminal keyboard input'],
-        ['214', 'Text', '0x2920', '0xFFFF', 'Text', 'Terminal log line 0'],
-        ['214', 'Text', '0x2950', '0xFFFF', 'Text', 'Terminal log line 1'],
-        ['214', 'Text', '0x2980', '0xFFFF', 'Text', 'Terminal log line 2'],
-        ['214', 'Text', '0x29B0', '0xFFFF', 'Text', 'Terminal log line 3'],
-        ['214', 'Text', '0x29E0', '0xFFFF', 'Text', 'Terminal log line 4'],
+        ['214', 'Text', '0x2C00', '0xFFFF', 'Text', 'Terminal log line 0 (6x12)'],
+        ['214', 'Text', '0x2C20', '0xFFFF', 'Text', 'Terminal log line 1 (6x12)'],
+        ['214', 'Text', '0x2C40', '0xFFFF', 'Text', 'Terminal log line 2 (6x12)'],
+        ['214', 'Text', '0x2C60', '0xFFFF', 'Text', 'Terminal log line 3 (6x12)'],
+        ['214', 'Text', '0x2C80', '0xFFFF', 'Text', 'Terminal log line 4 (6x12)'],
     ],
     # Page 216 (Thermal Tuning) and 217 (Factory Reset confirm) have no VP
     # display controls — no rows needed in DisplayConfig.
