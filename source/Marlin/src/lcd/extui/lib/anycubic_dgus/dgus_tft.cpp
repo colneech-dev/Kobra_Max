@@ -44,6 +44,7 @@
 #include "../../../../MarlinCore.h"
 #include "../../../../feature/powerloss.h"
 #include "../../../../module/printcounter.h"
+#include "../../../../module/stepper.h"
 //#include "../../module/planner.h"
 
 namespace Anycubic {
@@ -1589,7 +1590,7 @@ void DgusTFT::SelectFile() {
   selectedfile[command_len - 5] = '\0';// MEL_FOLDER (was 5)
   gcodeComment = " G-Code Status Area ";// MEL_MOD malebuffy
 //#if ACDEBUG(AC_FILE)
-  SERIAL_ECHOLNPAIR_F(" Selected File: ", selectedfile);
+  SERIAL_ECHOLNPGM(" Selected File: ", selectedfile);
 //#endif
   switch (selectedfile[0]) {
     case '/':   // Valid file selected
@@ -3709,7 +3710,7 @@ void DgusTFT::page177_to_198_handle(void)
         ChangePageOfTFT_DevicePage(page_index_last);
       }
 
-      disable_all_steppers();
+      stepper.disable_all_steppers();
 
       break;
 
