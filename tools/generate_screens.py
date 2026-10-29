@@ -678,9 +678,8 @@ def page_thermal_tune():
                 f"M303 E-1 S{uf.PID_BED_TUNE_TEMP} C8  |  bed PID  |  ~8 min", F_TINY, GRAY)
 
     separator(draw, 348)
-    text_center(draw, (0, 354, W, 370), "Results are saved automatically (M500)", F_TINY, DGRAY)
-    text_center(draw, (0, 372, W, 388), "No progress is shown  |  wait for the heater to settle",
-                F_TINY, DGRAY)
+    vp_area(draw, MARGIN, 358, W - MARGIN, 382, 'Hotend 143/200 tuning...')   # progress / result (TXT_TUNE_STATUS)
+    text_center(draw, (0, 392, W, 408), "Results are saved automatically (M500)", F_TINY, DGRAY)
 
     footer_1btn(draw, "BACK", style='ghost')
     return img

@@ -131,6 +131,7 @@ namespace ExtUI {
   #if HAS_PID_HEATING
     void onPidTuning(const result_t rst) {
       // Called for temperature PID tuning result
+      Dgus.PidTuning(rst);
     }
   #endif
 
