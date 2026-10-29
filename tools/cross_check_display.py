@@ -159,7 +159,8 @@ def parse_handlers(text):
 def handler_for(page, idle_text):
     """Name of the handler IdleLoop runs for a device page, or None."""
     # Mirrors the explicit branches of DgusTFT::IdleLoop (keep in sync when they change).
-    explicit = {115: '115', 117: '117', 170: '170', 171: '171', 173: '173',
+    explicit = {115: '115', 117: '11', 170: '11', 171: '171',   # the Mute pages run the System page's handler
+                173: '173',
                 175: '175', 176: '176', 213: '213', 93: '213', 214: '214', 215: '215',
                 216: '216', 217: '217', 187: '199_to_200', 188: '199_to_200'}
     if page in explicit:
@@ -258,7 +259,9 @@ def main():
 
         # [1] BMP freshness
         bmp = DWIN_SET / f'{name}.bmp'
-        if not bmp.exists():
+        if pg in uf.HIDDEN_PAGES:
+            pass   # never generated or packaged
+        elif not bmp.exists():
             err(f"p{pg}: {bmp} missing")
         elif uf.BOOT_FIRST <= pg <= uf.BOOT_LAST:
             pass   # boot-animation frame now (the Chinese-language page 93 is not shown by the English firmware)
@@ -316,7 +319,7 @@ def main():
             else:
                 dead = keys - handlers[h]
                 if pg == uf.KEYBOARD_PAGE:   # the character keys (16..) are handled by the handler's default branch
-                    dead -= set(range(16, 16 + len(uf.KB_CHARS)))
+                    dead -= set(range(uf.KB_KEY_BASE, uf.KB_KEY_BASE + len(uf.KB_CHARS)))
                 if dead:
                     err(f'p{pg}: zone keys {sorted(dead)} have no case in page{h}_handle')
 

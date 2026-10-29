@@ -170,7 +170,11 @@ PID_BED_TUNE_TEMP    = _define(_defs_text, "AC_PID_BED_TUNE_TEMP", PID_BED_TUNE_
 # Key codes: 1 CANCEL, 2 SEND, 3 DEL, 4 CLR, 5 SPACE, 16 + index into KB_CHARS for the character keys.
 KEYBOARD_PAGE = 6
 _m = re.search(r'^\s*#define\s+AC_KB_CHARS\s+"([^"]+)"', _defs_text, re.M)
-KB_CHARS = _m.group(1) if _m else "1234567890QWERTYUIOPASDFGHJKL.ZXCVBNM-,/"
+if not _m:
+    raise SystemExit("ui_features: AC_KB_CHARS not found in dgus_tft_defs.h (the keyboard art and zones are generated from it)")
+KB_CHARS = _m.group(1)
+KB_KEY_BASE = 16        # first character key's code (the firmware's page6_handle default branch subtracts the same 16)
+assert len(KB_CHARS) <= 40, "the keyboard has room for 4 rows of 10 character keys"
 KB_X0, KB_KEY_W, KB_PITCH_X = 2, 25, 27            # ten keys across 272 px
 KB_Y0, KB_KEY_H, KB_PITCH_Y = 108, 44, 48
 KB_INPUT_BOX = (4, 60, 268, 100)                    # the text field showing what is being typed
@@ -182,14 +186,15 @@ def keyboard_keys():
     for i, ch in enumerate(KB_CHARS):
         r, c = divmod(i, 10)
         x1, y1 = KB_X0 + c * KB_PITCH_X, KB_Y0 + r * KB_PITCH_Y
-        keys.append((x1, y1, x1 + KB_KEY_W, y1 + KB_KEY_H, ch, 16 + i, 'ghost' if ch.isdigit() else 'normal'))
+        keys.append((x1, y1, x1 + KB_KEY_W, y1 + KB_KEY_H, ch, KB_KEY_BASE + i, 'ghost' if ch.isdigit() else 'normal'))
+    x_r = KB_X0 + 9 * KB_PITCH_X + KB_KEY_W   # right edge of the last key column (= 270)
     y = KB_Y0 + 4 * KB_PITCH_Y
-    keys += [(2, y, 146, y + KB_KEY_H, "SPACE", 5, 'normal'),
+    keys += [(KB_X0, y, 146, y + KB_KEY_H, "SPACE", 5, 'normal'),
              (150, y, 208, y + KB_KEY_H, "DEL", 3, 'warning'),
-             (212, y, 270, y + KB_KEY_H, "CLR", 4, 'danger')]
+             (212, y, x_r, y + KB_KEY_H, "CLR", 4, 'danger')]
     y += KB_PITCH_Y
-    keys += [(2, y, 134, y + KB_KEY_H, "CANCEL", 1, 'ghost'),
-             (138, y, 270, y + KB_KEY_H, "SEND", 2, 'success')]
+    keys += [(KB_X0, y, 134, y + KB_KEY_H, "CANCEL", 1, 'ghost'),
+             (138, y, x_r, y + KB_KEY_H, "SEND", 2, 'success')]
     return keys
 
 
@@ -211,4 +216,6 @@ LEVELING_NOZZLE_TEMP = _define(_cfg_text, "LEVELING_NOZZLE_TEMP", 190)
 LEVELING_BED_TEMP    = _define(_cfg_text, "LEVELING_BED_TEMP", 60)
 
 # Terminal log (page 215): rows of 6x12 text. Shared by generate_screens.py (art) and patch_14showfile.py (text fields).
-TERM_LINES, TERM_ROW_H, TERM_Y0 = 13, 14, 92
+TERM_LINES, TERM_ROW_H, TERM_Y0, TERM_COLS = 13, 14, 92, 40   # TERM_COLS = characters per row (AC_TERM_COLS - 1 in the firmware)
+_hdr_text = _read(ROOT / "source/Marlin/src/lcd/extui/lib/anycubic_dgus/dgus_tft.h")
+assert (_define(_hdr_text, "AC_TERM_LINES", -1), _define(_hdr_text, "AC_TERM_COLS", -1)) == (TERM_LINES, TERM_COLS + 1),     "Terminal log size differs between dgus_tft.h (AC_TERM_LINES / AC_TERM_COLS) and tools/ui_features.py"
