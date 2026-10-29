@@ -174,7 +174,7 @@
 // rendered on hardware despite firmware correctly sending to it (confirmed
 // via live serial trace) while every other status-bar VP worked. Moved to
 // an address in the genuinely-free gap between TXT_STATS_PRINTS_FILAMENT
-// (0x2830) and TXT_TERM_L0 (0x2920) — must match tools/patch_14showfile.py.
+// (0x2830) and the old terminal log (0x2920) — must match tools/patch_14showfile.py.
 #define TXT_MAIN_BED        0x2880
 #define TXT_MAIN_HOTEND     0x2030
 #define TXT_MAIN_MESSAGE    0x2060
@@ -297,14 +297,12 @@
 #define TXT_STEP_SEL1    0x2BC0
 #define TXT_STEP_SEL2    0x2BD0
 
-// Terminal page (215) rolling 5-line log — addresses must match
-// tools/patch_14showfile.py's TXT_TERM_L0-L4 exactly.
+// Terminal page (215) rolling log, small 6x12 text — must match tools/patch_14showfile.py's
+// TXT_TERM_LOG / TERM_LINES exactly. Row i is the text field at TXT_TERM_LOG + i * 0x20.
 #define TXT_TERM_INPUT 0x2A10   // the command being typed on the keyboard page (page 6)
-#define TXT_TERM_L0    0x2920
-#define TXT_TERM_L1    0x2950
-#define TXT_TERM_L2    0x2980
-#define TXT_TERM_L3    0x29B0
-#define TXT_TERM_L4    0x29E0
+#define TXT_TERM_LOG   0x2C00
+#define AC_TERM_LINES  13
+#define AC_TERM_COLS   41       // characters per row (246 of the 253 px box), plus the terminating NUL
 
 
 /*********************** KEY VALUE **************************/

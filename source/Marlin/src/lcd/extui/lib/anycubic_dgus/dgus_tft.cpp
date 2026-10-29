@@ -2220,14 +2220,14 @@ void DgusTFT::page5_handle(void)          // print settings (the variant without
 // pictures and a read-back of the typed text.) Key codes: 1 CANCEL, 2 SEND, 3 DEL, 4 CLR, 5 SPACE, 16.. = AC_KB_CHARS.
 static char kb_buf[AC_KB_MAX + 1] = "";
 
-// The Terminal's 5-line log (page 215), shared with the keyboard page.
-static char term_log[5][24] = { "", "", "", "", "" };
+// The Terminal's scrolling log (page 215), shared with the keyboard page.
+static char term_log[AC_TERM_LINES][AC_TERM_COLS];
 
 // Printer replies: for a few seconds after a command is sent, the host serial port's output is split into lines
 // by a write hook (called from the same thread as the idle loop) and the idle loop adds them to the log.
-static char     term_rx_line[40];
+static char     term_rx_line[AC_TERM_COLS];
 static uint8_t  term_rx_len = 0;
-static char     term_rx_q[6][40];
+static char     term_rx_q[6][AC_TERM_COLS];
 static uint8_t  term_rx_head = 0, term_rx_tail = 0;
 static bool     term_capture = false;
 static millis_t term_capture_until = 0;
@@ -2248,12 +2248,12 @@ static void term_rx_hook(void *, uint8_t c) {
 }
 
 static void term_log_add(const char * const text) {
-  for (uint8_t i = 0; i < 4; i++) strcpy(term_log[i], term_log[i + 1]);   // older lines up, newest at the bottom
-  strlcpy(term_log[4], text, sizeof(term_log[4]));
+  for (uint8_t i = 0; i < AC_TERM_LINES - 1; i++) strcpy(term_log[i], term_log[i + 1]);   // older lines up, newest at the bottom
+  strlcpy(term_log[AC_TERM_LINES - 1], text, AC_TERM_COLS);
 }
 
 static void term_log_push(const char * const cmd) {
-  char s[sizeof(term_log[4])];
+  char s[AC_TERM_COLS];
   snprintf(s, sizeof(s), "> %s", cmd);
   term_log_add(s);
   term_rx_len = 0;
@@ -2263,8 +2263,7 @@ static void term_log_push(const char * const cmd) {
 }
 
 static void term_log_send() {
-  static const uint16_t vps[5] = { TXT_TERM_L0, TXT_TERM_L1, TXT_TERM_L2, TXT_TERM_L3, TXT_TERM_L4 };
-  for (uint8_t i = 0; i < 5; i++) DgusTFT::SendTxtToTFT(term_log[i], vps[i]);
+  for (uint8_t i = 0; i < AC_TERM_LINES; i++) DgusTFT::SendTxtToTFT(term_log[i], TXT_TERM_LOG + i * 0x20);
 }
 
 // Idle loop: move captured reply lines into the log (the 'ok' / 'echo:' decoration is dropped).
@@ -4134,7 +4133,7 @@ void DgusTFT::page214_handle(void) {
 
 // Page 215 — Terminal. Fixed preset command buttons (not free-text G-code
 // entry — the display's zone list has no keyboard-input record for this
-// page), each logging into a 5-line rolling display via TXT_TERM_L0-L4.
+// page), each logging into the rolling display at TXT_TERM_LOG.
 void DgusTFT::page215_handle(void) {
   static millis_t flash_time = 0;
 

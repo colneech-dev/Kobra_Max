@@ -1062,13 +1062,13 @@ def page_terminal():
     title_bar(draw, "TERMINAL")
     y = CONTENT_Y1  # = 92
 
-    # Response log — 5 rows, each 38px
-    for i, ph in enumerate(['ok', 'echo: N1 G28*18', 'T:220/220 B:60/60', 'ok', 'ok']):
+    # Response log — TERM_LINES rows of small text (patch_14showfile.py draws the text into the same rows)
+    for i in range(uf.TERM_LINES):
         row_bg = BG_SURFACE if i % 2 == 0 else BG_DARK
-        draw.rectangle([(0, y), (W - 1, y + 36)], fill=row_bg)
-        text_left(draw, MARGIN, y + 10, ">", F_SMALL, TEAL)
-        vp_area(draw, MARGIN + 14, y + 6, W - MARGIN, y + 30, ph)
-        y += 38  # y: 92, 130, 168, 206, 244  → ends at 282
+        draw.rectangle([(0, y), (W - 1, y + uf.TERM_ROW_H - 1)], fill=row_bg)
+        vp_area(draw, MARGIN, y, W - MARGIN, y + uf.TERM_ROW_H, visible=False)
+        y += uf.TERM_ROW_H   # 92 + 13 * 14 = 274
+    y = 282
 
     separator(draw, y + 2)
     text_left(draw, MARGIN, y + 6, "SEND COMMAND", F_TINY, GRAY);  y += 24  # y = 282+24 = 306

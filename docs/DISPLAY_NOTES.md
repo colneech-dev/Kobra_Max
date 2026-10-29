@@ -153,7 +153,7 @@ control* in the show file watches one VP and draws it; a *touch control* writes 
 | `0x2330 … 0x23C0`, `0x23F0 … 0x2480` | temperature / speed page values | Temperature, Speed & fan |
 | `0x2600` | `TXT_LEVEL_OFFSET` | Z offset text |
 | `0x2690 …` | About / statistics text | (About and Statistics share addresses) |
-| `0x2920 … 0x29E0` | `TXT_TERM_L0…4` | Terminal log |
+| `0x2C00 + n·0x20` (13 rows) | `TXT_TERM_LOG` | Terminal log, 6x12 text |
 | `0x2A80` | `TXT_WAIT_STATUS` | live status line on wait screens |
 | `0x2BB0 / 0x2BC0 / 0x2BD0` | `TXT_STEP_SEL0..2` | Move-axes step selection: 1 shows the orange copy of that button (Variable Icon) |
 | `0x2BA0` | `TXT_FILAMENT_STATUS` | Filament page status line |

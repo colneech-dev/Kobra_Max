@@ -209,3 +209,6 @@ GRID_POINTS = int(_define(_cfg_text, "GRID_MAX_POINTS_X", 7)) ** 2
 MARLIN_VERSION = _define(_read(_VER), "SHORT_BUILD_VERSION", "?")
 LEVELING_NOZZLE_TEMP = _define(_cfg_text, "LEVELING_NOZZLE_TEMP", 190)
 LEVELING_BED_TEMP    = _define(_cfg_text, "LEVELING_BED_TEMP", 60)
+
+# Terminal log (page 215): rows of 6x12 text. Shared by generate_screens.py (art) and patch_14showfile.py (text fields).
+TERM_LINES, TERM_ROW_H, TERM_Y0 = 13, 14, 92

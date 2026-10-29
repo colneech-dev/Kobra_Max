@@ -302,11 +302,10 @@ TXT_STEP_SEL2 = 0x2BD0
 
 # Terminal (215)
 TXT_TERM_INPUT = 0x2A10
-TXT_TERM_L0    = 0x2920
-TXT_TERM_L1    = 0x2950
-TXT_TERM_L2    = 0x2980
-TXT_TERM_L3    = 0x29B0
-TXT_TERM_L4    = 0x29E0
+# Log: TERM_LINES rows of 6x12 text, TERM_ROW_H apart, one text field per row at TXT_TERM_LOG + i * 0x20
+# (the firmware's AC_TERM_LINES / TXT_TERM_LOG must match; generate_screens.py draws the rows from the same numbers).
+TXT_TERM_LOG = 0x2C00
+TERM_LINES, TERM_ROW_H, TERM_Y0 = uf.TERM_LINES, uf.TERM_ROW_H, uf.TERM_Y0
 
 # ── Shared record sets ─────────────────────────────────────────────────────────
 # W=272, H=480, CONTENT_Y1=92, MARGIN=8, STATUS_Y2=54
@@ -543,11 +542,9 @@ PAGE214 = STATUS_BAR + [
 #   Row 0: vp(22,  96, 242, 28)  Row 4: vp(22, 248, 242, 28)
 # Command buttons have no VP records (they enqueue G-code directly via key press).
 PAGE215 = STATUS_BAR + [
-    make_text_record(TXT_TERM_L0,   22,  98, 242, 20, cw=10, ch=20),
-    make_text_record(TXT_TERM_L1,   22, 136, 242, 20, cw=10, ch=20),
-    make_text_record(TXT_TERM_L2,   22, 174, 242, 20, cw=10, ch=20),
-    make_text_record(TXT_TERM_L3,   22, 212, 242, 20, cw=10, ch=20),
-    make_text_record(TXT_TERM_L4,   22, 250, 242, 20, cw=10, ch=20),
+] + [
+    make_text_record(TXT_TERM_LOG + i * 0x20, 8, TERM_Y0 + i * TERM_ROW_H, 256, TERM_ROW_H, cw=6, ch=12)
+    for i in range(TERM_LINES)
 ]
 
 # Pages 216/217 — Thermal Tuning / Factory Reset confirm
