@@ -24,6 +24,6 @@ Upstream trees used for comparison live in `_marlin_upstream/` (git-ignored): `M
 
 * Anycubic's flash-based outage record (`FLASH_OUTAGE_DATA_ADDR`): the 2.1.2.9 SD-file power-loss recovery is used instead; outage detection through `POWER_LOSS_PIN` (PC2, also the voltage monitor) needs checking.
 * `mel_PrintAbort` no longer affects `PrintCounter` (2.1.2.9 counts a print as finished only when `stop(true)`).
-* Case-light pin mode (`MarlinCore.cpp`): the fix from `kobra-max-hc32` (plain output when brightness control is off) still has to be applied here.
+* Case light: the pin-mode fix (plain output when brightness control is off) is in `feature/caselight.h` (`init()`).
 * The Terminal reply-capture hook (`SERIAL_RUNTIME_HOOK`) and every other change made on `kobra-max-hc32` after commit 7cfa4d5 live in the DGUS library, which was copied from that branch's latest state.
 * Nothing from this branch has been flashed yet.
