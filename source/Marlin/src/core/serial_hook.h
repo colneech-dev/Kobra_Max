@@ -23,12 +23,6 @@
 
 #include "serial_base.h"
 
-// Ensure NUM_SERIAL has a default so MultiSerial template guards work even when
-// serial_hook.h is parsed before src/HAL/HAL.h defines it.
-#ifndef NUM_SERIAL
-  #define NUM_SERIAL 1
-#endif
-
 // A mask containing a bitmap of the serial port to act upon
 // This is written to ensure a serial index is never used as a serial mask
 class SerialMask {
@@ -203,8 +197,6 @@ struct RuntimeSerial : public SerialBase< RuntimeSerial<SerialT> >, public Seria
   RuntimeSerial(const bool e, Args... args) : BaseClassT(e), SerialT(args...), writeHook(0), eofHook(0), userPointer(0) {}
 };
 
-#if NUM_SERIAL > 1
-
 #define _S_CLASS(N) class Serial##N##T,
 #define _S_NAME(N) Serial##N##T,
 
@@ -266,8 +258,8 @@ struct MultiSerial : public SerialBase< MultiSerial< REPEAT(NUM_SERIAL, _S_NAME)
     #undef _S_END
   }
   bool connected() {
-    bool ret = false;
-    #define _S_CONNECTED(N) if (portMask.enabled(output[N]) && CALL_IF_EXISTS(bool, &serial##N, connected)) ret = true;
+    bool ret = true;
+    #define _S_CONNECTED(N) if (portMask.enabled(output[N]) && !CALL_IF_EXISTS(bool, &serial##N, connected)) ret = false;
     REPEAT(NUM_SERIAL, _S_CONNECTED);
     #undef _S_CONNECTED
     return ret;
@@ -283,7 +275,7 @@ struct MultiSerial : public SerialBase< MultiSerial< REPEAT(NUM_SERIAL, _S_NAME)
     #undef _S_FLUSH
   }
   NO_INLINE void flushTX() {
-    #define _S_FLUSHTX(N) if (portMask.enabled(output[N])) CALL_IF_EXISTS(void, &serial##N, flushTX);
+    #define _S_FLUSHTX(N) if (portMask.enabled(output[N])) CALL_IF_EXISTS(void, &serial0, flushTX);
     REPEAT(NUM_SERIAL, _S_FLUSHTX);
     #undef _S_FLUSHTX
   }
@@ -304,8 +296,6 @@ struct MultiSerial : public SerialBase< MultiSerial< REPEAT(NUM_SERIAL, _S_NAME)
     : BaseClassT(e), portMask(mask) REPEAT(NUM_SERIAL, _S_INIT) {}
 
 };
-
-#endif // NUM_SERIAL > 1
 
 // Build the actual serial object depending on current configuration
 #define Serial1Class TERN(SERIAL_RUNTIME_HOOK, RuntimeSerial, BaseSerial)

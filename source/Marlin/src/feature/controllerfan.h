@@ -60,16 +60,16 @@ class ControllerFan {
     #else
       static const controllerFan_settings_t &settings;
     #endif
-    static inline bool state() { return speed > 0; }
-    static inline void init() { reset(); }
-    static inline void reset() { TERN_(CONTROLLER_FAN_EDITABLE, settings = controllerFan_defaults); }
+    #if ENABLED(FAN_SOFT_PWM)
+      static uint8_t soft_pwm_speed;
+    #endif
+    static bool state() { return speed > 0; }
+    static void init() { reset(); }
+    static void reset() { TERN_(CONTROLLER_FAN_EDITABLE, settings = controllerFan_defaults); }
     static void setup();
     static void update();
 };
 
 extern ControllerFan controllerFan;
-
-extern void fan_pwm_set_ratio(uint8_t fan, uint8_t ratio);
-
 
 #endif

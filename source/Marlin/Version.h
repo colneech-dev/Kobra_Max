@@ -28,7 +28,7 @@
 /**
  * Marlin release version identifier
  */
-//#define SHORT_BUILD_VERSION "bugfix-2.0.x"
+//#define SHORT_BUILD_VERSION "2.1.2.9"
 
 /**
  * Verbose version identifier which should contain a reference to the location
@@ -41,7 +41,14 @@
  * here we define this default string as the date where the latest release
  * version was tagged.
  */
-//#define STRING_DISTRIBUTION_DATE "2019-07-10"
+//#define STRING_DISTRIBUTION_DATE "2026-08-12"
+
+/**
+ * The protocol for communication to the host. Protocol indicates communication
+ * standards such as the use of ASCII, "echo:" and "error:" line prefixes, etc.
+ * (Other behaviors are given by the firmware version and capabilities report.)
+ */
+//#define PROTOCOL_VERSION "1.0"
 
 /**
  * Defines a generic printer name to be output to the LCD after booting Marlin.
@@ -50,8 +57,8 @@
 
 /**
  * The SOURCE_CODE_URL is the location where users will find the Marlin Source
- * Code which is installed on the device. In most cases ¡ªunless the manufacturer
- * has a distinct Github fork¡ª the Source Code URL should just be the main
+ * Code which is installed on the device. In most cases â€”unless the manufacturer
+ * has a distinct Github forkâ€” the Source Code URL should just be the main
  * Marlin repository.
  */
 //#define SOURCE_CODE_URL "github.com/MarlinFirmware/Marlin"
@@ -68,8 +75,8 @@
 //#define WEBSITE_URL "marlinfw.org"
 
 /**
- * Set the vendor info the serial USB interface, if changable
- * Currently only supported by DUE platform
+ * Set the vendor info the serial USB interface, if changeable.
+ * Currently only supported by DUE platform.
  */
 //#define USB_DEVICE_VENDOR_ID           0x0000
 //#define USB_DEVICE_PRODUCT_ID          0x0000

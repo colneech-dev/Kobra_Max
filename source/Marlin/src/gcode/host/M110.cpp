@@ -25,10 +25,13 @@
 
 /**
  * M110: Set Current Line Number
+ *
+ * Parameters:
+ *   N<int>  Number to set as last-processed command
  */
 void GcodeSuite::M110() {
 
   if (parser.seenval('N'))
-    queue.last_N[queue.command_port()] = parser.value_long();
+    queue.set_current_line_number(parser.value_long());
 
 }
