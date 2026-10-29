@@ -96,6 +96,10 @@ struct MarlinSerial : public Usart {
   #endif // UART_RX_IRQ_PRIO || UART_TX_IRQ_PRIO || UART_RX_DMA_IRQ_PRIO
 };
 
+#ifdef ANYCUBIC_LCD_DGUS
+  #define SERIAL_RUNTIME_HOOK 1   // lets the display's Terminal capture the printer's replies to the commands it sends
+#endif
+
 typedef Serial1Class<MarlinSerial> MSerialT;
 
 extern MSerialT MSerial1;

@@ -48,6 +48,9 @@
 
 namespace Anycubic {
 
+static void term_rx_hook(void *, uint8_t c);   // Terminal reply capture, defined with the Terminal log
+static void term_rx_drain();
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wnarrowing"
 const char MESSAGE_charu[] = {0xB4, 0xE6, 0xB4, 0xA2, 0xBF, 0xA8, 0xD2, 0xD1, 0xB2, 0xE5, 0xC8, 0xEB, 0x00};
@@ -312,6 +315,9 @@ DgusTFT::DgusTFT() {
 }
 
 void DgusTFT::Startup() {
+  #ifdef SERIAL_RUNTIME_HOOK
+    MYSERIAL1.setHook(term_rx_hook, nullptr, (void*)&MYSERIAL1);   // inert until a Terminal command arms term_capture
+  #endif
   selectedfile[0]   = '\0';
   panel_command[0]  = '\0';
   gcodeComment      = " G-Code Status Area ";// MEL_MOD malebuffy
@@ -411,6 +417,7 @@ void DgusTFT::ParamInit() {
 
 void DgusTFT::IdleLoop()  {
   HAL_watchdog_refresh(); // prevent WDT fire during DGUS packet processing
+  term_rx_drain();
 
   // One-shot diagnostics on first entry (debug builds only; it printed on every boot before).
   static bool diag_done = false;
@@ -2216,14 +2223,66 @@ static char kb_buf[AC_KB_MAX + 1] = "";
 // The Terminal's 5-line log (page 215), shared with the keyboard page.
 static char term_log[5][24] = { "", "", "", "", "" };
 
-static void term_log_push(const char * const cmd) {
+// Printer replies: for a few seconds after a command is sent, the host serial port's output is split into lines
+// by a write hook (called from the same thread as the idle loop) and the idle loop adds them to the log.
+static char     term_rx_line[40];
+static uint8_t  term_rx_len = 0;
+static char     term_rx_q[6][40];
+static uint8_t  term_rx_head = 0, term_rx_tail = 0;
+static bool     term_capture = false;
+static millis_t term_capture_until = 0;
+
+static void term_rx_hook(void *, uint8_t c) {
+  if (!term_capture || c == '\r') return;
+  if (c == '\n') {
+    const uint8_t next = (term_rx_head + 1) % 6;
+    if (term_rx_len && next != term_rx_tail) {
+      term_rx_line[term_rx_len] = '\0';
+      strcpy(term_rx_q[term_rx_head], term_rx_line);
+      term_rx_head = next;
+    }
+    term_rx_len = 0;
+    return;
+  }
+  if (term_rx_len < sizeof(term_rx_line) - 1) term_rx_line[term_rx_len++] = (char)c;
+}
+
+static void term_log_add(const char * const text) {
   for (uint8_t i = 0; i < 4; i++) strcpy(term_log[i], term_log[i + 1]);   // older lines up, newest at the bottom
-  snprintf(term_log[4], sizeof(term_log[4]), "> %s", cmd);
+  strlcpy(term_log[4], text, sizeof(term_log[4]));
+}
+
+static void term_log_push(const char * const cmd) {
+  char s[sizeof(term_log[4])];
+  snprintf(s, sizeof(s), "> %s", cmd);
+  term_log_add(s);
+  term_rx_len = 0;
+  term_rx_head = term_rx_tail = 0;
+  term_capture_until = millis() + 4000;
+  term_capture = true;
 }
 
 static void term_log_send() {
   static const uint16_t vps[5] = { TXT_TERM_L0, TXT_TERM_L1, TXT_TERM_L2, TXT_TERM_L3, TXT_TERM_L4 };
   for (uint8_t i = 0; i < 5; i++) DgusTFT::SendTxtToTFT(term_log[i], vps[i]);
+}
+
+// Idle loop: move captured reply lines into the log (the 'ok' / 'echo:' decoration is dropped).
+static void term_rx_drain() {
+  if (!term_capture) return;
+  bool added = false;
+  while (term_rx_tail != term_rx_head) {
+    const char *s = term_rx_q[term_rx_tail];
+    term_rx_tail = (term_rx_tail + 1) % 6;
+    if (!strncmp(s, "echo:", 5)) s += 5;
+    if (!strncmp(s, "ok", 2)) { s += 2; if (*s == ' ') s++; }
+    if (!*s) continue;
+    term_log_add(s);
+    term_capture_until = millis() + 1500;   // more may follow
+    added = true;
+  }
+  if (added && DgusTFT::page_index_now == PAGE_TERMINAL) term_log_send();
+  if (ELAPSED(millis(), term_capture_until)) term_capture = false;
 }
 
 static void kb_show() {
