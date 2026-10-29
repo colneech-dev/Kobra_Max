@@ -72,8 +72,8 @@ def make_text_record(vp_addr, x, y, w, h, color=0xFFFF, font=0x001E,
     if cw is None or ch is None:
         cw, ch = fit_font(w, h, chars)
     x2, y2 = x + w, y + h
-    # Text starts inset 3 px from the left and vertically centred in the box (the display only
-    # left-aligns); the box itself stays as drawn in the art, which the cross-check compares.
+    # (sx, sy) is the text origin: vertically centred in the box. Horizontally the display centres the string in the
+    # box whatever sx is (measured), so firmware strings are sent unpadded; the box stays as drawn in the art.
     sx, sy = x + 3, y + max(0, (h - ch) // 2)
     return struct.pack(
         '>HHHHHHHHHHHH',
