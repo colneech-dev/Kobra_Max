@@ -2223,33 +2223,34 @@ static char kb_buf[AC_KB_MAX + 1] = "";
 // The Terminal's scrolling log (page 215), shared with the keyboard page.
 static char term_log[AC_TERM_LINES][AC_TERM_COLS];
 
-// Printer replies: for a few seconds after a command is sent, the host serial port's output is split into lines
-// by a write hook (called from the same thread as the idle loop) and the idle loop adds them to the log.
+static void term_log_add(const char * const text) {
+  for (uint8_t i = 0; i < AC_TERM_LINES - 1; i++) strcpy(term_log[i], term_log[i + 1]);   // older lines up, newest at the bottom
+  strlcpy(term_log[AC_TERM_LINES - 1], text, AC_TERM_COLS);
+}
+
+// Printer replies: for a while after a command is sent, the host serial port's output is split into lines by a
+// write hook and each line goes straight into the log (a long reply like M503 arrives inside one G-code, before
+// the idle loop runs again, so it cannot be queued). The idle loop only redraws. The 'ok' / 'echo:' decoration is dropped.
 static char     term_rx_line[AC_TERM_COLS];
 static uint8_t  term_rx_len = 0;
-static char     term_rx_q[6][AC_TERM_COLS];
-static uint8_t  term_rx_head = 0, term_rx_tail = 0;
-static bool     term_capture = false;
+static bool     term_capture = false, term_log_dirty = false;
 static millis_t term_capture_until = 0;
 
 static void term_rx_hook(void *, uint8_t c) {
   if (!term_capture || c == '\r') return;
-  if (c == '\n') {
-    const uint8_t next = (term_rx_head + 1) % 6;
-    if (term_rx_len && next != term_rx_tail) {
-      term_rx_line[term_rx_len] = '\0';
-      strcpy(term_rx_q[term_rx_head], term_rx_line);
-      term_rx_head = next;
-    }
-    term_rx_len = 0;
+  if (c != '\n') {
+    if (term_rx_len < sizeof(term_rx_line) - 1) term_rx_line[term_rx_len++] = (char)c;
     return;
   }
-  if (term_rx_len < sizeof(term_rx_line) - 1) term_rx_line[term_rx_len++] = (char)c;
-}
-
-static void term_log_add(const char * const text) {
-  for (uint8_t i = 0; i < AC_TERM_LINES - 1; i++) strcpy(term_log[i], term_log[i + 1]);   // older lines up, newest at the bottom
-  strlcpy(term_log[AC_TERM_LINES - 1], text, AC_TERM_COLS);
+  term_rx_line[term_rx_len] = '\0';
+  term_rx_len = 0;
+  const char *s = term_rx_line;
+  if (!strncmp(s, "echo:", 5)) s += 5;
+  if (!strncmp(s, "ok", 2)) { s += 2; if (*s == ' ') s++; }
+  if (!*s) return;
+  term_log_add(s);
+  term_log_dirty = true;
+  term_capture_until = millis() + 3000;   // more may follow
 }
 
 static void term_log_push(const char * const cmd) {
@@ -2257,30 +2258,18 @@ static void term_log_push(const char * const cmd) {
   snprintf(s, sizeof(s), "> %s", cmd);
   term_log_add(s);
   term_rx_len = 0;
-  term_rx_head = term_rx_tail = 0;
-  term_capture_until = millis() + 4000;
+  term_capture_until = millis() + 8000;   // the command may wait in the queue behind others
   term_capture = true;
 }
 
 static void term_log_send() {
-  for (uint8_t i = 0; i < AC_TERM_LINES; i++) DgusTFT::SendTxtToTFT(term_log[i], TXT_TERM_LOG + i * 0x20);
+  for (uint8_t i = 0; i < AC_TERM_LINES; i++) if (term_log[i][0]) DgusTFT::SendTxtToTFT(term_log[i], TXT_TERM_LOG + i * 0x20);   // empty rows stay blank
 }
 
-// Idle loop: move captured reply lines into the log (the 'ok' / 'echo:' decoration is dropped).
+// Idle loop: redraw the log when replies arrived, and stop capturing once the window has passed.
 static void term_rx_drain() {
   if (!term_capture) return;
-  bool added = false;
-  while (term_rx_tail != term_rx_head) {
-    const char *s = term_rx_q[term_rx_tail];
-    term_rx_tail = (term_rx_tail + 1) % 6;
-    if (!strncmp(s, "echo:", 5)) s += 5;
-    if (!strncmp(s, "ok", 2)) { s += 2; if (*s == ' ') s++; }
-    if (!*s) continue;
-    term_log_add(s);
-    term_capture_until = millis() + 1500;   // more may follow
-    added = true;
-  }
-  if (added && DgusTFT::page_index_now == PAGE_TERMINAL) term_log_send();
+  if (term_log_dirty && DgusTFT::page_index_now == PAGE_TERMINAL) { term_log_dirty = false; term_log_send(); }
   if (ELAPSED(millis(), term_capture_until)) term_capture = false;
 }
 
@@ -2295,7 +2284,9 @@ static void kb_show() {
 
 // While a print runs only commands that read something are accepted.
 static bool kb_allowed_while_printing(const char * const c) {
-  return !strncmp(c, "M105", 4) || !strncmp(c, "M114", 4) || !strncmp(c, "M115", 4) || !strncmp(c, "M503", 4);
+  static const char * const ok[] = { "M105", "M114", "M115", "M503" };
+  for (const char * const w : ok) if (!strncmp(c, w, 4) && (c[4] == '\0' || c[4] == ' ')) return true;
+  return false;
 }
 
 void DgusTFT::page6_handle(void)
@@ -2315,6 +2306,8 @@ void DgusTFT::page6_handle(void)
       return;
 
     case 2: // SEND
+      while (len && kb_buf[len - 1] == ' ') kb_buf[--len] = '\0';          // Marlin's inject must not get leading/trailing spaces
+      if (len && kb_buf[0] == ' ') { memmove(kb_buf, kb_buf + strspn(kb_buf, " "), len + 1 - strspn(kb_buf, " ")); len = strlen(kb_buf); }
       if (len) {
         if ((isPrinting() || isPrintingFromMedia() || isPrintingPaused()) && !kb_allowed_while_printing(kb_buf)) {
           BlockedWhilePrinting();   // shows NOT ALLOWED
@@ -4136,6 +4129,8 @@ void DgusTFT::page214_handle(void) {
 // page), each logging into the rolling display at TXT_TERM_LOG.
 void DgusTFT::page215_handle(void) {
   static millis_t flash_time = 0;
+  static uint32_t last_entry_page = 0;
+  if (last_entry_page != page_index_now) { last_entry_page = page_index_now; flash_time = 0; }   // draw the log at once on entry
 
   auto log_and_send = [](PGM_P cmd) {
     char c[24];
