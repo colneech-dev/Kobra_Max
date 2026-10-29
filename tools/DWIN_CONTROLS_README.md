@@ -301,7 +301,7 @@ have no zones and are absent here.
 | CANCEL  (key=1) | 8 | 429 | 132 | 473 | 1 |
 | RESET   (key=2) | 140 | 429 | 264 | 473 | 2 |
 
-### Page 215  *(7 zones)*
+### Page 215  *(9 zones)*
 
 | Zone | x0 | y0 | x1 | y1 | Key |
 |------|----|----|----|----|-----|
@@ -312,6 +312,8 @@ have no zones and are absent here.
 | M500 SAVE (KEY_TERM_M500 = 7) | 94 | 358 | 176 | 402 | 7 |
 | KEYBOARD  (opens page 6) | 180 | 358 | 262 | 402 | 8 |
 | BACK                 (KEY_TUNE_BACK  = 1) | 8 | 429 | 264 | 473 | 1 |
+|  | 236 | 92 | 264 | 178 | 9 |
+|  | 236 | 188 | 264 | 274 | 10 |
 
 ### Page 216  *(3 zones)*
 

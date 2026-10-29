@@ -258,6 +258,8 @@ _ZONES = [
     ([215],  94, 358, 176, 402, 7), # M500 SAVE (KEY_TERM_M500 = 7)
     ([215], 180, 358, 262, 402, 8), # KEYBOARD  (opens page 6)
     ([215],   8, 429, 264, 473, 1), # BACK      (KEY_TERM_BACK = 1)
+    ([215], *uf.TERM_SCROLL_UP,   9),  # scroll the log back
+    ([215], *uf.TERM_SCROLL_DOWN, 10), # scroll the log forward
 
     # ── PAGE 216  Thermal Tuning ──────────────────────────────────────────────
     ([216],   8, 122, 264, 200, 2), # MPC AUTOTUNE HOTEND  (KEY_TUNE_HOTEND = 2)

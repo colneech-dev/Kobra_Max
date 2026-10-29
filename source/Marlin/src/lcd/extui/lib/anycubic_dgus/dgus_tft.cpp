@@ -128,12 +128,12 @@ static void fit_text(char * const out, const char * const src, const uint8_t cha
 
 // The display only left-aligns text, and its characters are fixed width, so pad with leading spaces to
 // centre a short string in a box that holds `slots` characters.
-// Measured on the panel (v23 photos): in the 10 px status lines a leading space is drawn about 15 px wide, not 10,
-// so `wide_space` pads with 1/3 of the free slots instead of 1/2 (the text then lands in the middle).
+// Measured on the panel (photo of "Homing" + dots: 5 leading spaces = about 107 px): in the 10 px status lines a
+// leading space is drawn about 20 px wide, not 10, so `wide_space` pads with 1/4 of the free slots instead of 1/2.
 static void center_pad(char * const buf, const size_t size, const uint8_t slots, const bool wide_space = false) {
   const size_t len = strlen(buf);
   if (len >= slots || len + 1 >= size) return;
-  size_t pad = wide_space ? (slots - len + 1) / 3 : (slots - len) / 2;
+  size_t pad = wide_space ? (slots - len + 2) / 4 : (slots - len) / 2;
   if (len + pad + 1 > size) pad = size - len - 1;
   memmove(buf + pad, buf, len + 1);
   memset(buf, ' ', pad);
@@ -2218,11 +2218,27 @@ void DgusTFT::page5_handle(void)          // print settings (the variant without
 static char kb_buf[AC_KB_MAX + 1] = "";
 
 // The Terminal's scrolling log (page 215), shared with the keyboard page.
-static char term_log[AC_TERM_LINES][AC_TERM_COLS];
+// Every line ever logged lives in a ring of AC_TERM_HIST lines; the 13 rows on screen show a window onto it.
+static char     term_hist[AC_TERM_HIST][AC_TERM_COLS];
+static uint32_t term_total = 0;    // lines logged so far (newest is term_hist[(term_total - 1) % AC_TERM_HIST])
+static uint8_t  term_scroll = 0;   // 0 = following the newest line, n = the view is n lines back
+
+static uint8_t term_max_scroll() {
+  const uint32_t have = term_total < AC_TERM_HIST ? term_total : AC_TERM_HIST;
+  return have > AC_TERM_LINES ? have - AC_TERM_LINES : 0;
+}
+
+// Text of screen row i (0 = top), "" when there is no such line.
+static const char *term_row(const uint8_t i) {
+  const int32_t idx = (int32_t)term_total - 1 - (AC_TERM_LINES - 1 - i) - term_scroll;
+  if (idx < 0 || idx < (int32_t)term_total - AC_TERM_HIST) return "";
+  return term_hist[idx % AC_TERM_HIST];
+}
 
 static void term_log_add(const char * const text) {
-  for (uint8_t i = 0; i < AC_TERM_LINES - 1; i++) strcpy(term_log[i], term_log[i + 1]);   // older lines up, newest at the bottom
-  strlcpy(term_log[AC_TERM_LINES - 1], text, AC_TERM_COLS);
+  strlcpy(term_hist[term_total % AC_TERM_HIST], text, AC_TERM_COLS);
+  term_total++;
+  if (term_scroll) term_scroll = min((uint8_t)(term_scroll + 1), term_max_scroll());   // keep the lines being read where they are
 }
 
 // Printer replies: for a while after a command is sent, the host serial port's output is split into lines by a
@@ -2255,6 +2271,7 @@ static void term_log_push(const char * const cmd) {
   char s[AC_TERM_COLS];
   snprintf(s, sizeof(s), "> %s", cmd);
   term_log_add(s);
+  term_scroll = 0;   // a new command jumps back to the newest line
   term_rx_len = 0;
   term_capture_until = millis() + 8000;   // the command may wait in the queue behind others
   term_capture_end = millis() + 120000UL; // but never listen for longer than this
@@ -2262,7 +2279,10 @@ static void term_log_push(const char * const cmd) {
 }
 
 static void term_log_send() {
-  for (uint8_t i = 0; i < AC_TERM_LINES; i++) if (term_log[i][0]) DgusTFT::SendTxtToTFT(term_log[i], TXT_TERM_LOG + i * 0x20);   // empty rows stay blank
+  for (uint8_t i = 0; i < AC_TERM_LINES; i++) {
+    const char * const row = term_row(i);
+    if (row[0]) DgusTFT::SendTxtToTFT(row, TXT_TERM_LOG + i * 0x20);   // empty rows stay blank (scrolling is only possible when all rows are full)
+  }
 }
 
 // Idle loop: redraw the log when replies arrived, and stop capturing once the window has passed.
@@ -4070,6 +4090,14 @@ void DgusTFT::page215_handle(void) {
       ChangePageOfTFT(PAGE_KEYBPARD);
       kb_show();
       return;
+    case 9: // UP: scroll back through the log, half a screen at a time
+      term_scroll = min((uint8_t)(term_scroll + AC_TERM_LINES / 2), term_max_scroll());
+      term_log_send();
+      break;
+    case 10: // DOWN: towards the newest line
+      term_scroll = term_scroll > AC_TERM_LINES / 2 ? term_scroll - AC_TERM_LINES / 2 : 0;
+      term_log_send();
+      break;
   }
 
   // The log is only drawn when written, so re-send it now and then (it was blank on every visit to the page).
