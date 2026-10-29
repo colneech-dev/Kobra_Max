@@ -287,6 +287,7 @@ TXT_TERM_INPUT = 0x2A10
 # Log: TERM_LINES rows of 6x12 text, TERM_ROW_H apart, one text field per row at TXT_TERM_LOG + i * 0x20
 # (the firmware's AC_TERM_LINES / TXT_TERM_LOG must match; generate_screens.py draws the rows from the same numbers).
 TXT_TERM_LOG = 0x2C00
+TXT_TUNE_STATUS = 0x2DA0   # Thermal Tuning (216) progress line; dgus_tft.h
 TERM_LINES, TERM_ROW_H, TERM_Y0 = uf.TERM_LINES, uf.TERM_ROW_H, uf.TERM_Y0
 
 # ── Shared record sets ─────────────────────────────────────────────────────────
@@ -529,7 +530,9 @@ PAGE215 = STATUS_BAR + [
 
 # Pages 216/217 — Thermal Tuning / Factory Reset confirm
 # Both call status_bar() but have no VP content areas — status bar only.
-PAGE216 = STATUS_BAR
+PAGE216 = STATUS_BAR + [
+    make_text_record(TXT_TUNE_STATUS, 8, 358, 256, 24, chars=25),   # "Hotend 143/200 tuning..." / "Hotend PID done, saved"
+]
 PAGE217 = STATUS_BAR
 
 # ── Build complete patches list ────────────────────────────────────────────────

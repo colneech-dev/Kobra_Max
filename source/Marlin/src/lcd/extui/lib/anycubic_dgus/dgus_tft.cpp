@@ -4110,22 +4110,67 @@ void DgusTFT::page215_handle(void) {
 // autotune (M303) and save the result with M500, which is what the screen says. The tune runs for
 // minutes inside one G-code command: refuse while printing or while any command is still queued,
 // so a second press cannot stack another tune behind the first.
+// What the Thermal Tuning page shows: nothing yet, a tune in progress (which heater), or how the last one ended.
+enum tune_state_t : uint8_t { TUNE_IDLE, TUNE_HOTEND, TUNE_BED, TUNE_DONE, TUNE_TOO_HOT, TUNE_TIMEOUT, TUNE_BAD };
+static tune_state_t tune_state = TUNE_IDLE;
+static bool tune_was_bed = false;
+
+void DgusTFT::PidTuning(const ExtUI::result_t rst) {
+  switch (rst) {
+    case ExtUI::PID_DONE:           tune_state = TUNE_DONE;    break;
+    case ExtUI::PID_TEMP_TOO_HIGH:  tune_state = TUNE_TOO_HOT; break;
+    case ExtUI::PID_TUNING_TIMEOUT: tune_state = TUNE_TIMEOUT; break;
+    default:                        tune_state = TUNE_BAD;     break;
+  }
+}
+
+static void tune_status_send() {
+  char buf[40];
+  switch (tune_state) {
+    case TUNE_HOTEND: sprintf(buf, "Hotend %u/%u tuning...", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_PID_HOTEND_TUNE_TEMP); break;
+    case TUNE_BED:    sprintf(buf, "Bed %u/%u tuning...",    (unsigned)getActualTemp_celsius(BED), (unsigned)AC_PID_BED_TUNE_TEMP);    break;
+    case TUNE_DONE:   strcpy(buf, tune_was_bed ? "Bed PID done, saved" : "Hotend PID done, saved"); break;
+    case TUNE_TOO_HOT: strcpy(buf, "Failed: temperature too high"); break;
+    case TUNE_TIMEOUT: strcpy(buf, "Failed: timed out");            break;
+    case TUNE_BAD:     strcpy(buf, "Failed");                       break;
+    default:           strcpy(buf, "Ready");                        break;
+  }
+  center_pad(buf, sizeof(buf), 25, true);
+  DgusTFT::SendTxtToTFT(buf, TXT_TUNE_STATUS);
+}
+
 void DgusTFT::page216_handle(void) {
+  static millis_t flash_time = 0;
+  const bool running = tune_state == TUNE_HOTEND || tune_state == TUNE_BED;
+
   switch (key_value) {
     case 0:
       break;
     case 1: // BACK (KEY_TUNE_BACK)
+      if (!running) tune_state = TUNE_IDLE;
       ChangePageOfTFT(PAGE_PREPARE);
       break;
     case 2: // PID AUTOTUNE HOTEND (KEY_TUNE_HOTEND)
-      if (BlockedWhilePrinting() || commandsInQueue()) break;
+      if (running || BlockedWhilePrinting() || commandsInQueue()) break;
+      tune_was_bed = false;
+      tune_state = TUNE_HOTEND;
       injectCommands_P(PSTR("M303 E0 S" STRINGIFY(AC_PID_HOTEND_TUNE_TEMP) " C8 U1\nM500"));
+      flash_time = 0;
       break;
     case 3: // PID AUTOTUNE BED (KEY_TUNE_BED)
-      if (BlockedWhilePrinting() || commandsInQueue()) break;
+      if (running || BlockedWhilePrinting() || commandsInQueue()) break;
+      tune_was_bed = true;
+      tune_state = TUNE_BED;
       injectCommands_P(PSTR("M303 E-1 S" STRINGIFY(AC_PID_BED_TUNE_TEMP) " C8 U1\nM500"));
+      flash_time = 0;
       break;
   }
+
+  // The status line is only drawn when written (and a button press blanks it): re-send it every second.
+  if (key_value) flash_time = 0;
+  if (millis() < flash_time + 1000) return;
+  flash_time = millis();
+  tune_status_send();
 }
 
 // Page 217 — Factory Reset confirmation.

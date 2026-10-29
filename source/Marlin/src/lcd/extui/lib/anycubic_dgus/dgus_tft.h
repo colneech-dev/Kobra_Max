@@ -303,6 +303,7 @@
 #define TXT_TERM_LOG   0x2C00
 #define AC_TERM_LINES  13
 #define AC_TERM_COLS   37       // characters per row (216 of the 224 px box), plus the terminating NUL
+#define TXT_TUNE_STATUS 0x2DA0  // Thermal Tuning page (216): progress / result line
 #define AC_TERM_HIST   64       // lines kept for scrolling back (page 215 up / down buttons)
 
 
@@ -489,6 +490,7 @@ namespace Anycubic {
       void StatusChange(const char * const );
       void PowerLoss();
       void PowerLossRecovery();
+      void PidTuning(const ExtUI::result_t rst);   // result of an M303 autotune (called from onPidTuning)
       void HomingStart();
       void HomingComplete();
       
