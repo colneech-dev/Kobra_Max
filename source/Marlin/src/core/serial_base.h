@@ -171,18 +171,6 @@ struct SerialBase {
 
   void print(EnsureDouble c, int digits)           { printFloat(c, digits); }
 
-  // 2.0.8 compatibility: explicit float/double overloads to avoid ambiguity with integer overloads below
-  FORCE_INLINE void print(float c, int digits)          { printFloat(c, digits); }
-  FORCE_INLINE void print(double c, int digits)         { printFloat(c, digits); }
-
-  // 2.0.8 compatibility: accept plain int base (DEC=10, HEX=16) for integer print calls
-  FORCE_INLINE void print(int8_t c, int base)           { printNumber_signed(c, (PrintBase)base); }
-  FORCE_INLINE void print(uint8_t c, int base)          { printNumber_unsigned(c, (PrintBase)base); }
-  FORCE_INLINE void print(int16_t c, int base)          { printNumber_signed(c, (PrintBase)base); }
-  FORCE_INLINE void print(uint16_t c, int base)         { printNumber_unsigned(c, (PrintBase)base); }
-  FORCE_INLINE void print(int32_t c, int base)          { printNumber_signed(c, (PrintBase)base); }
-  FORCE_INLINE void print(uint32_t c, int base)         { printNumber_unsigned(c, (PrintBase)base); }
-
   // Forward the call to the former's method
 
   // Default implementation for anything without a specialization

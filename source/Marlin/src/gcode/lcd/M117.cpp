@@ -20,9 +20,10 @@
  *
  */
 
-
 #include "../../inc/MarlinConfig.h"
-#include "../../MarlinCore.h"
+
+#if HAS_STATUS_MESSAGE
+
 #include "../gcode.h"
 #include "../../lcd/marlinui.h"
 
@@ -30,17 +31,12 @@
  * M117: Set LCD Status Message
  */
 void GcodeSuite::M117() {
-  if (parser.string_arg && parser.string_arg[0]) {
-    if (parser.command_letter == 'M' && parser.codenum == 117) {
-      static char comment_buf[32];
-      strncpy(comment_buf, parser.string_arg, 30);
-      comment_buf[30] = '\0';
-      gcodeComment = comment_buf;
-    }
-    ui.set_status(parser.string_arg);
-  }
-  else {
-    gcodeComment = "G-Code Status Area";
+
+  if (parser.string_arg && parser.string_arg[0])
+    ui.set_status(parser.string_arg, true);
+  else
     ui.reset_status();
-  }
+
 }
+
+#endif // HAS_STATUS_MESSAGE

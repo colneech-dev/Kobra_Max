@@ -31,7 +31,7 @@
 
 #include "../inc/MarlinConfig.h"
 
-#if ENABLED(SDSUPPORT)
+#if HAS_MEDIA
 
 #include "SdFatUtil.h"
 #include <string.h>
@@ -42,14 +42,13 @@
  */
 #ifdef __arm__
 
-  //extern "C" char* sbrk(int incr);
+  extern "C" char* sbrk(int incr);
   int SdFatUtil::FreeRam() {
-    char top=0;
-    //return &top - reinterpret_cast<char*>(sbrk(0));
-    return top;
+    char top;
+    return &top - reinterpret_cast<char*>(sbrk(0));
   }
 
-#else
+#elif defined(__AVR__)
 
   extern char* __brkval;
   extern char __bss_end;
@@ -60,4 +59,4 @@
 
 #endif
 
-#endif // SDSUPPORT
+#endif // HAS_MEDIA
