@@ -1065,9 +1065,12 @@ def page_terminal():
     # Response log — TERM_LINES rows of small text (patch_14showfile.py draws the text into the same rows)
     for i in range(uf.TERM_LINES):
         row_bg = BG_SURFACE if i % 2 == 0 else BG_DARK
-        draw.rectangle([(0, y), (W - 1, y + uf.TERM_ROW_H - 1)], fill=row_bg)
-        vp_area(draw, MARGIN, y, W - MARGIN, y + uf.TERM_ROW_H, visible=False)
+        draw.rectangle([(0, y), (uf.TERM_SCROLL_X1 - 4, y + uf.TERM_ROW_H - 1)], fill=row_bg)
+        vp_area(draw, uf.TERM_TEXT_X, y, uf.TERM_TEXT_X + uf.TERM_TEXT_W, y + uf.TERM_ROW_H, visible=False)
         y += uf.TERM_ROW_H   # 92 + 13 * 14 = 274
+    # scroll back through the log (touch zones: page 215 keys 9 and 10)
+    btn(draw, *uf.TERM_SCROLL_UP,   "", style='teal', icon=0xf077)
+    btn(draw, *uf.TERM_SCROLL_DOWN, "", style='teal', icon=0xf078)
     y = 282
 
     separator(draw, y + 2)

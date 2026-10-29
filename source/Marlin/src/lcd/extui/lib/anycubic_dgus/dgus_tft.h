@@ -302,7 +302,8 @@
 #define TXT_TERM_INPUT 0x2A10   // the command being typed on the keyboard page (page 6)
 #define TXT_TERM_LOG   0x2C00
 #define AC_TERM_LINES  13
-#define AC_TERM_COLS   41       // characters per row (246 of the 253 px box), plus the terminating NUL
+#define AC_TERM_COLS   37       // characters per row (216 of the 224 px box), plus the terminating NUL
+#define AC_TERM_HIST   64       // lines kept for scrolling back (page 215 up / down buttons)
 
 
 /*********************** KEY VALUE **************************/

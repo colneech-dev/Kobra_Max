@@ -522,8 +522,8 @@ PAGE214 = STATUS_BAR + [
 # page_terminal() draws row i at y = TERM_Y0 + i * TERM_ROW_H across the full width (the same numbers, from ui_features).
 # The command buttons have no VP records (they inject G-code directly on a key press).
 PAGE215 = STATUS_BAR + [
-    # font= is the record's Text_Length (30 bytes by default, which would cut the 40-character rows)
-    make_text_record(TXT_TERM_LOG + i * 0x20, 8, TERM_Y0 + i * TERM_ROW_H, 256, TERM_ROW_H, cw=6, ch=12, font=uf.TERM_COLS)
+    # font= is the record's Text_Length (30 bytes by default, which would cut the 36-character rows)
+    make_text_record(TXT_TERM_LOG + i * 0x20, uf.TERM_TEXT_X, TERM_Y0 + i * TERM_ROW_H, uf.TERM_TEXT_W, TERM_ROW_H, cw=6, ch=12, font=uf.TERM_COLS)
     for i in range(TERM_LINES)
 ]
 
