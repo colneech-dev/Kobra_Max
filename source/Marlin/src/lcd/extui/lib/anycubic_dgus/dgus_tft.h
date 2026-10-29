@@ -527,8 +527,6 @@ namespace Anycubic {
       static void page33_handle(void);
       static void page34_handle(void);
       static void page115_handle(void);
-      static void page117_handle(void);     // CHS Mute handler
-      static void page170_handle(void);     // ENG Mute handler
       static void page171_handle(void);     // CHS power outage resume handler
       static void page173_handle(void);     // ENG power outage resume handler
       static void page175_handle(void);     // ENG probe preheating handler

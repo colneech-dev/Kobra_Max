@@ -583,7 +583,7 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 5. **Never `ChangePageOfTFT()` with a stored page** — use `ChangePageOfTFT_DevicePage()`.
 6. **Never change page during the boot animation.**
 7. **Animation icons need the VP written** — they do not free-run.
-8. **Text records are top-left aligned and clip at `Text_Length`** (30 bytes today; the window per text VP is 0x30 words).
+8. **Text records are top-left aligned and clip at `Text_Length`** (30 bytes today; the window per text VP is 0x30 words). The Terminal log rows (page 215) set `Text_Length` to 40 (`make_text_record(..., font=40)`: the parameter named `font` is that field).
 9. **A button with no handler, or a handler with no button, is a bug the display will never report.** Run `cross_check_display.py`.
 10. **A button that does nothing in some state shouldn't be drawn** (we removed BACK from the Printing screens).
 11. **Stale-VP read-back**: the old SAVE button read four VPs the page never let you edit, re-applying the values
@@ -679,3 +679,11 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
   home applies the saved value. (An earlier version also added the change to every mesh point: every change was applied
   twice. That was wrong.)
 * Without a mesh, Z0 is at endstop height + offset, i.e. too high by the distance between endstop plane and bed.
+
+## Terminal replies (page 215)
+
+The Terminal log shows the printer's replies, not only the commands. `MarlinSerial.h` turns on `SERIAL_RUNTIME_HOOK`
+for the DGUS build; `DgusTFT::Startup()` installs `term_rx_hook` on the host port. After a Terminal / keyboard command
+the hook splits the port's output into lines and adds them straight to the 13-row log (`ok` / `echo:` stripped,
+`busy:` keepalives ignored). It listens 8 s after the command, 3 s after each reply line, and never longer than 120 s.
+Unverified on hardware.

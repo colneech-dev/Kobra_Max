@@ -329,7 +329,10 @@ def write_doc():
         out.append(f"### Page {' / '.join(str(p) for p in pages)}  *({len(zones)} zone{'s' if len(zones) != 1 else ''})*")
         out += ["", "| Zone | x0 | y0 | x1 | y1 | Key |", "|------|----|----|----|----|-----|"]
         for x0, y0, x1, y1, key in zones:
-            out.append(f"| {notes.get((x0, y0, x1, y1, key), '')} | {x0} | {y0} | {x1} | {y1} | {key} |")
+            label = notes.get((x0, y0, x1, y1, key), '')
+            if not label and uf.KEYBOARD_PAGE in pages:   # the 40+ keyboard zones come from one generated table, not hand-written lines
+                label = next((f"key {l}" for _x1, _y1, _x2, _y2, l, code, _s in uf.keyboard_keys() if code == key), '')
+            out.append(f"| {label} | {x0} | {y0} | {x1} | {y1} | {key} |")
         out.append("")
 
     head = open(DOC_PATH, encoding="utf-8").read()

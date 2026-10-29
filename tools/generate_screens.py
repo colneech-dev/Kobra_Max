@@ -1073,20 +1073,16 @@ def page_terminal():
     separator(draw, y + 2)
     text_left(draw, MARGIN, y + 6, "SEND COMMAND", F_TINY, GRAY);  y += 24  # y = 282+24 = 306
 
-    # 3 preset buttons: G28  G29  M105
+    # Two rows of three command buttons (the touch zones are in generate_dwin_controls.py, page 215)
     bw = (W - MARGIN * 2 - 8) // 3  # 82
     _TERM_ICONS = {'G28 HOME': 0xf015, 'G29 LEVEL': 0xf05b, 'M105 TEMPS': 0xf2c7}
-    for i, (lbl, sty) in enumerate([("G28 HOME", 'normal'), ("G29 LEVEL", 'normal'), ("M105 TEMPS", 'teal')]):
-        x1 = MARGIN + i * (bw + 4)
-        x2 = (W - MARGIN) if i == 2 else (x1 + bw)
-        btn(draw, x1, y, x2, y + 44, lbl, style=sty, fnt=F_TINY, icon=_TERM_ICONS.get(lbl))
-    y += 52  # y = 358
-
-    # 3 more buttons: M502  M500  KEYBOARD
-    for i, (lbl, sty) in enumerate([("M502 RESET", 'warning'), ("M500 SAVE", 'success'), ("KEYBOARD", 'teal')]):
-        x1 = MARGIN + i * (bw + 4)
-        x2 = (W - MARGIN) if i == 2 else (x1 + bw)
-        btn(draw, x1, y, x2, y + 44, lbl, style=sty, fnt=F_TINY)
+    for row in ([("G28 HOME", 'normal'), ("G29 LEVEL", 'normal'), ("M105 TEMPS", 'teal')],
+                [("M502 RESET", 'warning'), ("M500 SAVE", 'success'), ("KEYBOARD", 'teal')]):
+        for i, (lbl, sty) in enumerate(row):
+            x1 = MARGIN + i * (bw + 4)
+            x2 = (W - MARGIN) if i == 2 else (x1 + bw)
+            btn(draw, x1, y, x2, y + 44, lbl, style=sty, fnt=F_TINY, icon=_TERM_ICONS.get(lbl))
+        y += 52   # 306 -> 358
 
     footer_1btn(draw, "BACK", style='ghost')
     return img
@@ -1250,6 +1246,10 @@ def main():
         fn = page_map[name]
         path = os.path.join(OUT_DIR, f'{name}.bmp')
         try:
+            if int(name) in uf.HIDDEN_PAGES:
+                print(f"  {name}.bmp skipped: hidden page (see HIDDEN_PAGES in ui_features.py)")
+                ok += 1
+                continue
             img = fn()
             if uf.BOOT_ANIMATION and uf.BOOT_FIRST <= int(name) <= uf.BOOT_LAST:
                 print(f"  {name}.bmp skipped: a boot frame (generate_boot_animation.py)")

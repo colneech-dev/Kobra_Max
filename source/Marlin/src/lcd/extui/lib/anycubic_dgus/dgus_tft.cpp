@@ -251,9 +251,9 @@ static void send_print_setting_values() {
 static char print_name_txt[28] = "";
 
 // Everything on the print / pause pages that must survive a redraw, sent every cycle (not only on change).
-static void send_print_page_values(const bool name) {
+static void send_print_page_values() {
   char b[12];
-  if (name) DgusTFT::SendTxtToTFT(print_name_txt, TXT_PRINT_NAME);
+  DgusTFT::SendTxtToTFT(print_name_txt, TXT_PRINT_NAME);
   sprintf(b, "%d", (int)getFeedrate_percent());
   DgusTFT::SendTxtToTFT(b, TXT_PRINT_SPEED);
   sprintf(b, "%d", (int)getProgress_percent());
@@ -493,13 +493,12 @@ void DgusTFT::IdleLoop()  {
   // (a preheat that was forgotten, a slicer G29 that ended with the heaters on) are switched off.
   {
     static millis_t idle_since = 0;
-    const bool active = key_value || isPrinting() || isPrintingFromMedia() || isPrintingPaused() ||
-                        printer_state != AC_printer_idle || commandsInQueue() ||
+    // isPrinting() already covers a queued command, a media print (running or paused) and a running job timer
+    const bool active = key_value || isPrinting() || printer_state != AC_printer_idle ||
                         (getTargetTemp_celsius(E0) <= 0 && getTargetTemp_celsius(BED) <= 0);
     if (active) idle_since = millis();
     else if (millis() - idle_since > AC_IDLE_HEATER_TIMEOUT_MS) {
-      setTargetTemp_celsius(0, E0);
-      setTargetTemp_celsius(0, BED);
+      heaters_off_when_idle();
       idle_since = millis();
     }
   }
@@ -543,10 +542,8 @@ void DgusTFT::IdleLoop()  {
 
   if (page_index_now == 115) {
     page115_handle();
-  } else if (page_index_now == 117) {
-    page117_handle();
-  } else if (page_index_now == 170) {
-    page170_handle();
+  } else if (page_index_now == 117 || page_index_now == 170) {   // the CHS / ENG Mute pages are the System page's buttons
+    page11_handle();
   } else if (page_index_now == 171) {
     page171_handle();
   } else if (page_index_now == 173) {
@@ -2115,7 +2112,7 @@ void DgusTFT::page3_handle(void) {
   // after PAUSE or a return from Print Settings).
   feedrate_last = (uint16_t)getFeedrate_percent();
   progress_last = getProgress_percent();
-  send_print_page_values(true);
+  send_print_page_values();
 
   // Get Printing Time
   uint32_t time = getProgress_seconds_elapsed() / 60;
@@ -2187,7 +2184,7 @@ void DgusTFT::page4_handle(void) {
     // Sent every time round, not only when the percentage changes: a text field is only drawn when it is
     // written, so a page redraw (e.g. back from Print Settings) would otherwise leave it blank for minutes.
     progress_last = getProgress_percent();
-    send_print_page_values(true);
+    send_print_page_values();
   } else { // we are printing from a HOST
     sprintf(str_buf, "%d", (int)getFeedrate_percent());
     SendTxtToTFT(str_buf, TXT_PRINT_SPEED);
@@ -2234,7 +2231,7 @@ static void term_log_add(const char * const text) {
 static char     term_rx_line[AC_TERM_COLS];
 static uint8_t  term_rx_len = 0;
 static bool     term_capture = false, term_log_dirty = false;
-static millis_t term_capture_until = 0;
+static millis_t term_capture_until = 0, term_capture_end = 0;   // _until: quiet period; _end: hard stop for one command
 
 static void term_rx_hook(void *, uint8_t c) {
   if (!term_capture || c == '\r') return;
@@ -2247,10 +2244,11 @@ static void term_rx_hook(void *, uint8_t c) {
   const char *s = term_rx_line;
   if (!strncmp(s, "echo:", 5)) s += 5;
   if (!strncmp(s, "ok", 2)) { s += 2; if (*s == ' ') s++; }
-  if (!*s) return;
+  if (!*s || !strncmp(s, "busy:", 5)) return;   // Marlin's keepalive during long commands: not a reply, must not hold the window open
   term_log_add(s);
   term_log_dirty = true;
   term_capture_until = millis() + 3000;   // more may follow
+  if (PENDING(term_capture_end, term_capture_until)) term_capture_until = term_capture_end;
 }
 
 static void term_log_push(const char * const cmd) {
@@ -2259,6 +2257,7 @@ static void term_log_push(const char * const cmd) {
   term_log_add(s);
   term_rx_len = 0;
   term_capture_until = millis() + 8000;   // the command may wait in the queue behind others
+  term_capture_end = millis() + 120000UL; // but never listen for longer than this
   term_capture = true;
 }
 
@@ -2271,6 +2270,16 @@ static void term_rx_drain() {
   if (!term_capture) return;
   if (term_log_dirty && DgusTFT::page_index_now == PAGE_TERMINAL) { term_log_dirty = false; term_log_send(); }
   if (ELAPSED(millis(), term_capture_until)) term_capture = false;
+}
+
+// Run a command typed on the Terminal: queue it, log it and start listening for its replies.
+static void term_run_P(PGM_P cmd) {
+  char c[24];
+  strncpy_P(c, cmd, sizeof(c) - 1);
+  c[sizeof(c) - 1] = 0;
+  injectCommands_P(cmd);
+  term_log_push(c);
+  term_log_send();
 }
 
 static void kb_show() {
@@ -2287,6 +2296,12 @@ static bool kb_allowed_while_printing(const char * const c) {
   static const char * const ok[] = { "M105", "M114", "M115", "M503" };
   for (const char * const w : ok) if (!strncmp(c, w, 4) && (c[4] == '\0' || c[4] == ' ')) return true;
   return false;
+}
+
+// M109 / M190 wait for temperature, and with PRINTJOB_TIMER_AUTOSTART they start the print job timer: isPrinting()
+// then reports a print and the guards refuse the very commands that could end it. M104 / M140 do the same job.
+static bool kb_heats_and_waits(const char * const c) {
+  return (!strncmp(c, "M109", 4) || !strncmp(c, "M190", 4)) && (c[4] == '\0' || c[4] == ' ');
 }
 
 void DgusTFT::page6_handle(void)
@@ -2306,16 +2321,18 @@ void DgusTFT::page6_handle(void)
       return;
 
     case 2: // SEND
-      while (len && kb_buf[len - 1] == ' ') kb_buf[--len] = '\0';          // Marlin's inject must not get leading/trailing spaces
-      if (len && kb_buf[0] == ' ') { memmove(kb_buf, kb_buf + strspn(kb_buf, " "), len + 1 - strspn(kb_buf, " ")); len = strlen(kb_buf); }
+      while (len && kb_buf[len - 1] == ' ') kb_buf[--len] = '\0';          // an all-space line is an empty line (Marlin skips leading spaces itself)
       if (len) {
-        if ((isPrinting() || isPrintingFromMedia() || isPrintingPaused()) && !kb_allowed_while_printing(kb_buf)) {
-          BlockedWhilePrinting();   // shows NOT ALLOWED
-          return;
+        if (kb_heats_and_waits(kb_buf)) {   // would start the print timer, which every "not while printing" guard then trusts
+          term_log_add("NO M109/M190: USE M104/M140");
+          kb_buf[0] = '\0';
         }
-        injectCommands(kb_buf);     // copied into the queue's own buffer
-        term_log_push(kb_buf);
-        kb_buf[0] = '\0';
+        else if (!kb_allowed_while_printing(kb_buf) && BlockedWhilePrinting()) return;   // shows NOT ALLOWED
+        else {
+          injectCommands(kb_buf);   // copied into the queue's own buffer
+          term_log_push(kb_buf);
+          kb_buf[0] = '\0';
+        }
       }
       ChangePageOfTFT(PAGE_TERMINAL);
       term_log_send();
@@ -2574,6 +2591,7 @@ void DgusTFT::page9_handle(void)
       break;
   }
 
+  if (key_value) flash_time = 0;   // a press redraws the page and blanks the text: re-send at once, not up to 1.5 s later
   if (millis() < (flash_time + 1500) ) {
     return;
   }
@@ -2628,6 +2646,7 @@ void DgusTFT::page10_handle(void)
       break;
   }
 
+  if (key_value) flash_time = 0;   // a press redraws the page and blanks the text: re-send at once, not up to 1.5 s later
   if (millis() < (flash_time + 1500)) {
     return;
   }
@@ -3496,118 +3515,6 @@ void DgusTFT::page115_handle(void)
 
 }
 
-void DgusTFT::page117_handle(void)  // Page CHS Mute handler
-{
-  switch (key_value)
-  {
-    case 0:
-      break;
-
-    case 1:
-      {
-        ChangePageOfTFT(PAGE_MAIN);
-        if (lcd_info_back.language != lcd_info.language ||
-            lcd_info_back.audio    != lcd_info.audio) {
-
-          lcd_info_back.language = lcd_info.language;
-          lcd_info_back.audio    = lcd_info.audio;
-
-          injectCommands_P(PSTR("M500"));
-        }
-      }
-      break;
-
-    case 2:   // statistics
-      printerStatsToTFT();
-      ChangePageOfTFT(PAGE_PRINTERSTATS);
-      break;
-
-    case 3: // TERMINAL
-      ChangePageOfTFT(PAGE_TERMINAL);
-      break;
-
-    case 4:   // audio
-      {
-        lcd_info.audio = (lcd_info.audio == ExtUI::ON) ? ExtUI::OFF : ExtUI::ON;
-        GoSystemPage();   // language-aware, as on page 11
-
-        LcdAudioSet(lcd_info.audio);
-      }
-      break;
-
-    case 5:   // about
-
-      SendTxtToTFT(DEVICE_NAME, TXT_ABOUT_DEVICE_NAME);
-      SendTxtToTFT(FIRMWARE_VER, TXT_ABOUT_FW_VERSION);
-      SendTxtToTFT(BUILD_VOLUME, TXT_ABOUT_PRINT_VOLUMN);
-      SendTxtToTFT(about_build_id(), TXT_ABOUT_TECH_SUPPORT);
-
-      ChangePageOfTFT(PAGE_ABOUT);
-
-      break;
-
-    case 6: // FACTORY RESET (was "Records"/PAGE_RECORD)
-      ChangePageOfTFT(PAGE_FACTORY_RESET);
-      break;
-  }
-}
-
-void DgusTFT::page170_handle(void) { // ENG Mute handler
-
-  switch (key_value)
-  {
-    case 0:
-      break;
-
-    case 1:
-      {
-        ChangePageOfTFT(PAGE_MAIN);
-        if (lcd_info_back.language != lcd_info.language ||
-            lcd_info_back.audio    != lcd_info.audio) {
-
-          lcd_info_back.language = lcd_info.language;
-          lcd_info_back.audio    = lcd_info.audio;
-
-          injectCommands_P(PSTR("M500"));
-        }
-      }
-      break;
-
-    case 2:   // language, now print stats handler MEL_MOD
-			printerStatsToTFT();// MEL_MOD
-	    ChangePageOfTFT(PAGE_PRINTERSTATS);
-      break;
-
-    case 3: // TERMINAL
-      ChangePageOfTFT(PAGE_TERMINAL);
-      break;
-
-    case 4:   // audio
-      {
-        lcd_info.audio = (lcd_info.audio == ExtUI::ON) ? ExtUI::OFF : ExtUI::ON;
-        GoSystemPage();   // language-aware, as on page 11
-
-        LcdAudioSet(lcd_info.audio);
-      }
-      break;
-
-    case 5:   // about
-
-
-      SendTxtToTFT(DEVICE_NAME, TXT_ABOUT_DEVICE_NAME);
-      SendTxtToTFT(FIRMWARE_VER, TXT_ABOUT_FW_VERSION);
-      SendTxtToTFT(BUILD_VOLUME, TXT_ABOUT_PRINT_VOLUMN);
-      SendTxtToTFT(about_build_id(), TXT_ABOUT_TECH_SUPPORT);
-
-      ChangePageOfTFT(PAGE_ABOUT);
-      break;
-
-    case 6: // FACTORY RESET (was "Records"/PAGE_RECORD)
-      ChangePageOfTFT(PAGE_FACTORY_RESET);
-      break;
-  }
-}
-
 void DgusTFT::page171_handle(void)  // CHS power outage resume handler
 {
   char str_buf[20] = { '\0' };
@@ -4132,14 +4039,6 @@ void DgusTFT::page215_handle(void) {
   static uint32_t last_entry_page = 0;
   if (last_entry_page != page_index_now) { last_entry_page = page_index_now; flash_time = 0; }   // draw the log at once on entry
 
-  auto log_and_send = [](PGM_P cmd) {
-    char c[24];
-    strncpy_P(c, cmd, sizeof(c) - 1);
-    c[sizeof(c) - 1] = '\0';
-    term_log_push(c);
-    term_log_send();
-  };
-
   switch (key_value) {
     case 0:
       break;
@@ -4148,28 +4047,23 @@ void DgusTFT::page215_handle(void) {
       break;
     case 3: // G28 HOME (KEY_TERM_G28)
       if (BlockedWhilePrinting()) break;
-      injectCommands_P(PSTR("G28"));
-      log_and_send(PSTR("G28"));
+      term_run_P(PSTR("G28"));
       break;
     case 4: // G29 LEVEL (KEY_TERM_G29)
       if (BlockedWhilePrinting()) break;
-      injectCommands_P(PSTR("G29"));
-      log_and_send(PSTR("G29"));
+      term_run_P(PSTR("G29"));
       break;
     case 5: // M105 TEMPS (KEY_TERM_M105) — harmless, allowed during a print
-      injectCommands_P(PSTR("M105"));
-      log_and_send(PSTR("M105"));
+      term_run_P(PSTR("M105"));
       break;
     case 6: // M502 RESET (KEY_TERM_M502) — reset to defaults, does NOT save; this is the
             // quick/expert path, distinct from page 217's confirm-then-save Factory Reset
       if (BlockedWhilePrinting()) break;
-      injectCommands_P(PSTR("M502"));
-      log_and_send(PSTR("M502"));
+      term_run_P(PSTR("M502"));
       break;
     case 7: // M500 SAVE (KEY_TERM_M500) — writes the EEPROM file to the SD card
       if (BlockedWhilePrinting()) break;
-      injectCommands_P(PSTR("M500"));
-      log_and_send(PSTR("M500"));
+      term_run_P(PSTR("M500"));
       break;
     case 8: // KEYBOARD — type any command (page 6)
       kb_buf[0] = '\0';

@@ -378,8 +378,9 @@ void CardReader::ls() {
       diveDir.close();
 
       // Always leave the loop (it used to spin forever when the name was empty or too long, which boot-looped
-      // the printer through the watchdog on power-loss recovery). On no usable long name pathLong is left as is.
+      // the printer through the watchdog on power-loss recovery). A file without a long name (8.3 only) keeps its short name.
       if (longFilename[0] && strlen(longFilename) < 64) strcpy(pathLong, longFilename);
+      else if (strlen(segment) < 64) strcpy(pathLong, segment);
       break;
     }
   }

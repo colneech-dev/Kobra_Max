@@ -34,22 +34,26 @@ TOUCH_IN    = "DGUS/TouchConfig.xls"
 
 # DisplayConfig columns: Image ID, Name, Var Pointer, Desc Pointer, Var type, description
 DISPLAY_NEW = {
-    5: [  # Page 6 — Input Shaping (replaces original keyboard page)
-        ['5', 'Text', '0x2860', '0xFFFF', 'Text', 'IS X Frequency (Hz)'],
-        ['5', 'Text', '0x2890', '0xFFFF', 'Text', 'IS Y Frequency (Hz)'],
-        ['5', 'Text', '0x28C0', '0xFFFF', 'Text', 'IS X Damping zeta'],
-        ['5', 'Text', '0x28F0', '0xFFFF', 'Text', 'IS Y Damping zeta'],
+    5: [  # Page 6 — Terminal on-screen keyboard (the firmware keeps the typed text and shows it here)
+        ['5', 'Text', '0x2A10', '0xFFFF', 'Text', 'Terminal keyboard input'],
     ],
     213: [  # Page 214 — Thumbnail preview (replaces original stats/QR page)
         ['213', 'Text', '0x2180', '0xFFFF', 'Text', 'Selected filename'],
     ],
     214: [  # Page 215 — Terminal (new)
-        ['214', 'Text', '0x2A10', '0xFFFF', 'Text', 'Terminal keyboard input'],
         ['214', 'Text', '0x2C00', '0xFFFF', 'Text', 'Terminal log line 0 (6x12)'],
         ['214', 'Text', '0x2C20', '0xFFFF', 'Text', 'Terminal log line 1 (6x12)'],
         ['214', 'Text', '0x2C40', '0xFFFF', 'Text', 'Terminal log line 2 (6x12)'],
         ['214', 'Text', '0x2C60', '0xFFFF', 'Text', 'Terminal log line 3 (6x12)'],
         ['214', 'Text', '0x2C80', '0xFFFF', 'Text', 'Terminal log line 4 (6x12)'],
+        ['214', 'Text', '0x2CA0', '0xFFFF', 'Text', 'Terminal log line 5 (6x12)'],
+        ['214', 'Text', '0x2CC0', '0xFFFF', 'Text', 'Terminal log line 6 (6x12)'],
+        ['214', 'Text', '0x2CE0', '0xFFFF', 'Text', 'Terminal log line 7 (6x12)'],
+        ['214', 'Text', '0x2D00', '0xFFFF', 'Text', 'Terminal log line 8 (6x12)'],
+        ['214', 'Text', '0x2D20', '0xFFFF', 'Text', 'Terminal log line 9 (6x12)'],
+        ['214', 'Text', '0x2D40', '0xFFFF', 'Text', 'Terminal log line 10 (6x12)'],
+        ['214', 'Text', '0x2D60', '0xFFFF', 'Text', 'Terminal log line 11 (6x12)'],
+        ['214', 'Text', '0x2D80', '0xFFFF', 'Text', 'Terminal log line 12 (6x12)'],
     ],
     # Page 216 (Thermal Tuning) and 217 (Factory Reset confirm) have no VP
     # display controls — no rows needed in DisplayConfig.
@@ -59,8 +63,42 @@ DISPLAY_NEW = {
 _RKC = 'Return Key Code'
 _AI  = 'ASCII Input'
 TOUCH_NEW = {
-    5: [  # Page 6 — Input Shaping: 9 buttons (BACK + 8 ±1 IS controls) + SAVE
-        # BACK, -FreqX, +FreqX, -FreqY, +FreqY, -ZetaX, +ZetaX, -ZetaY, +ZetaY, SAVE
+    5: [  # Page 6 — keyboard: 40 character keys + SPACE, DEL, CLR, CANCEL, SEND, all Return Key Code
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
+        ['5', _RKC, '0x1000', _RKC, _RKC],
         ['5', _RKC, '0x1000', _RKC, _RKC],
         ['5', _RKC, '0x1000', _RKC, _RKC],
         ['5', _RKC, '0x1000', _RKC, _RKC],
@@ -76,10 +114,14 @@ TOUCH_NEW = {
         ['213', _RKC, '0x1000', _RKC, _RKC],
         ['213', _RKC, '0x1000', _RKC, _RKC],
     ],
-    214: [  # Page 215 — Terminal: BACK + SEND + keyboard input
+    214: [  # Page 215 — Terminal: BACK, G28, G29, M105, M502, M500, KEYBOARD (no text-input control)
         ['214', _RKC, '0x1000', _RKC, _RKC],
         ['214', _RKC, '0x1000', _RKC, _RKC],
-        ['214', _AI,  '0x2A10', _AI,  _AI],
+        ['214', _RKC, '0x1000', _RKC, _RKC],
+        ['214', _RKC, '0x1000', _RKC, _RKC],
+        ['214', _RKC, '0x1000', _RKC, _RKC],
+        ['214', _RKC, '0x1000', _RKC, _RKC],
+        ['214', _RKC, '0x1000', _RKC, _RKC],
     ],
     216: [  # Page 217 — Factory Reset confirm: CANCEL + RESET
         ['216', _RKC, '0x1000', _RKC, _RKC],

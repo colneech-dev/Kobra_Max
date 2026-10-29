@@ -176,24 +176,6 @@ def make_basic_graphics_record(vp_addr, x0, y0, x1, y1):
     return rec.ljust(32, bytes(1))
 
 
-def make_process_bar_record(vp_addr, x0, y0, x1, y1, border, fg, bg, vmax=100, vmin=0):
-    """Build a 32-byte 0x5A23 Process Bar record (DWIN T5L DGUS II guide 7.23.1).
-
-      5A23 FFFF 000D [vp] [Xs] [Ys] [Xe] [Ye] [border] [foreground] [background] [max] [min]
-      [Mode:1B][Direction:1B] [Type:1B][reserved:1B] [VP_RT]
-
-    The bar shows (value - min) / (max - min) of the integer at `vp_addr`, filled left to right.
-    Mode 0x00 = draw the border and fill the background; Direction 0x00 = rightwards; Type 0x00 =
-    integer; VP_RT 0 = do not return the percentage."""
-    rec = struct.pack('>13H', 0x5A23, 0xFFFF, 0x000D, vp_addr, x0, y0, x1, y1,
-                      border, fg, bg, vmax & 0xFFFF, vmin & 0xFFFF)
-    rec += bytes([0x00, 0x00])            # Mode, Direction
-    rec += bytes([0x00, 0x00])            # data type (integer), reserved
-    rec += struct.pack('>H', 0x0000)      # VP_RT: no percentage returned
-    assert len(rec) == 32
-    return rec
-
-
 # ── VP addresses (from dgus_tft.h) ────────────────────────────────────────────
 
 # Status bar — every content page
@@ -536,14 +518,12 @@ PAGE214 = STATUS_BAR + [
     make_text_record(TXT_PRINT_FULLNAME,  8, 310, 256, 30, chars=24),  # full-width below thumbnail
 ]
 
-# Page 215 — Terminal: 5 log lines + preset command buttons + status bar
-# page_terminal(): 5 rows starting at y=CONTENT_Y1=92, each row 38px tall.
-#   Row i: draw at y=92+i*38; vp(MARGIN+14=22, y+4, W-MARGIN=264, y+32) w=242 h=28
-#   Row 0: vp(22,  96, 242, 28)  Row 4: vp(22, 248, 242, 28)
-# Command buttons have no VP records (they enqueue G-code directly via key press).
+# Page 215 — Terminal: TERM_LINES rows of 6x12 log text + preset command buttons + status bar.
+# page_terminal() draws row i at y = TERM_Y0 + i * TERM_ROW_H across the full width (the same numbers, from ui_features).
+# The command buttons have no VP records (they inject G-code directly on a key press).
 PAGE215 = STATUS_BAR + [
-] + [
-    make_text_record(TXT_TERM_LOG + i * 0x20, 8, TERM_Y0 + i * TERM_ROW_H, 256, TERM_ROW_H, cw=6, ch=12)
+    # font= is the record's Text_Length (30 bytes by default, which would cut the 40-character rows)
+    make_text_record(TXT_TERM_LOG + i * 0x20, 8, TERM_Y0 + i * TERM_ROW_H, 256, TERM_ROW_H, cw=6, ch=12, font=uf.TERM_COLS)
     for i in range(TERM_LINES)
 ]
 

@@ -70,7 +70,8 @@ namespace ExtUI {
   void onPrintFinished() {}
 
   void onFactoryReset() {
-    Dgus.page_index_now = 121;
+    // page_index_now is left alone: M502 from the Terminal runs this while the display shows that page, and ParamInit
+    // picks the start page from the language at boot.
     Dgus.lcd_info.language = ExtUI::ENG;
     Dgus.lcd_info.audio = ExtUI::ON;
   }
