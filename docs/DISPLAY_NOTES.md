@@ -583,7 +583,7 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 5. **Never `ChangePageOfTFT()` with a stored page** — use `ChangePageOfTFT_DevicePage()`.
 6. **Never change page during the boot animation.**
 7. **Animation icons need the VP written** — they do not free-run.
-8. **Text records are top-left aligned and clip at `Text_Length`** (30 bytes today; the window per text VP is 0x30 words). The Terminal log rows (page 215) set `Text_Length` to 40 (`make_text_record(..., font=40)`: the parameter named `font` is that field).
+8. **Text records CENTRE their string in the box (measured on hardware, 2026-10-29: leading spaces move text right, a space is as wide as a letter) and clip at `Text_Length`**; to left-align, pad the END with spaces up to the box width (`pad_right()` in dgus_tft.cpp). Earlier notes called them left-aligned: wrong. (30 bytes today; the window per text VP is 0x30 words). The Terminal log rows (page 215) set `Text_Length` to 40 (`make_text_record(..., font=40)`: the parameter named `font` is that field).
 9. **A button with no handler, or a handler with no button, is a bug the display will never report.** Run `cross_check_display.py`.
 10. **A button that does nothing in some state shouldn't be drawn** (we removed BACK from the Printing screens).
 11. **Stale-VP read-back**: the old SAVE button read four VPs the page never let you edit, re-applying the values
@@ -629,8 +629,9 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
   silently drew 6x12 text, which is why value boxes looked tiny. `patch_14showfile.make_text_record` now picks the largest
   1:2 size that fits the box for `chars` characters (`fit_font`), starts the text 3 px in and centres it vertically.
   Pass `chars=` for anything longer or shorter than the default 21.
-* The text record (0x5A11) can only left-align. Short dynamic strings are centred by the firmware with leading spaces
-  (`center_pad`: status bar 7 slots of 12 px, wait-screen status line 25 slots of 10 px). Fixed strings are centred by their start x.
+* The text record (0x5A11) CENTRES its string in the box. Short dynamic strings are sent as they are (no padding: padding with
+  leading spaces pushed the text right); trailing spaces count as part of the string. Left-aligned fields (Terminal log, typed
+  command) are padded at the END up to the box width (`pad_right`).
 * The file browser shows 22 characters per row; a longer selected name scrolls (`FileNavigator::scrollSelected`), other long names
   end in "...". The Printing page shows 24 characters of the name.
 * The guide also lists a native Text Scroll control (0x5A14, 7.16) that could do the marquee in the display; not used (untested).

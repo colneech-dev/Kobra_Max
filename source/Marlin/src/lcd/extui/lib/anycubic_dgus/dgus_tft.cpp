@@ -126,17 +126,14 @@ static void fit_text(char * const out, const char * const src, const uint8_t cha
   strcpy(out + chars - 3, "...");
 }
 
-// The display only left-aligns text, and its characters are fixed width, so pad with leading spaces to
-// centre a short string in a box that holds `slots` characters.
-// Measured on the panel (photo of "Homing" + dots: 5 leading spaces = about 107 px): in the 10 px status lines a
-// leading space is drawn about 20 px wide, not 10, so `wide_space` pads with 1/4 of the free slots instead of 1/2.
-static void center_pad(char * const buf, const size_t size, const uint8_t slots, const bool wide_space = false) {
-  const size_t len = strlen(buf);
-  if (len >= slots || len + 1 >= size) return;
-  size_t pad = wide_space ? (slots - len + 2) / 4 : (slots - len) / 2;
-  if (len + pad + 1 > size) pad = size - len - 1;
-  memmove(buf + pad, buf, len + 1);
-  memset(buf, ' ', pad);
+// The display CENTRES every text field's string inside its box (measured: a string with leading spaces moves right,
+// and "A      A_" in the keyboard box sat exactly centred; a space is as wide as a letter). So short strings are simply
+// sent as they are. To get left-aligned text (the Terminal log, the typed command) pad the END with spaces up to the
+// width of the box: a string that fills the box starts at its left edge.
+static void pad_right(char * const buf, const size_t size, const size_t width) {
+  size_t len = strlen(buf);
+  while (len < width && len + 1 < size) buf[len++] = ' ';
+  buf[len] = '\0';
 }
 
 // How long a touch is held back so the pressed look can be seen (see IdleLoop).
@@ -522,7 +519,6 @@ void DgusTFT::IdleLoop()  {
     char str_buf[14]; // "65535/65535\0" = 12 chars; 14 gives safe margin
 
     sprintf(str_buf, "%u/%u", (uint16_t)getActualTemp_celsius(E0), (uint16_t)getTargetTemp_celsius(E0));
-    center_pad(str_buf, sizeof(str_buf), 7);   // 7 characters of 12 px in the 92 px status-bar box
 #if ACDEBUG(AC_MARLIN)
     SERIAL_ECHOPGM("StatusBar HOTEND vp=0x"); SERIAL_PRINT((uint32_t)TXT_MAIN_HOTEND, HEX);
     SERIAL_ECHOPGM(" page="); SERIAL_ECHO(page_index_now);
@@ -531,7 +527,6 @@ void DgusTFT::IdleLoop()  {
     SendTxtToTFT(str_buf, TXT_MAIN_HOTEND);
 
     sprintf(str_buf, "%u/%u", (uint16_t)getActualTemp_celsius(BED), (uint16_t)getTargetTemp_celsius(BED));
-    center_pad(str_buf, sizeof(str_buf), 7);
 #if ACDEBUG(AC_MARLIN)
     SERIAL_ECHOPGM("StatusBar BED    vp=0x"); SERIAL_PRINT((uint32_t)TXT_MAIN_BED, HEX);
     SERIAL_ECHOPGM(" page="); SERIAL_ECHO(page_index_now);
@@ -1432,7 +1427,6 @@ void DgusTFT::WaitStatus() {
     sprintf(buf, "Pausing%s", dots[phase]);
   else
     sprintf(buf, "Stopping%s", dots[phase]);
-  center_pad(buf, sizeof(buf), 25, true);   // 25 characters of 10 px in the 256 px status line
   SendTxtToTFT(buf, TXT_WAIT_STATUS);
 }
 
@@ -2281,7 +2275,11 @@ static void term_log_push(const char * const cmd) {
 static void term_log_send() {
   for (uint8_t i = 0; i < AC_TERM_LINES; i++) {
     const char * const row = term_row(i);
-    if (row[0]) DgusTFT::SendTxtToTFT(row, TXT_TERM_LOG + i * 0x20);   // empty rows stay blank (scrolling is only possible when all rows are full)
+    if (!row[0]) continue;   // empty rows stay blank (scrolling is only possible when all rows are full)
+    char line[AC_TERM_COLS];
+    strlcpy(line, row, sizeof(line));
+    pad_right(line, sizeof(line), AC_TERM_COLS - 1);   // fill the box so the text starts at its left edge
+    DgusTFT::SendTxtToTFT(line, TXT_TERM_LOG + i * 0x20);
   }
 }
 
@@ -2303,11 +2301,12 @@ static void term_run_P(PGM_P cmd) {
 }
 
 static void kb_show() {
-  char s[26];
+  char s[28];
   const size_t len = strlen(kb_buf), shown = len > 23 ? 23 : len;   // the field holds 25 characters: show the tail + a cursor
   memcpy(s, kb_buf + len - shown, shown);
   s[shown] = '_';
   s[shown + 1] = '\0';
+  pad_right(s, sizeof(s), 25);   // fill the box so the text grows from its left edge instead of shifting about
   DgusTFT::SendTxtToTFT(s, TXT_TERM_INPUT);
 }
 
@@ -2916,7 +2915,6 @@ void DgusTFT::page17_handle(void)
         fmt_mm(zs, sizeof(zs), getZOffset_mm(), true);
         sprintf_P(st, PSTR("Z offset %s mm"), zs);   // shown here too, in the line that is known to draw
       }
-      center_pad(st, sizeof(st), 25, true);
       SendTxtToTFT(st, TXT_WAIT_STATUS);
       // The value box goes blank when a button press makes the display redraw the page (it only draws a
       // text field when it is written), so send it again with every status refresh.
@@ -3089,7 +3087,6 @@ void DgusTFT::page19_handle(void)   // Filament
   else if (filament_running == FILA_OUT)     strcpy_P(str_buf, PSTR("Unloading filament..."));
   else if (filament_running == FILA_EXTRUDE) strcpy_P(str_buf, PSTR("Extruding 10 mm..."));
   else                                       strcpy_P(str_buf, PSTR("Ready"));
-  center_pad(str_buf, sizeof(str_buf), 25, true);
   SendTxtToTFT(str_buf, TXT_FILAMENT_STATUS);
 }
 
@@ -4135,7 +4132,6 @@ static void tune_status_send() {
     case TUNE_BAD:     strcpy(buf, "Failed");                       break;
     default:           strcpy(buf, "Ready");                        break;
   }
-  center_pad(buf, sizeof(buf), 25, true);
   DgusTFT::SendTxtToTFT(buf, TXT_TUNE_STATUS);
 }
 
