@@ -28,6 +28,10 @@
 #include "gcode.h"
 GcodeSuite gcode;
 
+// Kobra Max: a slicer's tool change (T1, T2 ...) is treated as a colour change, i.e. M600 (the first T0 is ignored)
+#define KOBRAMAX_COLOUR_CHANGE true
+static int16_t colourCounter = 0;
+
 #if ENABLED(WIFI_CUSTOM_COMMAND)
   extern bool wifi_custom_command(char * const command_ptr);
 #endif
@@ -1102,7 +1106,13 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
     }
     break;
 
-    case 'T': T(parser.codenum); break;                           // Tn: Tool Change
+    case 'T':                                                     // Tn: Tool Change
+      if (!KOBRAMAX_COLOUR_CHANGE)
+        T(parser.codenum);
+      else if (colourCounter != 0)
+        M600();
+      colourCounter++;
+      break;
 
     #if ENABLED(MARLIN_DEV_MODE)
       case 'D': D(parser.codenum); break;                         // Dn: Debug codes

@@ -212,6 +212,10 @@ public:
     static void init_lcd() {}
   #endif
 
+  #if ENABLED(ANYCUBIC_LCD_DGUS)
+    static void param_init();   // Anycubic DGUS: called once the settings are loaded
+  #endif
+
   static void reinit_lcd() { TERN_(REINIT_NOISY_LCD, init_lcd()); }
 
   #if HAS_WIRED_LCD

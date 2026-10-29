@@ -34,6 +34,10 @@
 
 #include "../inc/MarlinConfig.h"
 
+#ifndef FIL_SENSOR_OPTIONAL
+  #define FIL_SENSOR_OPTIONAL false   // Anycubic: ignore a "run out" reading that was already present at boot
+#endif
+
 #if ENABLED(EXTENSIBLE_UI)
   #include "../lcd/extui/ui_api.h"
 #endif
@@ -152,12 +156,25 @@ class TFilamentMonitor : public FilamentMonitorBase {
         #endif
 
         if (ran_out) {
-          filament_ran_out = true;
-          event_filament_runout(extruder);
-          planner.synchronize();
+          // Anycubic: with an optional sensor, a "run out" reading that was already there at boot (no sensor fitted, or
+          // no filament loaded) is not a runout event. The first change after that clears the flag.
+          #if FIL_SENSOR_OPTIONAL
+            if (!sensor.state_original)
+          #endif
+          {
+            filament_ran_out = true;
+            event_filament_runout(extruder);
+            planner.synchronize();
+          }
+          #if FIL_SENSOR_OPTIONAL
+            sensor.state_original = 0;
+          #endif
         }
       }
     }
+
+    // Anycubic: the sensor reading at boot (the display compares the pin against it)
+    static inline uint8_t get_state_original() { return sensor.state_original; }
 };
 
 /*************************** FILAMENT PRESENCE SENSORS ***************************/
@@ -173,11 +190,16 @@ class FilamentSensorBase {
     }
 
   public:
+    static uint8_t state_original;   // sensor reading at boot (Anycubic FIL_SENSOR_OPTIONAL)
+
     static void setup() {
       #define _INIT_RUNOUT_PIN(P,S,U,D) do{ if (ENABLED(U)) SET_INPUT_PULLUP(P); else if (ENABLED(D)) SET_INPUT_PULLDOWN(P); else SET_INPUT(P); }while(0)
       #define  INIT_RUNOUT_PIN(N) _INIT_RUNOUT_PIN(FIL_RUNOUT##N##_PIN, FIL_RUNOUT##N##_STATE, FIL_RUNOUT##N##_PULLUP, FIL_RUNOUT##N##_PULLDOWN)
       #if NUM_RUNOUT_SENSORS >= 1
         INIT_RUNOUT_PIN(1);
+        #if FIL_SENSOR_OPTIONAL
+          state_original = READ(FIL_RUNOUT1_PIN);
+        #endif
       #endif
       #if NUM_RUNOUT_SENSORS >= 2
         INIT_RUNOUT_PIN(2);
@@ -216,6 +238,9 @@ class FilamentSensorBase {
       return poll_runout_pins() ^ uint8_t(0
         #if NUM_RUNOUT_SENSORS >= 1
           | (FIL_RUNOUT1_STATE ? 0 : _BV(1 - 1))
+          #if FIL_SENSOR_OPTIONAL
+             & ~(state_original ? 0 : _BV(1 - 1))
+          #endif
         #endif
         #if NUM_RUNOUT_SENSORS >= 2
           | (FIL_RUNOUT2_STATE ? 0 : _BV(2 - 1))

@@ -53,6 +53,11 @@ enum MarlinState : uint8_t {
 };
 
 extern MarlinState marlin_state;
+
+// Kobra Max (MEL_MOD) state used by the DGUS display
+extern const char * gcodeComment;
+extern bool activeFilamentChange;
+extern bool mel_PrintAbort;
 inline bool IsRunning() { return marlin_state >= MF_RUNNING; }
 inline bool IsStopped() { return marlin_state == MF_STOPPED; }
 

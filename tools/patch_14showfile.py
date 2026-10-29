@@ -72,8 +72,8 @@ def make_text_record(vp_addr, x, y, w, h, color=0xFFFF, font=0x001E,
     if cw is None or ch is None:
         cw, ch = fit_font(w, h, chars)
     x2, y2 = x + w, y + h
-    # Text starts inset 3 px from the left and vertically centred in the box (the display only
-    # left-aligns); the box itself stays as drawn in the art, which the cross-check compares.
+    # (sx, sy) is the text origin: vertically centred in the box. Horizontally the display centres the string in the
+    # box whatever sx is (measured), so firmware strings are sent unpadded; the box stays as drawn in the art.
     sx, sy = x + 3, y + max(0, (h - ch) // 2)
     return struct.pack(
         '>HHHHHHHHHHHH',
@@ -287,6 +287,7 @@ TXT_TERM_INPUT = 0x2A10
 # Log: TERM_LINES rows of 6x12 text, TERM_ROW_H apart, one text field per row at TXT_TERM_LOG + i * 0x20
 # (the firmware's AC_TERM_LINES / TXT_TERM_LOG must match; generate_screens.py draws the rows from the same numbers).
 TXT_TERM_LOG = 0x2C00
+TXT_TUNE_STATUS = 0x2DA0   # Thermal Tuning (216) progress line; dgus_tft.h
 TERM_LINES, TERM_ROW_H, TERM_Y0 = uf.TERM_LINES, uf.TERM_ROW_H, uf.TERM_Y0
 
 # ── Shared record sets ─────────────────────────────────────────────────────────
@@ -522,14 +523,16 @@ PAGE214 = STATUS_BAR + [
 # page_terminal() draws row i at y = TERM_Y0 + i * TERM_ROW_H across the full width (the same numbers, from ui_features).
 # The command buttons have no VP records (they inject G-code directly on a key press).
 PAGE215 = STATUS_BAR + [
-    # font= is the record's Text_Length (30 bytes by default, which would cut the 40-character rows)
-    make_text_record(TXT_TERM_LOG + i * 0x20, 8, TERM_Y0 + i * TERM_ROW_H, 256, TERM_ROW_H, cw=6, ch=12, font=uf.TERM_COLS)
+    # font= is the record's Text_Length (30 bytes by default, which would cut the 36-character rows)
+    make_text_record(TXT_TERM_LOG + i * 0x20, uf.TERM_TEXT_X, TERM_Y0 + i * TERM_ROW_H, uf.TERM_TEXT_W, TERM_ROW_H, cw=6, ch=12, font=uf.TERM_COLS)
     for i in range(TERM_LINES)
 ]
 
 # Pages 216/217 — Thermal Tuning / Factory Reset confirm
 # Both call status_bar() but have no VP content areas — status bar only.
-PAGE216 = STATUS_BAR
+PAGE216 = STATUS_BAR + [
+    make_text_record(TXT_TUNE_STATUS, 8, 358, 256, 24, chars=25),   # "Hotend 143/200 tuning..." / "Hotend PID done, saved"
+]
 PAGE217 = STATUS_BAR
 
 # ── Build complete patches list ────────────────────────────────────────────────

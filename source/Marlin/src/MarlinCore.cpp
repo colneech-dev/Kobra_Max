@@ -261,6 +261,11 @@ PGMSTR(M112_KILL_STR, "M112 Shutdown");
 MarlinState marlin_state = MF_INITIALIZING;
 
 // For M109 and M190, this flag may be cleared (by M108) to exit the wait loop
+// Kobra Max (MEL_MOD) state used by the DGUS display, M600 / T colour changes and the print counter
+const char * gcodeComment = "G-Code Status Area";
+bool activeFilamentChange = false;   // a filament change (M600) is in progress
+bool mel_PrintAbort = false;         // the print was aborted: do not count it as finished
+
 bool wait_for_heatup = true;
 
 // For M0/M1, this flag may be cleared (by M108) to exit the wait-for-user loop
@@ -1335,6 +1340,7 @@ void setup() {
 
   SETUP_RUN(settings.first_load());   // Load data from EEPROM if available (or use defaults)
                                       // This also updates variables in the planner, elsewhere
+  TERN_(ANYCUBIC_LCD_DGUS, SETUP_RUN(ui.param_init()));
 
   #if ALL(HAS_WIRED_LCD, SHOW_BOOTSCREEN)
     SETUP_RUN(ui.show_bootscreen());

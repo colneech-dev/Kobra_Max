@@ -364,6 +364,41 @@ void CardReader::ls(const uint8_t lsflags/*=0*/) {
 
 #if ENABLED(LONG_FILENAME_HOST_SUPPORT)
 
+  // Anycubic: the long name of the file at a DOS 8.3 path, into pathLong (the DGUS power-loss page)
+  void CardReader::getLongPath(char *pathLong, char * const pathShort) {
+
+    int i, pathLen = strlen(pathShort);
+    char bufShort[FILENAME_LENGTH] = { '\0' };
+    strcpy_P(bufShort, pathShort);
+
+    // Zero out slashes to make segments
+    for (i = 0; i < pathLen; i++) if (bufShort[i] == '/') bufShort[i] = '\0';
+
+    MediaFile diveDir = root; // start from the root for segment 1
+    for (i = 0; i < pathLen;) {
+
+      if (bufShort[i] == '\0') i++; // move past a single nul
+
+      char *segment = &bufShort[i]; // The segment after most slashes
+
+      // If a segment is empty (extra-slash) then exit
+      if (!*segment) break;
+
+      // SERIAL_ECHOPGM("Looking for segment: "); SERIAL_ECHOLN(segment);
+
+      // Find the item, setting the long filename
+      diveDir.rewind();
+      selectByName(diveDir, segment);
+      diveDir.close();
+
+      // Always leave the loop (it used to spin forever when the name was empty or too long, which boot-looped
+      // the printer through the watchdog on power-loss recovery). A file without a long name (8.3 only) keeps its short name.
+      if (longFilename[0] && strlen(longFilename) < 64) strcpy(pathLong, longFilename);
+      else if (strlen(segment) < 64) strcpy(pathLong, segment);
+      break;
+    }
+  }
+
   //
   // Get a long pretty path based on a DOS 8.3 path
   //
