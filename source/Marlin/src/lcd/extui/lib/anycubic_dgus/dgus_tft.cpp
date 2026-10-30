@@ -437,6 +437,12 @@ void DgusTFT::ParamInit() {
   RequestValueFromTFT(REG_LCD_READY);
 }
 
+// Power-on jingle. The stock trigger (the display reports REG_LCD_READY 0x010000, "animation just started") never fires
+// with Marlin 2.1: the firmware needs ~6 s to start and the 2.6 s boot animation is over before the first poll, so the
+// jingle was silent. Instead it is requested when the boot sync completes and played from IdleLoop (not from inside
+// ProcessPanelRequest: the tune waits in idle(), which would re-enter it), if sound is switched on.
+static bool boot_tune_pending = false;
+
 void DgusTFT::IdleLoop()  {
   hal.watchdog_refresh(); // prevent WDT fire during DGUS packet processing
   term_rx_drain();
@@ -491,7 +497,13 @@ void DgusTFT::IdleLoop()  {
       LcdAudioSet(lcd_info.audio);
       SendMoveStepText();
       ChangePageOfTFT(PAGE_MAIN);
+      boot_tune_pending = true;
     }
+  }
+
+  if (boot_tune_pending) {
+    boot_tune_pending = false;
+    if (lcd_info.audio == ExtUI::ON) PlayTune(BEEPER_PIN, Anycubic_PowerOn, 1);   // takes 3500 ms
   }
 
   if (ReadTFTCommand()) {
@@ -1765,10 +1777,9 @@ void DgusTFT::ProcessPanelRequest() {
             ChangePageOfTFT(PAGE_STATUS2);
           } else {
             ChangePageOfTFT(PAGE_MAIN);
+            boot_tune_pending = true;   // the power-on jingle (see IdleLoop)
           }
 
-        } else if ((control_value & 0x00FFFFFF) == 0x010000) { // startup first gif
-          PlayTune(BEEPER_PIN, Anycubic_PowerOn, 1);         // take 3500 ms
         }
       }
 
