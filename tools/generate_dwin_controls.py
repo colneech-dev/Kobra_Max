@@ -164,10 +164,7 @@ _ZONES = [
     ([16, 136],   8, 168, 264, 212, 3), # MANUAL Z ADJUST
     ([16, 136], *uf.LEVEL_START_MINUS, 6),  # manual start height - 0.1 mm
     ([16, 136], *uf.LEVEL_START_PLUS,  7),  # manual start height + 0.1 mm
-    *([] if not uf.HAS_M1024 else [
-        ([16, 136],   8, 224, 264, 268, 5), # Z OFFSET WIZARD
-        ([16, 136],   8, 280, 264, 324, 4), # AUTO Z OFFSET
-    ]),
+    ([16, 136],   8, 224, 264, 268, 4), # AUTO Z OFFSET (mesh check, M48 probe test, manual page)
     ([16, 136],   8, 429, 264, 473, 1), # BACK
 
     # ── PAGE 17 / 137  Z-Offset Adjust ───────────────────────────────────────

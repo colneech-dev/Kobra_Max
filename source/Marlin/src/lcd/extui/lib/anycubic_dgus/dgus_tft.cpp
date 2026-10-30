@@ -129,6 +129,17 @@ DgusTFT::p_fun fun_array[] = {
 
 // Probing progress (G29 grid points reached). File scope so WaitStatus() can show it.
 static uint8_t probe_cnt = 0;
+
+// AUTO Z OFFSET (Leveling menu): 1. make sure a bed mesh exists (run G29 when it does not), 2. heat, home and run the
+// probe repeatability test M48 (5 probes at the bed centre) and show the spread it reports, 3. park at the manual
+// Z-offset start height. The user then sets the final offset on the manual page, which applies to the whole mesh.
+enum az_stage_t : uint8_t { AZ_IDLE, AZ_MESH, AZ_TEST, AZ_PARKED };
+static az_stage_t az_stage = AZ_IDLE;
+static bool       az_listen = false;   // the serial hook is looking for M48's summary line
+static float      az_range = -1;       // "Range:" of the last M48 (max - min of the probe heights), -1 = none yet
+static millis_t   az_deadline = 0;
+static char       az_msg[28] = "";
+static void az_start_test(const bool save_first);   // defined with the Z-offset pages
 // When the probe pre-check last failed; page203_handle returns to the Leveling menu after a timeout.
 static millis_t probe_failed_ms = 0;
 // Characters of the file name the Printing page can show (record is 10 px wide characters in a 256 px box).
@@ -903,10 +914,15 @@ void DgusTFT::StatusChange(const char * const msg)  {
         if (strlen(msg) >= strlen(CUSTOM_MACHINE_NAME) && strcmp_P(msg + strlen(CUSTOM_MACHINE_NAME), MARLIN_msg_ready) == 0) {
           if (probe_cnt >= GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y) {   // >=: an extra message must not leave the page stuck
             probe_cnt = 0;
-            injectCommands_P(PSTR("M500\nM104 S0\nM140 S0"));   // save the mesh and Z offset, then heaters off
-            heaters_off_when_idle();
-            ChangePageOfTFT(PAGE_PreLEVEL);   // wait pages 34/154 have no touch zones: must leave them explicitly
             printer_state = AC_printer_idle;
+            if (az_stage == AZ_MESH) {
+              az_start_test(true);   // AUTO Z OFFSET: the mesh now exists; save it and go on with the probe test (heaters stay on)
+            }
+            else {
+              injectCommands_P(PSTR("M500\nM104 S0\nM140 S0"));   // save the mesh and Z offset, then heaters off
+              heaters_off_when_idle();
+              ChangePageOfTFT(PAGE_PreLEVEL);   // wait pages 34/154 have no touch zones: must leave them explicitly
+            }
             msg_matched = true;
           }
         }
@@ -915,6 +931,7 @@ void DgusTFT::StatusChange(const char * const msg)  {
         if (strcmp_P(msg, MARLIN_msg_probing_failed) == 0) {
           PlayTune(BEEPER_PIN, BeepBeepBeeep, 1);
           probe_cnt = 0;   // a failed run must not leave the next run's point count off
+          az_stage = AZ_IDLE;
           injectCommands_P(PSTR("G1 Z50 F500\nM104 S0\nM140 S0"));
           heaters_off_when_idle();
           ChangePageOfTFT(PAGE_CHS_ABNORMAL_LEVELING_SENSOR);
@@ -2259,6 +2276,17 @@ static bool     term_capture = false, term_log_dirty = false;
 static millis_t term_capture_until = 0, term_capture_end = 0;   // _until: quiet period; _end: hard stop for one command
 
 static void term_rx_hook(void *, uint8_t c) {
+  if (az_listen && c != '\r') {   // M48: "Mean: 1.234567 Min: 1.234 Max: 1.245 Range: 0.011" (longer than a Terminal row, so its own buffer)
+    static char    az_line[72];
+    static uint8_t az_len = 0;
+    if (c == '\n') {
+      az_line[az_len] = '\0';
+      az_len = 0;
+      const char * const r = strstr(az_line, "Range: ");
+      if (r && strstr(az_line, "Mean")) az_range = atof(r + 7);
+    }
+    else if (az_len < sizeof(az_line) - 1) az_line[az_len++] = (char)c;
+  }
   if (!term_capture || c == '\r') return;
   if (c != '\n') {
     if (term_rx_len < sizeof(term_rx_line) - 1) term_rx_line[term_rx_len++] = (char)c;
@@ -2880,9 +2908,34 @@ static void z_start_show() {
   DgusTFT::SendTxtToTFT(b, TXT_LEVEL_START);
 }
 
+// AUTO Z OFFSET, step 2 (the mesh exists): heat as for leveling, home, M48 at the bed centre. page17_handle watches for
+// the end of the queue, reads the spread and parks the nozzle. save_first: the mesh was just made, store it before the test.
+static void az_start_test(const bool save_first) {
+  z_manual_start = z_start_tenths() / 10.0f;
+  z_entry_offset = getZOffset_mm();
+  az_range = -1;
+  az_listen = true;
+  az_stage = AZ_TEST;
+  az_deadline = millis() + 300000UL;
+#if PROBING_NOZZLE_TEMP || LEVELING_NOZZLE_TEMP
+  setTargetTemp_celsius(LEVELING_NOZZLE_TEMP, E0);
+#endif
+#if PROBING_BED_TEMP || LEVELING_BED_TEMP
+  setTargetTemp_celsius(LEVELING_BED_TEMP, BED);
+#endif
+  char cmd[64];
+  sprintf_P(cmd, PSTR("%sG28\nG90\nG1 Z5 F600\nM48 P5 X%d Y%d V1"), save_first ? "M500\n" : "", (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2));
+  injectCommands(cmd);
+  zoffset_moving = true;
+  DgusTFT::ChangePageOfTFT(PAGE_LEVEL_ADVANCE);
+}
+
 void DgusTFT::page16_handle(void)//AUTO LEVELING
 {
   static millis_t flash_time = 0;
+
+  az_stage = AZ_IDLE;   // this menu is never on screen during an AUTO Z OFFSET run; a stale stage must not carry over
+  az_listen = false;
 
   switch (key_value)
   {
@@ -2927,13 +2980,13 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
       }
       break;
 
-    case 4:
-      ChangePageOfTFT(PAGE_AUTO_OFFSET);
-      break;
-
-    case 5: // Z OFFSET WIZARD - same guided M1024 step-adjust flow as
-            // "AUTO Z OFFSET" (case 4); no separate wizard page exists
-      ChangePageOfTFT(PAGE_AUTO_OFFSET);
+    case 4: // AUTO Z OFFSET
+      if (BlockedWhilePrinting()) break;
+      if (getLevelingIsValid()) az_start_test(false);
+      else {
+        az_stage = AZ_MESH;   // no bed mesh yet: level first (same path as AUTO BED LEVEL), then the probe test
+        ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);
+      }
       break;
 
     case 6: // start height - 0.1 mm
@@ -2967,9 +3020,27 @@ void DgusTFT::page17_handle(void)
     static millis_t status_ms = 0;
     if (millis() - status_ms > 500) {
       status_ms = millis();
-      if (zoffset_moving && !commandsInQueue()) zoffset_moving = false;
+      if (az_stage == AZ_TEST && (!commandsInQueue() || ELAPSED(millis(), az_deadline))) {
+        // M48 has finished (or the wait ran out): read the spread, then park at the start height for the manual step
+        az_listen = false;
+        if (az_range >= 0) {
+          const unsigned um = (unsigned)lroundf(az_range * 1000.0f);
+          snprintf_P(az_msg, sizeof(az_msg), PSTR("Spread %u.%03u mm %s"), um / 1000, um % 1000,
+                     az_range <= 0.03f ? "OK" : az_range <= 0.08f ? "FAIR" : "NOISY");
+        }
+        else strcpy_P(az_msg, PSTR("Probe test: no result"));
+        az_stage = AZ_PARKED;
+        char cmd[64];
+        const uint8_t t = z_start_tenths();
+        sprintf_P(cmd, PSTR("G1 Z5 F600\nG1 Z%u.%u F200\nM104 S0\nM140 S0"), t / 10, t % 10);   // heaters off: paper test is cold
+        injectCommands(cmd);
+        zoffset_moving = true;
+      }
+      else if (zoffset_moving && !commandsInQueue()) zoffset_moving = false;
       char st[28];
-      if (zoffset_moving) strcpy_P(st, PSTR("Homing and moving..."));
+      if (az_stage == AZ_TEST) strcpy_P(st, PSTR("Testing probe (5x)..."));
+      else if (zoffset_moving) strcpy_P(st, PSTR("Homing and moving..."));
+      else if (az_stage == AZ_PARKED && ((millis() / 3000) & 1)) strlcpy(st, az_msg, sizeof(st));   // alternates with the prompt
       else strcpy_P(st, PSTR("Lower to paper, then SAVE"));
       SendTxtToTFT(st, TXT_WAIT_STATUS);
       // The value box goes blank when a button press makes the display redraw the page (it only draws a
@@ -2992,6 +3063,8 @@ void DgusTFT::page17_handle(void)
         setZOffset_mm(z_orig);
         z_change = false;
       }
+      az_stage = AZ_IDLE;
+      az_listen = false;
       if (!isPrinting()) injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift off the bed, heaters off (never into a host print)
       heaters_off_when_idle();
       ChangePageOfTFT(PAGE_PreLEVEL);
@@ -3021,6 +3094,8 @@ void DgusTFT::page17_handle(void)
       break;
 
     case 4:
+      az_stage = AZ_IDLE;
+      az_listen = false;
 
 #if ACDEBUG(AC_MARLIN)
       SERIAL_ECHOLNPGM("z off: ", ftostr(getZOffset_mm()));

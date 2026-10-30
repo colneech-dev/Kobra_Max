@@ -691,10 +691,8 @@ def page_pre_level():
     title_bar(draw, "LEVELING MENU")
     y = CONTENT_Y1 + 20
     items = [("AUTO BED LEVEL  G29", 'primary', 0xf05b),
-             ("MANUAL Z ADJUST",      'normal',  0xf338)]
-    if uf.HAS_M1024:   # both buttons open the M1024 page, which needs a firmware command
-        items += [("Z OFFSET WIZARD", 'normal', 0xf0d0),
-                  ("AUTO Z OFFSET",   'normal', 0xf063)]
+             ("MANUAL Z ADJUST",      'normal',  0xf338),
+             ("AUTO Z OFFSET",        'normal',  0xf063)]   # mesh check + probe test, then the manual page
     for lbl, sty, ico in items:
         btn(draw, MARGIN, y, W - MARGIN, y + 44, lbl, style=sty, icon=ico);  y += 56
     # saved start height of the manual Z adjust (the nozzle parks this high above the bed, not at Z0)
