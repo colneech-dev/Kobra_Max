@@ -60,3 +60,6 @@ Power loss (decisions 1-3, done):
   CORRECTION to the earlier recommendation "ZRAISE 0": in 2.1.2.9 that value is the resume lift when there is no UPS, so 0 would drag the nozzle across the print while XY homes. The original firmware got its lift from Z_HOMING_HEIGHT in G28.
 * `M413 O` (simulated outage, via `DEBUG_POWER_LOSS_RECOVERY`) is back. It saves the job and ends the print without killing the board; power-cycle and resume to test.
 * Untested on hardware. Test with `M413 O` on a short print first.
+
+Independent review (2026-10-30): R1 fixed (`PROBING_MARGIN 10` had been dropped, G29 would have probed the bed edge); B3 fixed (upload size limit 480 KB).
+Open from that review: B2 watchdog ~21 s, B5 internal G28 clears the filament-change flag, B1 looser thermal protection, features: M73 progress, variance monitor, bilinear subdivision, EXTRA_PROBING, linear advance, input shaping (hardware tests).
