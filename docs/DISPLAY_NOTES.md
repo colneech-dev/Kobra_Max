@@ -688,3 +688,21 @@ for the DGUS build; `DgusTFT::Startup()` installs `term_rx_hook` on the host por
 the hook splits the port's output into lines and adds them straight to the 13-row log (`ok` / `echo:` stripped,
 `busy:` keepalives ignored). It listens 8 s after the command, 3 s after each reply line, and never longer than 120 s.
 Unverified on hardware.
+
+## New pages 2026-10-31: bed mesh, E-steps, linear advance (unbuilt, untested on the display)
+
+Single-language pages at IDs that no stock page uses (below 215, so the show file's page count stays 218):
+
+| Page | ID | Reached from | Keys | Text fields |
+|---|---|---|---|---|
+| Bed mesh | 208 | Leveling menu, VIEW BED MESH (key 8) | 1 BACK | `TXT_MESH_BASE` 0x2E00 + 8 * (row * N + column), `TXT_MESH_INFO1/2` |
+| E-steps calibration | 210 | Prepare, E-STEPS (key 7) | 1 BACK, 2 heat + extrude 100 mm, 3/4 -/+1 mm, 5/6 -/+0.1 mm, 7 SAVE | `TXT_ES_CUR/ACTUAL/NEW/STATUS` 0x2FC0..0x2FF0 |
+| Linear advance K | 174 | Prepare, ADVANCE K (key 8) | 1 BACK, 2/3 -/+0.1, 4/5 -/+0.01, 6 SAVE | `TXT_LA_K`, `TXT_LA_STATUS` 0x3000/0x3010 |
+
+* Their "button held" pictures are the free IDs 155, 156, 157 (`press_effect.SPECIAL_ID`); 218-251 are all taken.
+* Mesh page: N x N small text cells (N from `GRID_MAX_POINTS_X`, 7), value = height minus the mesh average in 0.01 mm, row 0 = back of the bed.
+  `generate_screens.py` asserts that the grid fits the screen (N <= 7 at 36 px cells). 49 text records on one page are untested.
+* E-steps: HEAT + EXTRUDE heats to `AC_ESTEPS_TEMP` (210 C), extrudes 100 mm at 100 mm/min, switches the heater off. The user enters the length that really moved
+  (mark 120 mm above the extruder, enter 120 minus what is left); new steps/mm = old * 100 / entered. BACK is ignored while the filament moves.
+* Linear advance: needs `LIN_ADVANCE` (on, K = 0 by default); without it the page says "Not in this firmware".
+* The Leveling menu's start-height row moved down to y 340-394 to make room for the fourth button.

@@ -155,6 +155,10 @@
 #define PAGE_TERMINAL                             (215+PAGE_OFFSET)
 #define PAGE_THERMAL_TUNING                       (216+PAGE_OFFSET)
 #define PAGE_FACTORY_RESET                        (217+PAGE_OFFSET)
+// New single-language pages (tools/ui_features.py has the same numbers)
+#define PAGE_MESH_VIEW                            (208+PAGE_OFFSET)   // bed mesh as a grid of numbers
+#define PAGE_ESTEPS                               (210+PAGE_OFFSET)   // extruder E-steps calibration
+#define PAGE_LIN_ADVANCE                          (174+PAGE_OFFSET)   // linear advance K factor
 
 
 
@@ -305,6 +309,16 @@
 #define AC_TERM_COLS   37       // characters per row (216 of the 224 px box), plus the terminating NUL
 #define TXT_TUNE_STATUS 0x2DA0  // Thermal Tuning page (216): progress / result line
 #define TXT_LEVEL_START 0x2DC0  // Leveling menu (16): manual Z-offset start height
+// tools/patch_14showfile.py has the same addresses
+#define TXT_MESH_BASE   0x2E00  // Bed mesh page (208): one cell per VP, 8 words apart (row * N + column)
+#define TXT_MESH_INFO1  0x2F90  //   "Range 0.321 mm"
+#define TXT_MESH_INFO2  0x2FA0  //   "Low -0.17  High +0.15 mm"
+#define TXT_ES_CUR      0x2FC0  // E-steps page (210): current steps/mm
+#define TXT_ES_ACTUAL   0x2FD0  //   length the user measured
+#define TXT_ES_NEW      0x2FE0  //   new steps/mm
+#define TXT_ES_STATUS   0x2FF0  //   progress / result line
+#define TXT_LA_K        0x3000  // Linear advance page (174): K factor
+#define TXT_LA_STATUS   0x3010  //   result line
 #define AC_TERM_HIST   64       // lines kept for scrolling back (page 215 up / down buttons)
 
 
@@ -555,6 +569,9 @@ namespace Anycubic {
       static void page214_handle(void);
       static void page215_handle(void);
       static void page216_handle(void);
+      static void page208_handle(void);
+      static void page210_handle(void);
+      static void page174_handle(void);
       static void page217_handle(void);
 
       static void pop_up_manager(void);

@@ -217,10 +217,26 @@ LEVELING_BED_TEMP    = _define(_cfg_text, "LEVELING_BED_TEMP", 60)
 
 # Terminal log (page 215): rows of 6x12 text. Shared by generate_screens.py (art) and patch_14showfile.py (text fields).
 # Leveling menu (page 16): the manual Z-offset start-height row (label above, then - / value / +). Keys 6 and 7.
-LEVEL_START_LABEL_Y = 284
-LEVEL_START_MINUS = (8, 302, 60, 338)
-LEVEL_START_VALUE = (68, 302, 204, 338)
-LEVEL_START_PLUS  = (212, 302, 264, 338)
+LEVEL_START_LABEL_Y = 340
+LEVEL_START_MINUS = (8, 358, 60, 394)
+LEVEL_START_VALUE = (68, 358, 204, 394)
+LEVEL_START_PLUS  = (212, 358, 264, 394)
+
+# New single-language pages (IDs below 215 that no stock page uses; their "button held" pictures are the free IDs 155-157,
+# see press_effect.SPECIAL_ID). dgus_tft.h has the same numbers (PAGE_MESH_VIEW, PAGE_ESTEPS, PAGE_LIN_ADVANCE).
+PAGE_MESH_VIEW, PAGE_ESTEPS, PAGE_LINADV = 208, 210, 174
+# Bed mesh viewer: MESH_N x MESH_N text cells (one text field each, 0.01 mm relative to the mesh average).
+MESH_N = int(GRID_POINTS ** 0.5)
+MESH_X0, MESH_Y0, MESH_CELL_W, MESH_CELL_H = 10, 112, 36, 36
+# Extruder pages: label / value row geometry shared by art and show file
+ESTEPS_CUR    = (8, 118, 264, 146)     # current E steps/mm
+ESTEPS_ACTUAL = (68, 224, 204, 260)    # measured length (between the - / + buttons)
+ESTEPS_NEW    = (8, 328, 264, 356)     # new E steps/mm
+ESTEPS_STATUS = (8, 362, 264, 382)
+LINADV_K      = (8, 118, 264, 170)
+LINADV_STATUS = (8, 274, 264, 296)
+MESH_INFO1    = (8, 384, 264, 404)
+MESH_INFO2    = (8, 406, 264, 426)
 TERM_LINES, TERM_ROW_H, TERM_Y0, TERM_COLS = 13, 14, 92, 36   # TERM_COLS = characters per row (AC_TERM_COLS - 1 in the firmware)
 TERM_TEXT_X, TERM_TEXT_W = 8, 224                              # the log text box; the scroll buttons take the strip to its right
 TERM_SCROLL_X1, TERM_SCROLL_X2 = 236, 264
