@@ -1542,12 +1542,14 @@
  * Useful for a strain gauge or piezo sensor that needs to factor out
  * elements such as cables pulling on the carriage.
  */
-//#define PROBE_TARE
+// Anycubic: the strain-gauge nozzle is reset by pulling its TX line low for 300 ms, then 100 ms to settle (the
+// original firmware did this inside probe_down_to_z; Marlin's own feature does the same job without a core patch).
+#define PROBE_TARE
 #if ENABLED(PROBE_TARE)
-  #define PROBE_TARE_TIME  200    // (ms) Time to hold tare pin
-  #define PROBE_TARE_DELAY 200    // (ms) Delay after tare before
-  #define PROBE_TARE_STATE HIGH   // State to write pin for tare
-  //#define PROBE_TARE_PIN PA5    // Override default pin
+  #define PROBE_TARE_TIME  300    // (ms) Time to hold tare pin
+  #define PROBE_TARE_DELAY 100    // (ms) Delay after tare before
+  #define PROBE_TARE_STATE LOW    // State to write pin for tare
+  #define PROBE_TARE_PIN AUTO_LEVEL_TX_PIN   // PB7
   #if ENABLED(PROBE_ACTIVATION_SWITCH)
     //#define PROBE_TARE_ONLY_WHILE_INACTIVE  // Fail to tare/probe if PROBE_ACTIVATION_SWITCH is active
   #endif
