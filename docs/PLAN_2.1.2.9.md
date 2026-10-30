@@ -1,0 +1,44 @@
+# Marlin 2.1.2.9 port: fix plan (2026-10-30)
+
+Branch `marlin-2.1.2.9`. Background and what was already ported: `docs/UPGRADE_2.1.2.9.md`.
+Sources: my own old-vs-new comparison and an independent read-only review of the port.
+
+## Already verified equal or fine
+
+* DGUS library: identical to `kobra-max-hc32` apart from 2.1 API renames (`SERIAL_ECHOLNPAIR` -> `SERIAL_ECHOLNPGM`,
+  `getMeshValid` -> `getLevelingIsValid`, `disable_all_steppers` -> `stepper.disable_all_steppers`, `HAL_watchdog_refresh` -> `hal.watchdog_refresh`).
+* HC32 HAL: clock, serial, SD, endstops, timers, ADC identical; only the 2.0.8 compatibility bridge was removed.
+* Pins: identical apart from `FAN_PIN` -> `FAN0_PIN`, `SDIO_SUPPORT` -> `ONBOARD_SDIO`.
+* Effective configuration: identical apart from option renames and these new 2.1 defaults:
+  arcs `MIN_ARC_SEGMENT_MM 0.1` / `MAX_ARC_SEGMENT_MM 1.0`; `PRINTCOUNTER_SAVE_INTERVAL 60`; `POWER_LOSS_ZRAISE` 2 (old 0).
+* Thermistor tables 1 and 11: same temperatures; 2.1.2.9 oversamples 16x instead of 8x (scaled internally).
+* Display hooks (`ExtUI::on*`): every hook the old core fired is fired by 2.1.2.9 under its new name, except the
+  probe-preheat hooks (ported in b144c08).
+
+## Ported in b144c08 (build pending item 0)
+
+Strain-gauge probe reset (`AUTO_LEVEL_TX`) before every probe move; "Probe preheat start/stop" display hooks;
+5 s startup grace for MIN/MAXTEMP errors; M117 text kept for the print page (`gcodeComment`); aborted prints not counted.
+
+## To do
+
+| # | Item | Severity | Fix |
+|---|---|---|---|
+| 0 | b144c08 does not build: `lcd/marlinui.cpp` uses `ExtUI::` without the include | build | `#include "extui/ui_api.h"` under `EXTENSIBLE_UI` |
+| 1 | Power-loss detection: 2.1.2.9 reads `PC2` digitally (~2.2 V at 24 V); the old firmware compared the ADC value (< 2200 counts for > 4 samples) | safety | restore the ADC-threshold `outage()`; switch heaters off before the SD write |
+| 2 | Power-loss resume trusts the saved Z; the old firmware did a full `G28`, Z+5, slow purge | safety | home Z on resume (as before) |
+| 3 | `POWER_LOSS_ZRAISE` defaults to 2 (old 0) | behaviour | set 0 explicitly until resume is tested |
+| 4 | Homing-failure kill no longer names the axis; the DGUS endstop-fault pages never appear | display | pass X/Y/Z through `validate_homing_move()` as before |
+| 5 | `G28` no longer resets `colourCounter` | behaviour | `case 28: colourCounter = 0; G28();` |
+| 6 | Pause strings changed ("Reheat Done", "Purging...") but `dgus_tft_defs.h` matches the old text | display | update `MARLIN_msg_reheat_done` / `MARLIN_msg_filament_purging` |
+| 7 | Unused EEPROM backends (`eeprom_bl24cxx.cpp`, `eeprom_wired.cpp`) use the removed `eeprom_exclude_size` | tidy | same fix as `eeprom_sdcard.cpp` |
+| 8 | First boot resets settings (EEPROM V82 -> V88): Z offset, mesh, language lost | first flash | procedure: `M503` on the old firmware first, then re-level and `M500` |
+
+Then rebuild, cross-check the display files, package the next release, update `docs/UPGRADE_2.1.2.9.md`.
+New 2.1.x features wait until this base has run on the printer.
+
+## Decisions (recommendation in bold)
+
+1. Power-loss detection: **restore the old ADC detection** / disable it (`POWER_LOSS_PIN -1`) and rely on per-layer saves.
+2. Resume: **home Z** / trust the saved Z.
+3. `POWER_LOSS_ZRAISE`: **0** / 2.
