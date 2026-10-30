@@ -639,8 +639,8 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 
 ## Filament and Z-offset pages (2026-10-26)
 
-* Filament page (19/139): LOAD / EXTRUDE 10 MM / UNLOAD / STOP. Every action sets 230 C, shows "Heating to 230 C..." in
-  `TXT_FILAMENT_STATUS` and starts at 225 C. LOAD is the long fast feed for new filament; EXTRUDE is a slow 10 mm purge
+* Filament page (19/139): LOAD / EXTRUDE 30 MM / UNLOAD / STOP. Every action sets 230 C, shows "Heating to 230 C..." in
+  `TXT_FILAMENT_STATUS` and starts at 225 C. LOAD is the long fast feed for new filament; EXTRUDE is a slow 30 mm purge
   (`MEL_cmnd_extrude_filament`) for filament that is already in the nozzle.
 * Z-offset page (17/137): opening it homes (G28), lifts to Z5, moves to the bed centre and lowers to Z0, with a status
   line ("Homing and moving..." / "Adjust Z with - / +", `TXT_WAIT_STATUS`). The - / + buttons are ignored until the nozzle

@@ -763,7 +763,7 @@ def page_filament():
     vp_area(draw, MARGIN, y, W - MARGIN, y + 34, '210/230 C');  y += 40
     vp_area(draw, MARGIN, y, W - MARGIN, y + 24, f'Heating to {uf.FILAMENT_TEMP} C...');  y += 32   # live status line
     btn(draw, MARGIN, y, W - MARGIN, y + 40, "LOAD FILAMENT",   style='primary', icon=0xf063);   y += 48
-    btn(draw, MARGIN, y, W - MARGIN, y + 40, "EXTRUDE 10 MM",   style='normal',  icon=0xf078);   y += 48
+    btn(draw, MARGIN, y, W - MARGIN, y + 40, "EXTRUDE 30 MM",   style='normal',  icon=0xf078);   y += 48
     btn(draw, MARGIN, y, W - MARGIN, y + 40, "UNLOAD FILAMENT", style='normal',  icon=0xf062);   y += 48
     btn(draw, MARGIN, y, W - MARGIN, y + 40, "STOP",            style='danger',  icon=0xf04d)
     text_center(draw, (0, y + 46, W, y + 62), f"Heats to {uf.FILAMENT_TEMP} C first. Use EXTRUDE once loaded", F_TINY, GRAY)

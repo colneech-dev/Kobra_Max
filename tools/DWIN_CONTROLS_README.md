@@ -266,7 +266,7 @@ have no zones and are absent here.
 | Zone | x0 | y0 | x1 | y1 | Key |
 |------|----|----|----|----|-----|
 | LOAD | 8 | 196 | 264 | 236 | 2 |
-| EXTRUDE 10 mm | 8 | 244 | 264 | 284 | 5 |
+| EXTRUDE 30 mm | 8 | 244 | 264 | 284 | 5 |
 | UNLOAD | 8 | 292 | 264 | 332 | 3 |
 | STOP | 8 | 340 | 264 | 380 | 4 |
 | BACK                 (KEY_TUNE_BACK  = 1) | 8 | 429 | 264 | 473 | 1 |
