@@ -312,15 +312,15 @@ void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=POW
       constexpr float zraise = 0;
     #endif
 
+    // Disable all heaters first: they draw the most current and the SD write below needs the little power that is left
+    thermalManager.disable_all_heaters();
+
     // Save the current position, distance that Z was (or should be) raised,
     // and a flag whether the raise was already done here.
     if (IS_SD_PRINTING()) save(true, zraise, ENABLED(BACKUP_POWER_SUPPLY));
 
     // Tell the LCD about the outage, even though it is about to die
     TERN_(EXTENSIBLE_UI, ExtUI::onPowerLoss());
-
-    // Disable all heaters to reduce power loss
-    thermalManager.disable_all_heaters();
 
     #if ENABLED(BACKUP_POWER_SUPPLY)
       // Do a hard-stop of the steppers (with possibly a loud thud)
@@ -439,11 +439,10 @@ void PrintJobRecovery::resume() {
 
     float z_now = info.flag.raised ? z_raised : z_print;
 
-    #if !HOMING_Z_DOWN
-      // Set Z to the real position
-      sprintf_P(cmd, PSTR("G92.9Z%s"), dtostrf(z_now, 1, 3, str_1));
-      PROCESS_SUBCOMMANDS_NOW(cmd);
-    #endif
+    // Set Z to the saved position. Anycubic: also when Z is homed afterwards (HOMING_Z_DOWN): the lift below and the
+    // XY homing need a Z to lift from, otherwise the nozzle would drag across the print.
+    sprintf_P(cmd, PSTR("G92.9Z%s"), dtostrf(z_now, 1, 3, str_1));
+    PROCESS_SUBCOMMANDS_NOW(cmd);
 
     // Does Z need to be raised now? It should be raised before homing XY.
     if (z_raised > z_now) {

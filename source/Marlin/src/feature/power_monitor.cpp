@@ -40,6 +40,7 @@ uint8_t PowerMonitor::flags; // = 0
 #endif
 #if ENABLED(POWER_MONITOR_VOLTAGE)
   pm_lpf_t<PowerMonitor::volts_adc_scale, PM_K_VALUE, PM_K_SCALE> PowerMonitor::volts;
+  uint16_t PowerMonitor::volts_raw = 0xFFFF;   // "full voltage" until the first sample arrives: no false outage at start-up
 #endif
 
 millis_t PowerMonitor::display_item_ms;

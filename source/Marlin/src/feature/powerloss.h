@@ -42,11 +42,19 @@
   #define POWER_LOSS_STATE HIGH
 #endif
 
+#if ENABLED(POWER_MONITOR_VOLTAGE)
+  #include "power_monitor.h"   // outage() reads the raw supply-voltage ADC value
+#else
+  #error "Anycubic power-loss detection needs POWER_MONITOR_VOLTAGE (PC2 is the 24 V sense input)."
+#endif
+
 #ifndef POWER_LOSS_ZRAISE
   #define POWER_LOSS_ZRAISE 2 // Default Z-raise on outage or resume
 #endif
 
-//#define DEBUG_POWER_LOSS_RECOVERY
+// Anycubic: also enables M413 O, which simulates an outage (saves the job, then stops the print without killing the
+// printer) so recovery can be tested without pulling the plug.
+#define DEBUG_POWER_LOSS_RECOVERY
 //#define SAVE_EACH_CMD_MODE
 //#define SAVE_INFO_INTERVAL_MS 0
 
@@ -191,15 +199,22 @@ class PrintJobRecovery {
     static void save(const bool force=ENABLED(SAVE_EACH_CMD_MODE), const float zraise=POWER_LOSS_ZRAISE, const bool raised=false);
 
     #if PIN_EXISTS(POWER_LOSS)
+      // Anycubic: the sense pin (PC2) sits on a 1:11 divider from the 24 V rail, about 2.2 V when healthy, so a digital
+      // read is useless. As on the original firmware: an outage is a raw ADC reading below ~19.5 V (2200 of 4095
+      // counts) that is still falling after more than 4 samples.
       static void outage() {
-        static constexpr uint8_t OUTAGE_THRESHOLD = 3;
-        static uint8_t outage_counter = 0;
-        if (enabled && READ(POWER_LOSS_PIN) == POWER_LOSS_STATE) {
-          outage_counter++;
-          if (outage_counter >= OUTAGE_THRESHOLD) _outage();
+        static constexpr uint16_t OUTAGE_ADC_BELOW = 2200;
+        static uint8_t  outage_counter = 0;
+        static uint16_t adc_last = 0;
+        if (!enabled) return;
+        const uint16_t adc = power_monitor.getVoltsRaw();
+        if (adc < OUTAGE_ADC_BELOW) {
+          if (outage_counter >= 4) _outage();
+          if (adc < adc_last) outage_counter++;
         }
         else
           outage_counter = 0;
+        adc_last = adc;
       }
     #endif
 
