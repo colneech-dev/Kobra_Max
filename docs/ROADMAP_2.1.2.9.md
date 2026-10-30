@@ -40,7 +40,7 @@ code that the Kobra Max does not use (other kinematics, other displays, other HA
 | A2 | `ProbeTare`, `getProbeState`, `getFilamentRunoutOriginState`, `clearProgress_seconds_elapsed`, `param_init` (ExtUI) | Display probe test, filament check, print timer reset, start-up page | **ported** |
 | A3 | "Probe preheat start/stop" status (`lcd/marlinui.cpp`, `module/probe.cpp`) | Tells the display G29 is heating first, so it shows the preheat page | **ported** (b144c08) |
 | A4 | Optional filament sensor (`feature/runout.h/.cpp`, `state_original`) | A "no filament" reading present at boot does not trigger runout | **ported** |
-| A5 | Runout debounce `FILAMENT_RUNOUT_THRESHOLD 1000` (`feature/runout.h`, counter widened to `int16_t`) | Runout must persist ~1000 polls (about a second) before it counts. 2.1.2.9 uses 5 in an `int8_t` | **missing**: false runout pauses likely. Port needs the define **and** the wider counter type (1000 does not fit `int8_t`) |
+| A5 | Runout debounce `FILAMENT_RUNOUT_THRESHOLD 1000` (`feature/runout.h`) | Only used by the debounced runout response; with `FILAMENT_RUNOUT_DISTANCE_MM 15` enabled (as here) the distance-based response is used instead | **not needed** (checked: the old firmware also ran the distance response) |
 | A6 | Power-loss detection by ADC (`feature/powerloss.cpp`, `outage()`) | Power monitor ADC below 2200 counts and falling for more than 4 samples triggers the outage routine | **missing**: 2.1.2.9 reads PC2 digitally (about 2.2 V at 24 V). It may never trigger, or kill a healthy print |
 | A7 | Outage routine order (`_outage`) | Heater pins off and `ExtUI::onPowerLoss()` first, then steppers released, then save | **missing**: 2.1.2.9 saves first, heaters later |
 | A8 | Resume sequence (`resume()`) | Full `G28` incl. Z, Z+5 mm, slow purge, Z back at F200 | **missing**: 2.1.2.9 trusts the saved Z (`G92.9`, `G28R0XY`). Crash risk |
@@ -135,7 +135,7 @@ Wabbitguy / MEL and our own changes (relative to Anycubic's source):
 
 1. Build fix (`ui_api.h` include in `marlinui.cpp`).
 2. Power loss: ADC detection (A6), outage order (A7), resume homing (A8), `POWER_LOSS_ZRAISE 0` (A9), `M413 O` test (A11).
-3. Runout debounce 1000 with an `int16_t` counter (A5).
+3. ~~Runout debounce~~ dropped: not used with the runout distance enabled.
 4. `DEFAULT_FEEDRATE_MM_M 2000` (B1).
 5. Status-text matches in `dgus_tft_defs.h` (B1).
 6. Homing failure names the axis (A12); `G28` resets `colourCounter` (M1).

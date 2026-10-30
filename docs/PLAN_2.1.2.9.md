@@ -42,3 +42,9 @@ New 2.1.x features wait until this base has run on the printer.
 1. Power-loss detection: **restore the old ADC detection** / disable it (`POWER_LOSS_PIN -1`) and rely on per-layer saves.
 2. Resume: **home Z** / trust the saved Z.
 3. `POWER_LOSS_ZRAISE`: **0** / 2.
+
+## Progress 2026-10-30
+
+Done in `8376509`: build include (0), homing-failure axis (4), `G28` colour counter (5), pause strings (6), unused EEPROM backends (7), default feedrate 2000.
+Done after that: manual Z-offset page parks at a saved start height (default 1.0 mm, `-`/`+` row on the Leveling menu) instead of Z0.
+Held for decisions: power loss (1, 2, 3, `M413 O`), thermistor variance monitor. Auto Z offset: see the chat discussion (needs a design choice).

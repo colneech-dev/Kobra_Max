@@ -74,6 +74,7 @@ namespace ExtUI {
     // picks the start page from the language at boot.
     Dgus.lcd_info.language = ExtUI::ENG;
     Dgus.lcd_info.audio = ExtUI::ON;
+    Dgus.lcd_info.z_start_tenths = 10;   // manual Z-offset start height 1.0 mm
   }
 
   void onStoreSettings(char *buff) {

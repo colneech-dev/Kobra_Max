@@ -287,6 +287,7 @@ TXT_TERM_INPUT = 0x2A10
 # Log: TERM_LINES rows of 6x12 text, TERM_ROW_H apart, one text field per row at TXT_TERM_LOG + i * 0x20
 # (the firmware's AC_TERM_LINES / TXT_TERM_LOG must match; generate_screens.py draws the rows from the same numbers).
 TXT_TERM_LOG = 0x2C00
+TXT_LEVEL_START = 0x2DC0   # Leveling menu (16): manual Z-offset start height; dgus_tft.h
 TXT_TUNE_STATUS = 0x2DA0   # Thermal Tuning (216) progress line; dgus_tft.h
 TERM_LINES, TERM_ROW_H, TERM_Y0 = uf.TERM_LINES, uf.TERM_ROW_H, uf.TERM_Y0
 
@@ -440,6 +441,10 @@ PAGE13 = STATUS_BAR + [
 # Pages 17/137 — Z Offset Adjust
 # page_level_advance(): y starts at CONTENT_Y1+24=116; label(+18→134)
 #   vp(8,134,264,188) w=256 h=54
+# Leveling menu: the saved start height of the manual Z adjust (value box between the - and + buttons)
+_lv = uf.LEVEL_START_VALUE
+PAGE16 = STATUS_BAR + [make_text_record(TXT_LEVEL_START, _lv[0], _lv[1], _lv[2] - _lv[0], _lv[3] - _lv[1], chars=5)]
+
 PAGE17 = STATUS_BAR + [
     make_text_record(TXT_LEVEL_OFFSET, 8, 134, 256, 54, chars=8),
     make_text_record(TXT_WAIT_STATUS, 8, 294, 256, 24, chars=25),   # "Homing..." / "Adjust Z"
@@ -572,6 +577,7 @@ _CONTENT = [
     (9,   PAGE9),
     (10,  PAGE10),
     (13,  PAGE13),
+    (16,  PAGE16),
     (17,  PAGE17),
     (18,  PAGE18),
     (19,  PAGE19),
@@ -592,6 +598,7 @@ _CONTENT = [
     (129, PAGE9),
     (130, PAGE10),
     (133, PAGE13),
+    (136, PAGE16),
     (137, PAGE17),
     (138, PAGE18),
     (139, PAGE19),
