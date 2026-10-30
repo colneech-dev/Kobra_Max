@@ -52,6 +52,7 @@ private:
   #if ENABLED(POWER_MONITOR_VOLTAGE)
     static constexpr float volts_adc_scale = (float(ADC_VREF_MV) / 1000.0f) / (POWER_MONITOR_VOLTS_PER_VOLT * PM_SAMPLE_RANGE);
     static pm_lpf_t<volts_adc_scale, PM_K_VALUE, PM_K_SCALE> volts;
+    static uint16_t volts_raw;
   #endif
 
 public:
@@ -75,7 +76,9 @@ public:
 
   #if ENABLED(POWER_MONITOR_VOLTAGE)
     FORCE_INLINE static float getVolts() { return volts.value + (POWER_MONITOR_VOLTAGE_OFFSET); }
-    void add_voltage_sample(const uint16_t value) { volts.add_sample(value); }
+    void add_voltage_sample(const uint16_t value) { volts.add_sample(value); volts_raw = value; }
+    // Latest unfiltered ADC reading (12 bit). The power-loss detector needs the raw value: the filtered one lags by tens of samples.
+    FORCE_INLINE static uint16_t getVoltsRaw() { return volts_raw; }
   #else
     FORCE_INLINE static float getVolts() { return POWER_MONITOR_FIXED_VOLTAGE; }
   #endif
