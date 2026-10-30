@@ -222,10 +222,11 @@ static void send_progress_bar(const uint32_t address, const uint8_t percent, con
 }
 
 // Build id for the About page (tools/build_id.py: git hash, "-dirty" if uncommitted changes), so it is always
-// clear which firmware is on the printer. Without the "2.0.8-" prefix it fits the 21-character box.
+// clear which firmware is on the printer. Without the Marlin version prefix ("2.1.2.9-") it fits the 21-character box.
 static const char * about_build_id() {
 #ifdef DETAILED_BUILD_VERSION
-  return DETAILED_BUILD_VERSION + 6;
+  const char * const dash = strchr(DETAILED_BUILD_VERSION, '-');
+  return dash ? dash + 1 : DETAILED_BUILD_VERSION;
 #else
   return "unknown build";
 #endif

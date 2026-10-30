@@ -36,18 +36,18 @@
 #include "../../ui_api.h"
 
 #define DEVICE_NAME             "KobraMax-HC32"
-//#define FIRMWARE_VER            "Marlin V2.0.8.1"
+// FIRMWARE_VER: Marlin version + jerk / advance flags (CJ classic jerk, JD junction deviation, LA linear advance); 21 characters fit the About box
 #if ENABLED(CLASSIC_JERK)
 #if ENABLED(LIN_ADVANCE)
-#define FIRMWARE_VER            "KobraMax-HC32 1.8.4LACJ"
+#define FIRMWARE_VER            "KobraMax 2.1.2.9LACJ"
 #else
-#define FIRMWARE_VER            "KobraMax-HC32 1.8.4CJ"
+#define FIRMWARE_VER            "KobraMax 2.1.2.9CJ"
 #endif
 #else
 #if ENABLED(LIN_ADVANCE)
-#define FIRMWARE_VER            "KobraMax-HC32 1.8.4LAJD"
+#define FIRMWARE_VER            "KobraMax 2.1.2.9LAJD"
 #else
-#define FIRMWARE_VER            "KobraMax-HC32 1.8.3JD"
+#define FIRMWARE_VER            "KobraMax 2.1.2.9JD"
 #endif
 #endif
 
