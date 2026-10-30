@@ -278,6 +278,7 @@ bool PrintCounter::start() {
     if (!paused) {
       data.totalPrints++;
       lastDuration = 0;
+      mel_PrintAbort = false;
     }
     return true;
   }
@@ -292,7 +293,8 @@ bool PrintCounter::_stop(const bool completed) {
   if (did_stop) {
     data.printTime += deltaDuration();
     if (completed) {
-      data.finishedPrints++;
+      if (mel_PrintAbort) mel_PrintAbort = false;   // Anycubic: the display's STOP sets this, the abort goes through stop()
+      else data.finishedPrints++;
       if (duration() > data.longestPrint)
         data.longestPrint = duration();
     }
