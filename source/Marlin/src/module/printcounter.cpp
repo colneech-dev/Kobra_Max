@@ -279,6 +279,7 @@ bool PrintCounter::start() {
       data.totalPrints++;
       lastDuration = 0;
       mel_PrintAbort = false;
+      colourCounter = 0;   // every print starts with its first T0 ignored again (a leftover count made it a colour change)
     }
     return true;
   }

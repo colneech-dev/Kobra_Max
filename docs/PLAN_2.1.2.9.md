@@ -82,3 +82,15 @@ Drivers (user, 2026-10-30): board is the Anycubic TriGorilla Pro A V1.0.4 with s
 Marlin upstream added Kobra Max board + display support (PR #28448, 2026-10-14, in bugfix-2.1.x, not yet released): when 2.1.2.10 or later ships, expect a competing board (TRIGORILLA_F1_V1) and driver (anycubic_kobra).
 
 Flash budget (2026-10-30): the build now assumes the smallest HC32F460 (256 KB) so it runs on every variant. The app gets 0x8000-0x3C000 (208 KB, linker limit via `board_upload.maximum_size = 245760`); the last two 8 KB sectors (0x3C000 outage data, 0x3E000 settings) are what Anycubic's own code used (`source/framework/cores/flash.cpp`) and are kept free for a future two-sector settings store (ping-pong, sequence number + CRC, SD copy as backup; power-loss file stays on SD). Current size 179 KB = 84 %, about 29 KB of headroom: linear advance + input shaping would fit, UBL would not. Still to confirm: the chip marking on the mainboard (C = 256 KB, E = 512 KB).
+
+Improvements batch (2026-10-30, unbuilt):
+* Config: `DEBUG_LEVELING_FEATURE` off (flash), mesh fade height 10 mm, `Z_PROBE_LOW_POINT` -4 (was -10), junction deviation instead of classic jerk, linear advance on with K = 0.
+* The `T` colour-change counter is reset when a print starts (it used to survive from the previous print), README credits Marlin, Anycubic, wabbitguy, shadow578's HC32 HAL.
+Deliberately NOT done, with reasons:
+* Watchdog 5.4 s: tried before on hardware and too short (setup plus the first idle path took 5-6 s); keep 21 s.
+* Stepper timeout: `DISABLE_X/Y/Z` are off, so a timeout would do nothing; enabling them unhomes axes and breaks pause/resume flows.
+* Alphabetical SD sort: `SDSORT_LIMIT` can hide files beyond the limit in the display's list; needs a test with a full card.
+* Thermal protection tightening: only after several clean prints (false kills are worse than loose limits).
+* `TMC_DEBUG` kept: `M122` is the only way to see what the drivers report (needed for the TMC2208 address quirk).
+* Internal G28 clearing `activeFilamentChange`: no real trigger found (the display clears it itself).
+* New screens (mesh viewer, E-steps page, LA K page): after the display has been proven on the printer.

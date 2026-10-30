@@ -1,6 +1,20 @@
 Marlin firmware for the AnyCubic Kobra Max.
 Based off Marlin 2.0.8 (bugfix)
 
+# Marlin 2.1.2.9 port (branch `kobra-max-hc32-2.1`)
+
+The same Kobra Max firmware rebuilt on a clean **Marlin 2.1.2.9** with the HC32 HAL and the DGUS display work of the branch
+below. It is the newer line; `kobra-max-hc32` (Marlin 2.0.8) stays as the hardware-validated fallback. Notes, plan and
+roadmap: [docs/UPGRADE_2.1.2.9.md](docs/UPGRADE_2.1.2.9.md), [docs/PLAN_2.1.2.9.md](docs/PLAN_2.1.2.9.md),
+[docs/ROADMAP_2.1.2.9.md](docs/ROADMAP_2.1.2.9.md). The first boot of this firmware resets the saved settings.
+It is built for the smallest HC32F460 (256 KB): the program uses `0x8000-0x3C000` and the last two flash sectors are kept free.
+
+**Credits.** [Marlin Firmware](https://github.com/MarlinFirmware/Marlin) (GPLv3); Anycubic's official
+[Kobra_Max](https://github.com/ANYCUBIC-3D/Kobra_Max) firmware and DGUS display library; wabbitguy's community fork
+([wabbitguy/Kobra_Max](https://github.com/wabbitguy/Kobra_Max)); the HC32F460 HAL for Marlin by shadow578 and contributors
+(`shadow578/framework-arduino-hc32f46x`, Marlin `bugfix-2.1.x`), with Kobra Max clock, serial, SD-settings and endstop fixes
+made here; the 2.1.2.9 port, the display redesign and the tools by colneech-dev.
+
 # HC32F460 port (branch `kobra-max-hc32`)
 
 This branch targets the newer Kobra Max mainboard (HC32F460) with the DWIN T5L1 "DGUS II" 272x480 touch display.

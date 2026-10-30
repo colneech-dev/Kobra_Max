@@ -1595,7 +1595,7 @@
 #define Z_CLEARANCE_MULTI_PROBE     5 // (mm) Z Clearance between multiple probes
 //#define Z_AFTER_PROBING           5 // (mm) Z position after probing is done
 
-#define Z_PROBE_LOW_POINT -10 // (mm) Farthest distance below the trigger-point to go before stopping
+#define Z_PROBE_LOW_POINT -4 // (mm) Farthest distance below the trigger-point to go before stopping (was -10: a gauge that fails to trigger pushed the nozzle that far into the bed)
 
 // For M851 give a range for adjusting the Z probe offset
 #define Z_PROBE_OFFSET_RANGE_MIN -20
@@ -1949,7 +1949,7 @@
  * Turn on with the command 'M111 S32'.
  * NOTE: Requires a lot of flash!
  */
-#define DEBUG_LEVELING_FEATURE
+//#define DEBUG_LEVELING_FEATURE   // Anycubic: off, it costs several KB of the 208 KB the 256 KB chip leaves; enable to debug G28/G29
 
 #if ANY(MESH_BED_LEVELING, AUTO_BED_LEVELING_UBL, PROBE_MANUALLY)
   // Set a height for the start of manual adjustment
@@ -1964,7 +1964,7 @@
    */
   #define ENABLE_LEVELING_FADE_HEIGHT
   #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
-    #define DEFAULT_LEVELING_FADE_HEIGHT 0.0 // (mm) Default fade height.
+    #define DEFAULT_LEVELING_FADE_HEIGHT 10.0 // (mm) Default fade height: the bed-mesh correction fades out over the first 10 mm (M420 Z)
   #endif
 
   /**
