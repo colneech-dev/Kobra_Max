@@ -42,6 +42,7 @@
 #define AC_KB_CHARS             "1234567890QWERTYUIOPASDFGHJKL.ZXCVBNM-,/"
 #define AC_KB_MAX               40      // longest command that can be typed (the inject buffer holds 64)
 #define AC_IDLE_HEATER_TIMEOUT_MS (30UL * 60UL * 1000UL)   // heaters on with nothing happening for this long are switched off
+#define AC_ESTEPS_TEMP          210   // E-steps page: heat to this before the 100 mm test extrusion
 #define AC_FILAMENT_TEMP        230   // Filament page: heat to this, start loading at AC_FILAMENT_TEMP - 5 (tools/ui_features.py reads it)
 #define AC_PID_HOTEND_TUNE_TEMP 200
 #define AC_PID_BED_TUNE_TEMP    60

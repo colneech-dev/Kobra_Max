@@ -637,6 +637,18 @@ void DgusTFT::IdleLoop()  {
 
     page216_handle();
 
+  } else if (page_index_now == PAGE_MESH_VIEW) {
+
+    page208_handle();
+
+  } else if (page_index_now == PAGE_ESTEPS) {
+
+    page210_handle();
+
+  } else if (page_index_now == PAGE_LIN_ADVANCE) {
+
+    page174_handle();
+
   } else if (page_index_now == PAGE_FACTORY_RESET) {
 
     page217_handle();
@@ -1212,6 +1224,7 @@ uint32_t DgusTFT::TranslatePage(uint32_t page_index) {
   if (PAGE_CHS_PRINTING_SETTING == page_index)  return page_index + 1;
   if (page_index == PAGE_THUMBNAIL || page_index == PAGE_TERMINAL || page_index == PAGE_KEYBPARD ||
       page_index == PAGE_THERMAL_TUNING || page_index == PAGE_FACTORY_RESET ||
+      page_index == PAGE_MESH_VIEW || page_index == PAGE_ESTEPS || page_index == PAGE_LIN_ADVANCE ||
       page_index == PAGE_AUTO_OFFSET)           return page_index;  // single-language pages, no ENG mirror
   return page_index + 120;
 }
@@ -2849,6 +2862,14 @@ void DgusTFT::page14_handle(void)
 }
 
 
+// E-steps calibration (page 210) and linear advance K (page 174): the state is set when the Prepare page opens them.
+static float es_actual = 100.0f;   // the length the user measured (mm), 100 = "extruded exactly what was asked"
+enum es_stage_t : uint8_t { ES_IDLE, ES_HEATING, ES_EXTRUDING, ES_DONE };
+static es_stage_t es_stage = ES_IDLE;
+static char es_msg[26] = "";
+static float la_k = 0.0f;
+static char la_msg[26] = "";
+
 void DgusTFT::page15_handle(void)
 {
   char str_buf[16];
@@ -2895,6 +2916,23 @@ void DgusTFT::page15_handle(void)
 
     case 6: // THERMAL TUNING
       ChangePageOfTFT(PAGE_THERMAL_TUNING);
+      break;
+
+    case 7: // E-STEPS calibration
+      if (BlockedWhilePrinting()) break;
+      es_stage = ES_IDLE;
+      es_actual = 100.0f;
+      es_msg[0] = '\0';
+      ChangePageOfTFT(PAGE_ESTEPS);
+      break;
+
+    case 8: // ADVANCE K
+      if (BlockedWhilePrinting()) break;
+      la_msg[0] = '\0';
+      #if ENABLED(LIN_ADVANCE)
+        la_k = getLinearAdvance_mm_mm_s(E0);
+      #endif
+      ChangePageOfTFT(PAGE_LIN_ADVANCE);
       break;
   }
 }
@@ -3009,6 +3047,10 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
         lcd_info.z_start_tenths = t;
         z_start_dirty = true;
       }
+      break;
+
+    case 8: // VIEW BED MESH
+      ChangePageOfTFT(PAGE_MESH_VIEW);
       break;
 
   }
@@ -4315,6 +4357,174 @@ void DgusTFT::page216_handle(void) {
 }
 
 // Page 217 — Factory Reset confirmation.
+// Page 208 - bed mesh viewer: the N x N heights of the bilinear mesh as small numbers, in 0.01 mm relative to the mesh
+// average (row 0 at the top is the BACK of the bed, column 0 the left). Re-sent every 2 s: a text field is only drawn
+// when written.
+void DgusTFT::page208_handle(void) {
+  static millis_t flash_time = 0;
+
+  switch (key_value) {
+    case 0: break;
+    case 1: ChangePageOfTFT(PAGE_PreLEVEL); return;   // BACK
+  }
+  if (key_value) flash_time = 0;
+  if (millis() < flash_time + 2000) return;
+  flash_time = millis();
+
+  #if HAS_MESH
+    static_assert(GRID_MAX_POINTS_X == GRID_MAX_POINTS_Y, "the mesh page assumes a square grid");
+    constexpr uint8_t n = GRID_MAX_POINTS_X;
+
+    if (!getLevelingIsValid()) {
+      for (uint8_t i = 0; i < n * n; i++) SendTxtToTFT(" ", TXT_MESH_BASE + i * 8);
+      SendTxtToTFT("No mesh: run AUTO BED LEVEL", TXT_MESH_INFO1);
+      SendTxtToTFT(" ", TXT_MESH_INFO2);
+      return;
+    }
+
+    float v[n][n], sum = 0, lo = 1e9f, hi = -1e9f;
+    for (uint8_t x = 0; x < n; x++) {
+      for (uint8_t y = 0; y < n; y++) {
+        xy_uint8_t p;
+        p.x = x; p.y = y;
+        v[x][y] = getMeshPoint(p);
+        sum += v[x][y];
+        lo = _MIN(lo, v[x][y]);
+        hi = _MAX(hi, v[x][y]);
+      }
+    }
+    const float mean = sum / (n * n);
+
+    char b[14];
+    for (uint8_t r = 0; r < n; r++) {
+      for (uint8_t c = 0; c < n; c++) {
+        const int d = constrain((int)lroundf((v[c][n - 1 - r] - mean) * 100.0f), -999, 999);
+        snprintf(b, sizeof(b), "%+d", d);
+        SendTxtToTFT(b, TXT_MESH_BASE + (r * n + c) * 8);
+      }
+    }
+
+    char i1[28], i2[28], lo_s[12], hi_s[12];
+    const long rg = lroundf((hi - lo) * 1000.0f);
+    snprintf(i1, sizeof(i1), "Range %ld.%03ld mm", rg / 1000, rg % 1000);
+    fmt_mm(lo_s, sizeof(lo_s), lo - mean, true);
+    fmt_mm(hi_s, sizeof(hi_s), hi - mean, true);
+    snprintf(i2, sizeof(i2), "Low %s  High %s mm", lo_s, hi_s);
+    SendTxtToTFT(i1, TXT_MESH_INFO1);
+    SendTxtToTFT(i2, TXT_MESH_INFO2);
+  #else
+    SendTxtToTFT("Needs mesh leveling", TXT_MESH_INFO1);
+  #endif
+}
+
+// Page 210 - E-steps calibration. HEAT + EXTRUDE heats the hotend (AC_ESTEPS_TEMP), pushes 100 mm slowly and switches
+// the heater off again. The user measures what really moved (mark the filament 120 mm above the extruder, then
+// 120 minus what is left), enters it with the - / + buttons, and the new steps/mm = old x 100 / measured is stored.
+static void es_show() {
+  char b[14];
+  fmt_mm(b, sizeof(b), getAxisSteps_per_mm(E0));
+  DgusTFT::SendTxtToTFT(b, TXT_ES_CUR);
+  const long a10 = lroundf(es_actual * 10.0f);
+  snprintf(b, sizeof(b), "%ld.%ld", a10 / 10, a10 % 10);
+  DgusTFT::SendTxtToTFT(b, TXT_ES_ACTUAL);
+  fmt_mm(b, sizeof(b), es_actual > 1.0f ? getAxisSteps_per_mm(E0) * 100.0f / es_actual : 0.0f);
+  DgusTFT::SendTxtToTFT(b, TXT_ES_NEW);
+  DgusTFT::SendTxtToTFT(es_msg[0] ? es_msg : " ", TXT_ES_STATUS);
+}
+
+void DgusTFT::page210_handle(void) {
+  static millis_t flash_time = 0;
+
+  switch (key_value) {
+    case 0: break;
+
+    case 1: // BACK - not while the filament is moving: a new command would overwrite the sequence still running
+      if (es_stage == ES_EXTRUDING) break;
+      es_stage = ES_IDLE;
+      heaters_off_when_idle();
+      ChangePageOfTFT(PAGE_PREPARE);
+      return;
+
+    case 2: // HEAT + EXTRUDE 100 MM
+      if (es_stage == ES_HEATING || es_stage == ES_EXTRUDING || BlockedWhilePrinting()) break;
+      setTargetTemp_celsius(AC_ESTEPS_TEMP, E0);
+      es_stage = ES_HEATING;
+      break;
+
+    case 3: case 4: case 5: case 6: {   // 3 / 5 lower, 4 / 6 raise the measured length by 1 mm / 0.1 mm
+      const float step = (key_value <= 4) ? 1.0f : 0.1f;
+      es_actual = constrain(roundf((es_actual + ((key_value & 1) ? -step : step)) * 10.0f) / 10.0f, 20.0f, 300.0f);
+    } break;
+
+    case 7: { // SAVE
+      if (es_stage == ES_HEATING || es_stage == ES_EXTRUDING) break;
+      const float s = getAxisSteps_per_mm(E0) * 100.0f / es_actual;
+      if (s < 20.0f || s > 2000.0f) { strcpy_P(es_msg, PSTR("Value out of range")); break; }
+      setAxisSteps_per_mm(s, E0);
+      injectCommands_P(PSTR("M500"));
+      strcpy_P(es_msg, PSTR("Saved"));
+      es_actual = 100.0f;   // the stored value is the new reference
+    } break;
+  }
+
+  if (es_stage == ES_HEATING) {
+    snprintf(es_msg, sizeof(es_msg), "Heating %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_ESTEPS_TEMP);
+    if (getActualTemp_celsius(E0) >= AC_ESTEPS_TEMP - 3) {
+      injectCommands_P(PSTR("M83\nG1 E100 F100\nM82\nM400"));   // 100 mm at 100 mm/min
+      es_stage = ES_EXTRUDING;
+      strcpy_P(es_msg, PSTR("Extruding 100 mm..."));
+    }
+  }
+  else if (es_stage == ES_EXTRUDING && !commandsInQueue()) {
+    es_stage = ES_DONE;
+    setTargetTemp_celsius(0, E0);
+    strcpy_P(es_msg, PSTR("Done: measure, enter, SAVE"));
+  }
+
+  if (key_value) flash_time = 0;
+  if (millis() < flash_time + 1000) return;
+  flash_time = millis();
+  es_show();
+}
+
+// Page 174 - linear advance K. K = 0 switches it off; SAVE stores it with the settings (M900 K, M500).
+static void la_show() {
+  char b[14];
+  const long k = lroundf(la_k * 1000.0f);
+  snprintf(b, sizeof(b), "%ld.%03ld", k / 1000, k % 1000);
+  DgusTFT::SendTxtToTFT(b, TXT_LA_K);
+  DgusTFT::SendTxtToTFT(la_msg[0] ? la_msg : " ", TXT_LA_STATUS);
+}
+
+void DgusTFT::page174_handle(void) {
+  static millis_t flash_time = 0;
+
+  switch (key_value) {
+    case 0: break;
+    case 1: ChangePageOfTFT(PAGE_PREPARE); return;
+    #if ENABLED(LIN_ADVANCE)
+      case 2: case 3: case 4: case 5: {   // 2 / 4 lower, 3 / 5 raise K by 0.1 / 0.01
+        const float step = (key_value <= 3) ? 0.1f : 0.01f;
+        la_k = constrain(roundf((la_k + ((key_value & 1) ? step : -step)) * 1000.0f) / 1000.0f, 0.0f, 10.0f);
+        la_msg[0] = '\0';
+      } break;
+      case 6:   // SAVE
+        if (BlockedWhilePrinting()) break;
+        setLinearAdvance_mm_mm_s(la_k, E0);
+        injectCommands_P(PSTR("M500"));
+        strcpy_P(la_msg, PSTR("Saved"));
+        break;
+    #else
+      default: strcpy_P(la_msg, PSTR("Not in this firmware")); break;
+    #endif
+  }
+
+  if (key_value) flash_time = 0;
+  if (millis() < flash_time + 1000) return;
+  flash_time = millis();
+  la_show();
+}
+
 void DgusTFT::page217_handle(void) {
   switch (key_value) {
     case 0:

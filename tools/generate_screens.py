@@ -652,6 +652,8 @@ def page_prepare():
     btn(draw, MARGIN, 254, W - MARGIN, 314, "THERMAL TUNING", style='warning', icon=0xf06d)
     tune_txt = "MPC hotend + PID bed autotune" if uf.HAS_MPC else "PID autotune: hotend + bed"
     text_center(draw, (0, 322, W, 338), tune_txt, F_TINY, DGRAY)
+    btn(draw, MARGIN, 346, gx2,       406, "E-STEPS",   style='normal', icon=0xf0d0)   # page 210
+    btn(draw, gx3,    346, W - MARGIN, 406, "ADVANCE K", style='normal', icon=0xf201)   # page 174
     footer_1btn(draw, "BACK", style='ghost')
     return img
 
@@ -692,7 +694,8 @@ def page_pre_level():
     y = CONTENT_Y1 + 20
     items = [("AUTO BED LEVEL  G29", 'primary', 0xf05b),
              ("MANUAL Z ADJUST",      'normal',  0xf338),
-             ("AUTO Z OFFSET",        'normal',  0xf063)]   # mesh check + probe test, then the manual page
+             ("AUTO Z OFFSET",        'normal',  0xf063),   # mesh check + probe test, then the manual page
+             ("VIEW BED MESH",        'normal',  0xf00a)]   # page 208
     for lbl, sty, ico in items:
         btn(draw, MARGIN, y, W - MARGIN, y + 44, lbl, style=sty, icon=ico);  y += 56
     # saved start height of the manual Z adjust (the nozzle parks this high above the bed, not at Z0)
@@ -722,6 +725,66 @@ def page_level_advance():
     vp_area(draw, MARGIN, y + 2, W - MARGIN, y + 26, 'Homing...')   # live status line
     text_center(draw, (0, y + 32, W, y + 48), "Nozzle starts at the saved start height", F_TINY, GRAY)
     text_center(draw, (0, y + 50, W, y + 66), "Lower it until paper just drags, then SAVE", F_TINY, GRAY)
+    footer_2btn(draw, "BACK", "SAVE", l_style='ghost', r_style='primary')
+    return img
+
+
+def page_mesh_view():
+    img, draw = new_page()
+    status_bar(draw)
+    title_bar(draw, "BED MESH")
+    assert uf.MESH_X0 * 2 + uf.MESH_N * uf.MESH_CELL_W <= W, "the mesh grid is too wide for the screen: shrink MESH_CELL_W in ui_features.py"
+    text_center(draw, (0, 94, W, 110), "BACK of the bed", F_TINY, DGRAY)
+    for r in range(uf.MESH_N):
+        for c in range(uf.MESH_N):
+            x = uf.MESH_X0 + c * uf.MESH_CELL_W
+            y = uf.MESH_Y0 + r * uf.MESH_CELL_H
+            vp_area(draw, x, y, x + uf.MESH_CELL_W - 2, y + uf.MESH_CELL_H - 2, '')
+    gy = uf.MESH_Y0 + uf.MESH_N * uf.MESH_CELL_H
+    text_center(draw, (0, gy + 1, W, gy + 17), "FRONT  |  cells: 0.01 mm vs average", F_TINY, DGRAY)
+    vp_area(draw, *uf.MESH_INFO1, 'Range 0.321 mm')
+    vp_area(draw, *uf.MESH_INFO2, 'Low -0.17  High +0.15 mm')
+    footer_1btn(draw, "BACK", style='ghost')
+    return img
+
+
+def page_esteps():
+    img, draw = new_page()
+    status_bar(draw)
+    title_bar(draw, "E-STEPS CALIBRATION")
+    text_left(draw, MARGIN, 100, "CURRENT E STEPS / MM", F_SMALL, GRAY)
+    vp_area(draw, *uf.ESTEPS_CUR, '93.00')
+    btn(draw, MARGIN, 154, W - MARGIN, 198, "HEAT + EXTRUDE 100 MM", style='primary', icon=0xf06d)
+    text_left(draw, MARGIN, 206, "LENGTH THAT REALLY MOVED (mm)", F_SMALL, GRAY)
+    btn(draw, 8, 224, 60, 260, chr(0xf068), style='normal', fnt=_FA_BTN)
+    vp_area(draw, *uf.ESTEPS_ACTUAL, '100.0')
+    btn(draw, 212, 224, 264, 260, chr(0xf067), style='normal', fnt=_FA_BTN)
+    btn(draw, MARGIN, 266, W // 2 - 4, 302, "- 0.1 mm", style='normal', icon=0xf068)
+    btn(draw, W // 2 + 4, 266, W - MARGIN, 302, "+ 0.1 mm", style='normal', icon=0xf067)
+    text_left(draw, MARGIN, 310, "NEW E STEPS / MM", F_SMALL, GRAY)
+    vp_area(draw, *uf.ESTEPS_NEW, '93.00')
+    vp_area(draw, *uf.ESTEPS_STATUS, 'Heating...')
+    text_center(draw, (0, 388, W, 402), "Mark the filament 120 mm above the extruder,", F_TINY, GRAY)
+    text_center(draw, (0, 402, W, 416), "run, then enter 120 minus the length left.", F_TINY, GRAY)
+    footer_2btn(draw, "BACK", "SAVE", l_style='ghost', r_style='primary')
+    return img
+
+
+def page_linadv():
+    img, draw = new_page()
+    status_bar(draw)
+    title_bar(draw, "LINEAR ADVANCE")
+    text_left(draw, MARGIN, 100, "K FACTOR (0 = OFF)", F_SMALL, GRAY)
+    vp_area(draw, *uf.LINADV_K, '0.000')
+    btn(draw, MARGIN, 178, W // 2 - 4, 218, "- 0.1", style='normal', icon=0xf068)
+    btn(draw, W // 2 + 4, 178, W - MARGIN, 218, "+ 0.1", style='normal', icon=0xf067)
+    btn(draw, MARGIN, 226, W // 2 - 4, 266, "- 0.01", style='normal', icon=0xf068)
+    btn(draw, W // 2 + 4, 226, W - MARGIN, 266, "+ 0.01", style='normal', icon=0xf067)
+    vp_area(draw, *uf.LINADV_STATUS, 'Saved')
+    text_center(draw, (0, 306, W, 320), "Print a K-factor test pattern, then enter", F_TINY, GRAY)
+    text_center(draw, (0, 320, W, 334), "the K of its cleanest corner line.", F_TINY, GRAY)
+    text_center(draw, (0, 340, W, 354), "Bowden tubes often need about 0.5 to 1.5.", F_TINY, GRAY)
+    text_center(draw, (0, 354, W, 368), "SAVE keeps it with the settings (M900, M500).", F_TINY, GRAY)
     footer_2btn(draw, "BACK", "SAVE", l_style='ghost', r_style='primary')
     return img
 
@@ -1200,6 +1263,9 @@ def _build_page_map():
     m['214'] = page_thumbnail
     m['215'] = page_terminal
     m['216'] = page_thermal_tune
+    m['208'] = page_mesh_view
+    m['210'] = page_esteps
+    m['174'] = page_linadv
     m['217'] = page_factory_reset_confirm
 
     return m

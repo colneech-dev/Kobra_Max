@@ -288,6 +288,16 @@ TXT_TERM_INPUT = 0x2A10
 # (the firmware's AC_TERM_LINES / TXT_TERM_LOG must match; generate_screens.py draws the rows from the same numbers).
 TXT_TERM_LOG = 0x2C00
 TXT_LEVEL_START = 0x2DC0   # Leveling menu (16): manual Z-offset start height; dgus_tft.h
+# Bed mesh viewer (208), E-steps (210), linear advance (174); dgus_tft.h has the same addresses
+TXT_MESH_BASE   = 0x2E00   # MESH_N * MESH_N cells, 8 words apart
+TXT_MESH_INFO1  = 0x2F90
+TXT_MESH_INFO2  = 0x2FA0
+TXT_ES_CUR      = 0x2FC0
+TXT_ES_ACTUAL   = 0x2FD0
+TXT_ES_NEW      = 0x2FE0
+TXT_ES_STATUS   = 0x2FF0
+TXT_LA_K        = 0x3000
+TXT_LA_STATUS   = 0x3010
 TXT_TUNE_STATUS = 0x2DA0   # Thermal Tuning (216) progress line; dgus_tft.h
 TERM_LINES, TERM_ROW_H, TERM_Y0 = uf.TERM_LINES, uf.TERM_ROW_H, uf.TERM_Y0
 
@@ -540,6 +550,31 @@ PAGE216 = STATUS_BAR + [
 ]
 PAGE217 = STATUS_BAR
 
+def _tr(vp, box, chars, **kw):
+    x1, y1, x2, y2 = box
+    return make_text_record(vp, x1, y1, x2 - x1, y2 - y1, chars=chars, **kw)
+
+# Bed mesh viewer: one small text field per cell (the value, 0.01 mm relative to the average, 4 characters at most)
+PAGE208 = STATUS_BAR + [
+    make_text_record(TXT_MESH_BASE + (r * uf.MESH_N + c) * 8,
+                     uf.MESH_X0 + c * uf.MESH_CELL_W, uf.MESH_Y0 + r * uf.MESH_CELL_H,
+                     uf.MESH_CELL_W - 2, uf.MESH_CELL_H - 2, chars=4, font=8)
+    for r in range(uf.MESH_N) for c in range(uf.MESH_N)
+] + [
+    _tr(TXT_MESH_INFO1, uf.MESH_INFO1, 25),
+    _tr(TXT_MESH_INFO2, uf.MESH_INFO2, 25),
+]
+PAGE210 = STATUS_BAR + [
+    _tr(TXT_ES_CUR, uf.ESTEPS_CUR, 10),
+    _tr(TXT_ES_ACTUAL, uf.ESTEPS_ACTUAL, 8),
+    _tr(TXT_ES_NEW, uf.ESTEPS_NEW, 10),
+    _tr(TXT_ES_STATUS, uf.ESTEPS_STATUS, 25),
+]
+PAGE174 = STATUS_BAR + [
+    _tr(TXT_LA_K, uf.LINADV_K, 8),
+    _tr(TXT_LA_STATUS, uf.LINADV_STATUS, 25),
+]
+
 # ── Build complete patches list ────────────────────────────────────────────────
 
 # Pages that need only the status-bar VP records (static content, no live data).
@@ -614,6 +649,9 @@ _CONTENT = [
     (215, PAGE215),
     (216, PAGE216),
     (217, PAGE217),
+    (uf.PAGE_MESH_VIEW, PAGE208),
+    (uf.PAGE_ESTEPS, PAGE210),
+    (uf.PAGE_LINADV, PAGE174),
 ]
 
 patches = [(pg, STATUS_BAR) for pg in _STATUS_ONLY] + _CONTENT
