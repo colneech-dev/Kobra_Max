@@ -242,9 +242,9 @@ class Endstops {
 
     #if ENABLED(VALIDATE_HOMING_ENDSTOPS)
       // If the last move failed to trigger an endstop, call kill
-      static void validate_homing_move();
+      static void validate_homing_move(const AxisEnum axis=NO_AXIS_ENUM);
     #else
-      FORCE_INLINE static void validate_homing_move() { hit_on_purpose(); }
+      FORCE_INLINE static void validate_homing_move(const AxisEnum=NO_AXIS_ENUM) { hit_on_purpose(); }
     #endif
 
     // Clear endstops (i.e., they were hit intentionally) to suppress the report

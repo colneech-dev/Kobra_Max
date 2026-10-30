@@ -118,8 +118,8 @@
 #define MARLIN_msg_nozzle_parked       PSTR("Nozzle Parked")
 #define MARLIN_msg_heater_timeout      PSTR("Heater Timeout")
 #define MARLIN_msg_reheating           PSTR("Reheating...")
-#define MARLIN_msg_reheat_done         PSTR("Reheat finished.")
-#define MARLIN_msg_filament_purging    PSTR("Filament Purging...")
+#define MARLIN_msg_reheat_done         PSTR("Reheat Done")
+#define MARLIN_msg_filament_purging    PSTR("Purging...")
 #define MARLIN_msg_media_removed       PSTR("Media Removed")
 #define MARLIN_msg_special_pause       PSTR("PB")
 #define AC_cmnd_auto_unload_filament   PSTR("M701")                    // Use Marlin unload routine
