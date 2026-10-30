@@ -936,12 +936,7 @@ namespace ExtUI {
     bool getProbeState() { return PROBE_TRIGGERED(); }
 
     void ProbeTare() {
-      #ifdef NOZZLE_AS_PROBE
-        OUT_WRITE(AUTO_LEVEL_TX_PIN, LOW);
-        delay(300);
-        OUT_WRITE(AUTO_LEVEL_TX_PIN, HIGH);
-        delay(100);
-      #endif
+      TERN_(PROBE_TARE, (void)probe.tare());   // Marlin's own tare: pulse the strain-gauge reset line
     }
   #endif
 

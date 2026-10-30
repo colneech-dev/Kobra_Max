@@ -595,14 +595,6 @@ bool Probe::set_deployed(const bool deploy) {
 bool Probe::probe_down_to_z(const_float_t z, const_feedRate_t fr_mm_s) {
   DEBUG_SECTION(log_probe, "Probe::probe_down_to_z", DEBUGGING(LEVELING));
 
-  // Anycubic: the nozzle-as-probe strain gauge is reset (TX line low, then high) before every probe move
-  #if ENABLED(NOZZLE_AS_PROBE) && PIN_EXISTS(AUTO_LEVEL_TX)
-    OUT_WRITE(AUTO_LEVEL_TX_PIN, LOW);
-    delay(300);
-    OUT_WRITE(AUTO_LEVEL_TX_PIN, HIGH);
-    delay(100);
-  #endif
-
   #if ALL(HAS_HEATED_BED, WAIT_FOR_BED_HEATER)
     thermalManager.wait_for_bed_heating();
   #endif
