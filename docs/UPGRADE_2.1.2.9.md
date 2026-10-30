@@ -1,4 +1,4 @@
-# Marlin 2.1.2.9 port (branch `marlin-2.1.2.9`)
+# Marlin 2.1.2.9 port (branch `kobra-max-hc32-2.1`)
 
 The old line (`kobra-max-hc32`) is an older Marlin snapshot (wabbitguy's V2.8.7, labelled 2.0.8) with our HC32 HAL and the
 DGUS UI. This branch re-applies our changes onto a clean upstream 2.1.2.9 tree instead of merging, because the two
