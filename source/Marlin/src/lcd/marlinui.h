@@ -216,6 +216,11 @@ public:
     static void param_init();   // Anycubic DGUS: called once the settings are loaded
   #endif
 
+  #if ENABLED(PREHEAT_BEFORE_LEVELING)
+    static void probe_preheating_start();   // Anycubic: G29 heats the nozzle and bed first; the display shows a wait page
+    static void probe_preheating_stop();
+  #endif
+
   static void reinit_lcd() { TERN_(REINIT_NOISY_LCD, init_lcd()); }
 
   #if HAS_WIRED_LCD

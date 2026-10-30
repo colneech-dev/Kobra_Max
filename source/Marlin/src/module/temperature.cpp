@@ -1349,6 +1349,10 @@ void Temperature::maxtemp_error(const heater_id_t heater_id) {
   #if HAS_DWIN_E3V2_BASIC && (HAS_HOTEND || HAS_HEATED_BED)
     DWIN_Popup_Temperature(1);
   #endif
+  if (millis() < 5000) {   // Anycubic: ADC filters are still filling at boot: ignore the fault, but never leave a heater on
+    disable_all_heaters();
+    return;
+  }
   _temp_error(heater_id, F(STR_T_MAXTEMP), GET_TEXT_F(MSG_ERR_MAXTEMP));
 }
 
@@ -1356,6 +1360,10 @@ void Temperature::mintemp_error(const heater_id_t heater_id) {
   #if HAS_DWIN_E3V2_BASIC && (HAS_HOTEND || HAS_HEATED_BED)
     DWIN_Popup_Temperature(0);
   #endif
+  if (millis() < 5000) {   // Anycubic: see maxtemp_error
+    disable_all_heaters();
+    return;
+  }
   _temp_error(heater_id, F(STR_T_MINTEMP), GET_TEXT_F(MSG_ERR_MINTEMP));
 }
 

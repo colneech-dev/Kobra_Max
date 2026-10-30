@@ -26,16 +26,25 @@
 
 #include "../gcode.h"
 #include "../../lcd/marlinui.h"
+#include "../../MarlinCore.h"   // gcodeComment
 
 /**
  * M117: Set LCD Status Message
  */
 void GcodeSuite::M117() {
 
-  if (parser.string_arg && parser.string_arg[0])
+  if (parser.string_arg && parser.string_arg[0]) {
+    // Anycubic: keep the text for the DGUS print page
+    static char comment_buf[32];
+    strncpy(comment_buf, parser.string_arg, 30);
+    comment_buf[30] = '\0';
+    gcodeComment = comment_buf;
     ui.set_status(parser.string_arg, true);
-  else
+  }
+  else {
+    gcodeComment = "G-Code Status Area";
     ui.reset_status();
+  }
 
 }
 

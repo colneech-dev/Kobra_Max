@@ -237,9 +237,10 @@ class FilamentSensorBase {
     static uint8_t poll_runout_states() {
       return poll_runout_pins() ^ uint8_t(0
         #if NUM_RUNOUT_SENSORS >= 1
-          | (FIL_RUNOUT1_STATE ? 0 : _BV(1 - 1))
           #if FIL_SENSOR_OPTIONAL
-             & ~(state_original ? 0 : _BV(1 - 1))
+            | ((FIL_RUNOUT1_STATE ? 0 : _BV(1 - 1)) & ~(state_original ? 0 : _BV(1 - 1)))   // (precedence as in the old firmware)
+          #else
+            | (FIL_RUNOUT1_STATE ? 0 : _BV(1 - 1))
           #endif
         #endif
         #if NUM_RUNOUT_SENSORS >= 2

@@ -211,6 +211,11 @@ constexpr uint8_t epps = ENCODER_PULSES_PER_STEP;
 
 #endif
 
+#if ENABLED(PREHEAT_BEFORE_LEVELING)
+  void MarlinUI::probe_preheating_start() { TERN_(EXTENSIBLE_UI, ExtUI::onStatusChanged("Probe preheat start")); }
+  void MarlinUI::probe_preheating_stop()  { TERN_(EXTENSIBLE_UI, ExtUI::onStatusChanged("Probe preheat stop")); }
+#endif
+
 void MarlinUI::init() {
 
   #if HAS_U8GLIB_I2C_OLED && PINS_EXIST(I2C_SCL, I2C_SDA) && DISABLED(SOFT_I2C_EEPROM)

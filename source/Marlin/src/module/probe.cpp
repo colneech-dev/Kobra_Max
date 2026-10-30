@@ -458,6 +458,9 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
     #endif
 
     if (!early) LCD_MESSAGE(MSG_PREHEATING);
+    #if ENABLED(PREHEAT_BEFORE_LEVELING)
+      if (!early) ui.probe_preheating_start();   // Anycubic: the DGUS display shows its "preheating" page
+    #endif
 
     DEBUG_ECHOPGM("Preheating ");
 
@@ -483,6 +486,9 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
     if (!early) {
       TERN_(WAIT_FOR_NOZZLE_HEAT, if (hotend_temp > thermalManager.wholeDegHotend(0) + (TEMP_WINDOW)) thermalManager.wait_for_hotend(0));
       TERN_(WAIT_FOR_BED_HEAT,    if (bed_temp    > thermalManager.wholeDegBed() + (TEMP_BED_WINDOW)) thermalManager.wait_for_bed_heating());
+      #if ENABLED(PREHEAT_BEFORE_LEVELING)
+        ui.probe_preheating_stop();
+      #endif
     }
   }
 
@@ -588,6 +594,14 @@ bool Probe::set_deployed(const bool deploy) {
  */
 bool Probe::probe_down_to_z(const_float_t z, const_feedRate_t fr_mm_s) {
   DEBUG_SECTION(log_probe, "Probe::probe_down_to_z", DEBUGGING(LEVELING));
+
+  // Anycubic: the nozzle-as-probe strain gauge is reset (TX line low, then high) before every probe move
+  #if ENABLED(NOZZLE_AS_PROBE) && PIN_EXISTS(AUTO_LEVEL_TX)
+    OUT_WRITE(AUTO_LEVEL_TX_PIN, LOW);
+    delay(300);
+    OUT_WRITE(AUTO_LEVEL_TX_PIN, HIGH);
+    delay(100);
+  #endif
 
   #if ALL(HAS_HEATED_BED, WAIT_FOR_BED_HEATER)
     thermalManager.wait_for_bed_heating();
