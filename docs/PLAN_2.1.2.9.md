@@ -1,6 +1,6 @@
 # Marlin 2.1.2.9 port: fix plan (2026-10-30)
 
-Branch `marlin-2.1.2.9`. Background and what was already ported: `docs/UPGRADE_2.1.2.9.md`.
+Branch `kobra-max-hc32-2.1`. Background and what was already ported: `docs/UPGRADE_2.1.2.9.md`.
 Sources: my own old-vs-new comparison and an independent read-only review of the port.
 
 ## Already verified equal or fine
