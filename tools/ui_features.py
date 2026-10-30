@@ -216,6 +216,11 @@ LEVELING_NOZZLE_TEMP = _define(_cfg_text, "LEVELING_NOZZLE_TEMP", 190)
 LEVELING_BED_TEMP    = _define(_cfg_text, "LEVELING_BED_TEMP", 60)
 
 # Terminal log (page 215): rows of 6x12 text. Shared by generate_screens.py (art) and patch_14showfile.py (text fields).
+# Leveling menu (page 16): the manual Z-offset start-height row (label above, then - / value / +). Keys 6 and 7.
+LEVEL_START_LABEL_Y = 234
+LEVEL_START_MINUS = (8, 254, 60, 290)
+LEVEL_START_VALUE = (68, 254, 204, 290)
+LEVEL_START_PLUS  = (212, 254, 264, 290)
 TERM_LINES, TERM_ROW_H, TERM_Y0, TERM_COLS = 13, 14, 92, 36   # TERM_COLS = characters per row (AC_TERM_COLS - 1 in the firmware)
 TERM_TEXT_X, TERM_TEXT_W = 8, 224                              # the log text box; the scroll buttons take the strip to its right
 TERM_SCROLL_X1, TERM_SCROLL_X2 = 236, 264

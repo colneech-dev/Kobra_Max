@@ -304,6 +304,7 @@
 #define AC_TERM_LINES  13
 #define AC_TERM_COLS   37       // characters per row (216 of the 224 px box), plus the terminating NUL
 #define TXT_TUNE_STATUS 0x2DA0  // Thermal Tuning page (216): progress / result line
+#define TXT_LEVEL_START 0x2DC0  // Leveling menu (16): manual Z-offset start height
 #define AC_TERM_HIST   64       // lines kept for scrolling back (page 215 up / down buttons)
 
 
@@ -439,6 +440,7 @@ namespace Anycubic {
   typedef struct _lcd_info_t {
     ExtUI::language_t       language;
     ExtUI::audio_t          audio;
+    uint8_t                 z_start_tenths;   // manual Z-offset start height in 0.1 mm (0 / out of range = 1.0 mm)
   } lcd_info_t;
 
   class DgusTFT {

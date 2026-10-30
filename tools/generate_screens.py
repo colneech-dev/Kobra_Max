@@ -697,6 +697,12 @@ def page_pre_level():
                   ("AUTO Z OFFSET",   'normal', 0xf063)]
     for lbl, sty, ico in items:
         btn(draw, MARGIN, y, W - MARGIN, y + 44, lbl, style=sty, icon=ico);  y += 56
+    # saved start height of the manual Z adjust (the nozzle parks this high above the bed, not at Z0)
+    assert y <= uf.LEVEL_START_LABEL_Y, "Leveling menu buttons overlap the start-height row"
+    text_left(draw, MARGIN, uf.LEVEL_START_LABEL_Y, "MANUAL Z: START HEIGHT (mm)", F_SMALL, GRAY)
+    btn(draw, *uf.LEVEL_START_MINUS, chr(0xf068), style='normal', fnt=_FA_BTN)
+    vp_area(draw, *uf.LEVEL_START_VALUE, '1.0')
+    btn(draw, *uf.LEVEL_START_PLUS, chr(0xf067), style='normal', fnt=_FA_BTN)
     footer_1btn(draw, "BACK", style='ghost')
     return img
 
@@ -706,8 +712,8 @@ def page_level_advance():
     status_bar(draw)
     title_bar(draw, "Z OFFSET ADJUST")
     y = CONTENT_Y1 + 24
-    text_left(draw, MARGIN, y, "CURRENT OFFSET (mm)", F_SMALL, GRAY);  y += 18
-    vp_area(draw, MARGIN, y, W - MARGIN, y + 54, '+0.050');  y += 62
+    text_left(draw, MARGIN, y, "NOZZLE HEIGHT ABOVE BED (mm)", F_SMALL, GRAY);  y += 18
+    vp_area(draw, MARGIN, y, W - MARGIN, y + 54, '1.00');  y += 62
     # coarse (0.1 mm) row for big corrections, fine (0.01 mm) row below it
     btn(draw, MARGIN, y,       W // 2 - 4, y + 40, "- 0.1 mm",   style='normal',  icon=0xf068)
     btn(draw, W // 2 + 4, y, W - MARGIN,   y + 40, "+ 0.1 mm",   style='primary', icon=0xf067)
@@ -716,8 +722,8 @@ def page_level_advance():
     btn(draw, W // 2 + 4, y, W - MARGIN,   y + 40, "+ 0.01 mm",  style='primary', icon=0xf067)
     y += 48
     vp_area(draw, MARGIN, y + 2, W - MARGIN, y + 26, 'Homing...')   # live status line
-    text_center(draw, (0, y + 32, W, y + 48), "Nozzle goes to the bed centre at Z0", F_TINY, GRAY)
-    text_center(draw, (0, y + 50, W, y + 66), "Adjust until paper just drags, then SAVE", F_TINY, GRAY)
+    text_center(draw, (0, y + 32, W, y + 48), "Nozzle starts at the saved start height", F_TINY, GRAY)
+    text_center(draw, (0, y + 50, W, y + 66), "Lower it until paper just drags, then SAVE", F_TINY, GRAY)
     footer_2btn(draw, "BACK", "SAVE", l_style='ghost', r_style='primary')
     return img
 

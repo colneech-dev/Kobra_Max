@@ -232,12 +232,14 @@ have no zones and are absent here.
 | THERMAL TUNING | 8 | 254 | 264 | 314 | 6 |
 | BACK                 (KEY_TUNE_BACK  = 1) | 8 | 429 | 264 | 473 | 1 |
 
-### Page 16 / 136  *(3 zones)*
+### Page 16 / 136  *(5 zones)*
 
 | Zone | x0 | y0 | x1 | y1 | Key |
 |------|----|----|----|----|-----|
 | AUTO BED LEVEL G29 | 8 | 112 | 264 | 156 | 2 |
 | MANUAL Z ADJUST | 8 | 168 | 264 | 212 | 3 |
+|  | 8 | 254 | 60 | 290 | 6 |
+|  | 212 | 254 | 264 | 290 | 7 |
 | BACK                 (KEY_TUNE_BACK  = 1) | 8 | 429 | 264 | 473 | 1 |
 
 ### Page 17 / 137  *(6 zones)*

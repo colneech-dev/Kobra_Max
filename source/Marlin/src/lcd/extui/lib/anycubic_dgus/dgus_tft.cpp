@@ -2858,16 +2858,39 @@ void DgusTFT::page15_handle(void)
   }
 }
 
+// Manual Z offset. The page does not drive the nozzle to Z0 (a wrong offset would press it into the bed): it parks
+// the nozzle at a saved start height above the bed, 1.0 mm until changed with the - / + row of the Leveling menu,
+// and the user lowers it to the paper. The page shows the nozzle height above the bed (start height at the beginning,
+// about 0.00 at the paper). SAVE then stores the offset that makes that spot Z0: live offset + start height.
+static float z_manual_start = 1.0f;    // start height of the run in progress
+static float z_entry_offset = 0.0f;    // Z offset when the run started
+static bool  z_start_dirty  = false;   // the start-height setting changed and is not saved yet
+
+static uint8_t z_start_tenths() {
+  const uint8_t t = DgusTFT::lcd_info.z_start_tenths;
+  return (t >= 1 && t <= 50) ? t : 10;
+}
+
+static float z_nozzle_height() { return z_manual_start + (getZOffset_mm() - z_entry_offset); }
+
+static void z_start_show() {
+  char b[12];
+  const uint8_t t = z_start_tenths();
+  sprintf(b, "%u.%u", t / 10, t % 10);
+  DgusTFT::SendTxtToTFT(b, TXT_LEVEL_START);
+}
+
 void DgusTFT::page16_handle(void)//AUTO LEVELING
 {
+  static millis_t flash_time = 0;
+
   switch (key_value)
   {
     case 0:
       break;
     case 1://return
-      {
-        ChangePageOfTFT(PAGE_PREPARE);
-      }
+      if (z_start_dirty && !isPrinting()) { z_start_dirty = false; injectCommands_P(PSTR("M500")); }   // keep a changed start height
+      ChangePageOfTFT(PAGE_PREPARE);
       break;
 
     case 2:
@@ -2884,15 +2907,21 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
 
     case 3:
       if (BlockedWhilePrinting()) break;
-      char str_buf[10];
-      str_buf[0] = 0;
-      strcat(str_buf, ftostr(getZOffset_mm()));
-      SendTxtToTFT(str_buf, TXT_LEVEL_OFFSET);
-      ChangePageOfTFT(PAGE_LEVEL_ADVANCE);
-      // Home, then park the nozzle at the bed centre at Z0 so the offset can be tuned with a sheet of paper.
       {
-        char cmd[72];
-        sprintf_P(cmd, PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000\nG1 Z0 F200"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2));
+        char str_buf[10];
+        str_buf[0] = 0;
+        strcat(str_buf, ftostr(getZOffset_mm()));
+        SendTxtToTFT(str_buf, TXT_LEVEL_OFFSET);
+      }
+      ChangePageOfTFT(PAGE_LEVEL_ADVANCE);
+      // Home, then park the nozzle at the bed centre at the saved start height (not Z0) so the offset can be
+      // tuned with a sheet of paper.
+      {
+        const uint8_t t = z_start_tenths();
+        z_manual_start = t / 10.0f;
+        z_entry_offset = getZOffset_mm();
+        char cmd[80];
+        sprintf_P(cmd, PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000\nG1 Z%u.%u F200"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2), t / 10, t % 10);
         injectCommands(cmd);
         zoffset_moving = true;
       }
@@ -2902,12 +2931,28 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
       ChangePageOfTFT(PAGE_AUTO_OFFSET);
       break;
 
-    case 5: // Z OFFSET WIZARD — same guided M1024 step-adjust flow as
+    case 5: // Z OFFSET WIZARD - same guided M1024 step-adjust flow as
             // "AUTO Z OFFSET" (case 4); no separate wizard page exists
       ChangePageOfTFT(PAGE_AUTO_OFFSET);
       break;
 
+    case 6: // start height - 0.1 mm
+    case 7: // start height + 0.1 mm
+      {
+        uint8_t t = z_start_tenths();
+        if (key_value == 7) { if (t < 50) t++; } else { if (t > 1) t--; }
+        lcd_info.z_start_tenths = t;
+        z_start_dirty = true;
+      }
+      break;
+
   }
+
+  // A text field is only drawn when written and a button press blanks it: send the value now and then.
+  if (key_value) flash_time = 0;
+  if (millis() < flash_time + 1000) return;
+  flash_time = millis();
+  z_start_show();
 }
 
 void DgusTFT::page17_handle(void)
@@ -2925,16 +2970,12 @@ void DgusTFT::page17_handle(void)
       if (zoffset_moving && !commandsInQueue()) zoffset_moving = false;
       char st[28];
       if (zoffset_moving) strcpy_P(st, PSTR("Homing and moving..."));
-      else {
-        char zs[14];
-        fmt_mm(zs, sizeof(zs), getZOffset_mm(), true);
-        sprintf_P(st, PSTR("Z offset %s mm"), zs);   // shown here too, in the line that is known to draw
-      }
+      else strcpy_P(st, PSTR("Lower to paper, then SAVE"));
       SendTxtToTFT(st, TXT_WAIT_STATUS);
       // The value box goes blank when a button press makes the display redraw the page (it only draws a
       // text field when it is written), so send it again with every status refresh.
       char zv[10];
-      fmt_mm(zv, sizeof(zv), getZOffset_mm());
+      fmt_mm(zv, sizeof(zv), z_nozzle_height());
       SendTxtToTFT(zv, TXT_LEVEL_OFFSET);
     }
   }
@@ -2972,7 +3013,7 @@ void DgusTFT::page17_handle(void)
         babystepAxis_steps(mmToWholeSteps(plus ? step : -step, Z), Z);
         setZOffset_mm(z_off + (plus ? step : -step));
 
-        fmt_mm(str_buf, sizeof(str_buf), getZOffset_mm());
+        fmt_mm(str_buf, sizeof(str_buf), z_nozzle_height());
         SendTxtToTFT(str_buf, TXT_LEVEL_OFFSET);
 
         z_change = true;
@@ -2990,6 +3031,7 @@ void DgusTFT::page17_handle(void)
       }
       else if (z_change) {
         z_change = false;
+        setZOffset_mm(getZOffset_mm() + z_manual_start);   // the paper spot becomes Z0
         injectCommands_P(PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0"));
       }
       else
