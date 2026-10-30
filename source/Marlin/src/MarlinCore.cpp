@@ -1340,6 +1340,10 @@ void setup() {
 
   SETUP_RUN(settings.first_load());   // Load data from EEPROM if available (or use defaults)
                                       // This also updates variables in the planner, elsewhere
+  #if HAS_MEDIA && ENABLED(SDCARD_EEPROM_EMULATION)
+    // Anycubic: the settings live on the SD card; without one nothing is loaded and every value stays zero
+    if (!card.isMounted()) SETUP_RUN(settings.reset());
+  #endif
   TERN_(ANYCUBIC_LCD_DGUS, SETUP_RUN(ui.param_init()));
 
   #if ALL(HAS_WIRED_LCD, SHOW_BOOTSCREEN)

@@ -65,3 +65,14 @@ Independent review (2026-10-30): R1 fixed (`PROBING_MARGIN 10` had been dropped,
 Open from that review: B2 watchdog ~21 s, B5 internal G28 clears the filament-change flag, B1 looser thermal protection, features: M73 progress, variance monitor, bilinear subdivision, EXTRA_PROBING, linear advance, input shaping (hardware tests).
 
 Low-risk features enabled: THERMAL_PROTECTION_VARIANCE_MONITOR, SET_PROGRESS_MANUALLY (M73 progress/remaining time), EXTRA_PROBING 1 (4 probes per point, worst discarded), ABL_BILINEAR_SUBDIVISION (3). Flash 39.0% of 448 KB, RAM 10.0%. If the variance monitor ever kills a healthy heat-up, turn it off first.
+
+Hostile review (two reviewers, 2026-10-30) - fixed:
+* H1 outage save recorded all heater targets as 0 (my heaters-first change): outputs are cut, targets kept until after the save.
+* H2 `getLongPath` copied a full path into a 13-byte buffer (recovery page file name): buffer is now MAXPATHNAMELENGTH.
+* M1 resume applied the bed mesh twice to the first Z: leveling stays off until the last resume move.
+* M2 the "Write" debug dump (500+ bytes on a 64-byte serial buffer) is gone from every save.
+* M3 no SD card at boot left every setting at zero: `settings.reset()` when the card is not mounted.
+* Auto Z: the 300 s deadline injected over a running command: removed; every key is ignored while the nozzle sequence runs (BACK during it used to leave heaters on / overwrite the sequence).
+* Terminal: leading spaces bypassed the M109/M190 guard. Manual Z minimum start height is 0.3 mm.
+Left as is (matches the old firmware, hardware-proven): Z_PROBE_LOW_POINT -10, 21 s watchdog, runout state_original logic, looser thermal protection.
+To check on the first power-up: `M119` with the Z input pressed by hand before the first G28 (Z homes on Z_MIN_PIN PA8, not the strain gauge).

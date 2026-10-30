@@ -368,8 +368,9 @@ void CardReader::ls(const uint8_t lsflags/*=0*/) {
   void CardReader::getLongPath(char *pathLong, char * const pathShort) {
 
     int i, pathLen = strlen(pathShort);
-    char bufShort[FILENAME_LENGTH] = { '\0' };
-    strcpy_P(bufShort, pathShort);
+    char bufShort[MAXPATHNAMELENGTH] = { '\0' };   // a whole path, not one 8.3 name (a 13-byte buffer overflowed)
+    strlcpy(bufShort, pathShort, sizeof(bufShort));
+    pathLen = strlen(bufShort);
 
     // Zero out slashes to make segments
     for (i = 0; i < pathLen; i++) if (bufShort[i] == '/') bufShort[i] = '\0';

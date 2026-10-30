@@ -312,12 +312,17 @@ void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=POW
       constexpr float zraise = 0;
     #endif
 
-    // Disable all heaters first: they draw the most current and the SD write below needs the little power that is left
-    thermalManager.disable_all_heaters();
+    // Cut the heater outputs first (they draw the most current and the SD write below needs the little power that
+    // is left) but keep the targets: save() records them, and the resume heats back up to them.
+    HOTEND_LOOP() thermalManager.temp_hotend[e].soft_pwm_amount = 0;
+    TERN_(HAS_HEATED_BED, thermalManager.temp_bed.soft_pwm_amount = 0);
 
     // Save the current position, distance that Z was (or should be) raised,
     // and a flag whether the raise was already done here.
     if (IS_SD_PRINTING()) save(true, zraise, ENABLED(BACKUP_POWER_SUPPLY));
+
+    // Now the targets can go too
+    thermalManager.disable_all_heaters();
 
     // Tell the LCD about the outage, even though it is about to die
     TERN_(EXTENSIBLE_UI, ExtUI::onPowerLoss());
@@ -345,8 +350,8 @@ void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=POW
  */
 void PrintJobRecovery::write() {
 
-  debug(F("Write"));
-
+  // Anycubic: no debug(F("Write")) dump here. DEBUG_POWER_LOSS_RECOVERY is on for M413 O, and the dump blocked ~50 ms on
+  // the serial buffer in front of every save, including the one at the outage. M413 D prints it on request.
   open(false);
   file.seekSet(0);
   const int16_t ret = file.write(&info, sizeof(info));
@@ -466,7 +471,11 @@ void PrintJobRecovery::resume() {
   // Mark all axes as having been homed (no effect on current_position)
   set_all_homed();
 
-  #if HAS_LEVELING
+  #if HAS_LEVELING && HOMING_Z_DOWN
+    // Anycubic: the saved Z is a machine position, so the moves back to it must run with leveling OFF (G28 may have
+    // switched it on); it is enabled again after the last move, which keeps the physical position.
+    PROCESS_SUBCOMMANDS_NOW(F("M420S0"));
+  #elif HAS_LEVELING
     // Restore Z fade and possibly re-enable bed leveling compensation.
     // Leveling may already be enabled due to the ENABLE_LEVELING_AFTER_G28 option.
     // TODO: Add a G28 parameter to leave leveling disabled.
@@ -578,6 +587,12 @@ void PrintJobRecovery::resume() {
   // Move back down to the saved Z for printing
   sprintf_P(cmd, PSTR("G1Z%sF600"), dtostrf(z_print, 1, 3, str_1));
   PROCESS_SUBCOMMANDS_NOW(cmd);
+
+  #if HAS_LEVELING && HOMING_Z_DOWN
+    // Restore Z fade and bed leveling now that the nozzle is at its physical height
+    sprintf_P(cmd, PSTR("M420S%cZ%s"), '0' + (char)info.flag.leveling, dtostrf(info.fade, 1, 1, str_1));
+    PROCESS_SUBCOMMANDS_NOW(cmd);
+  #endif
 
   // Restore the feedrate
   sprintf_P(cmd, PSTR("G1F%d"), info.feedrate);
