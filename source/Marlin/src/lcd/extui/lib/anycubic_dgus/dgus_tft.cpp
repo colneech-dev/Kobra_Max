@@ -137,7 +137,6 @@ enum az_stage_t : uint8_t { AZ_IDLE, AZ_MESH, AZ_TEST, AZ_PARKED };
 static az_stage_t az_stage = AZ_IDLE;
 static bool       az_listen = false;   // the serial hook is looking for M48's summary line
 static float      az_range = -1;       // "Range:" of the last M48 (max - min of the probe heights), -1 = none yet
-static millis_t   az_deadline = 0;
 static char       az_msg[28] = "";
 static void az_start_test(const bool save_first);   // defined with the Z-offset pages
 // When the probe pre-check last failed; page203_handle returns to the Leveling menu after a timeout.
@@ -2354,7 +2353,8 @@ static void kb_show() {
 }
 
 // While a print runs only commands that read something are accepted.
-static bool kb_allowed_while_printing(const char * const c) {
+static bool kb_allowed_while_printing(const char *c) {
+  while (*c == ' ') c++;   // Marlin ignores leading spaces, so must the check
   static const char * const ok[] = { "M105", "M114", "M115", "M503" };
   for (const char * const w : ok) if (!strncmp(c, w, 4) && (c[4] == '\0' || c[4] == ' ')) return true;
   return false;
@@ -2362,7 +2362,8 @@ static bool kb_allowed_while_printing(const char * const c) {
 
 // M109 / M190 wait for temperature, and with PRINTJOB_TIMER_AUTOSTART they start the print job timer: isPrinting()
 // then reports a print and the guards refuse the very commands that could end it. M104 / M140 do the same job.
-static bool kb_heats_and_waits(const char * const c) {
+static bool kb_heats_and_waits(const char *c) {
+  while (*c == ' ') c++;
   return (!strncmp(c, "M109", 4) || !strncmp(c, "M190", 4)) && (c[4] == '\0' || c[4] == ' ');
 }
 
@@ -2896,7 +2897,7 @@ static bool  z_start_dirty  = false;   // the start-height setting changed and i
 
 static uint8_t z_start_tenths() {
   const uint8_t t = DgusTFT::lcd_info.z_start_tenths;
-  return (t >= 1 && t <= 50) ? t : 10;
+  return (t >= 3 && t <= 50) ? t : 10;   // at least 0.3 mm: a lower start could press the nozzle into the bed
 }
 
 static float z_nozzle_height() { return z_manual_start + (getZOffset_mm() - z_entry_offset); }
@@ -2916,7 +2917,6 @@ static void az_start_test(const bool save_first) {
   az_range = -1;
   az_listen = true;
   az_stage = AZ_TEST;
-  az_deadline = millis() + 300000UL;
 #if PROBING_NOZZLE_TEMP || LEVELING_NOZZLE_TEMP
   setTargetTemp_celsius(LEVELING_NOZZLE_TEMP, E0);
 #endif
@@ -2993,7 +2993,7 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
     case 7: // start height + 0.1 mm
       {
         uint8_t t = z_start_tenths();
-        if (key_value == 7) { if (t < 50) t++; } else { if (t > 1) t--; }
+        if (key_value == 7) { if (t < 50) t++; } else { if (t > 3) t--; }
         lcd_info.z_start_tenths = t;
         z_start_dirty = true;
       }
@@ -3020,7 +3020,7 @@ void DgusTFT::page17_handle(void)
     static millis_t status_ms = 0;
     if (millis() - status_ms > 500) {
       status_ms = millis();
-      if (az_stage == AZ_TEST && (!commandsInQueue() || ELAPSED(millis(), az_deadline))) {
+      if (az_stage == AZ_TEST && !commandsInQueue()) {   // no timeout: injecting over a command that is still running corrupts the buffer
         // M48 has finished (or the wait ran out): read the spread, then park at the start height for the manual step
         az_listen = false;
         if (az_range >= 0) {
@@ -3050,7 +3050,7 @@ void DgusTFT::page17_handle(void)
       SendTxtToTFT(zv, TXT_LEVEL_OFFSET);
     }
   }
-  if (zoffset_moving && (key_value == 2 || key_value == 3 || key_value == 5 || key_value == 6)) return;   // wait for the nozzle to arrive
+  if (zoffset_moving && key_value) return;   // every key waits: a new command would overwrite the sequence still running
 
   switch (key_value)
   {
