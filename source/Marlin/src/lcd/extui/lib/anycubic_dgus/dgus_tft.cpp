@@ -3157,7 +3157,7 @@ void DgusTFT::page18_handle(void) //preheat
 
 // Filament page. LOAD / UNLOAD / EXTRUDE always heat first (the status line says so) and start by
 // themselves once the hotend is up to temperature. LOAD is the long fast feed for NEW filament; with
-// filament already in the nozzle use EXTRUDE (a slow 10 mm purge) - a second fast load strips the filament.
+// filament already in the nozzle use EXTRUDE (a slow 30 mm purge) - a second fast load strips the filament.
 void DgusTFT::page19_handle(void)   // Filament
 {
   typedef enum { FILA_NO_ACT = 0, FILA_IN, FILA_OUT, FILA_EXTRUDE } filament_cmd_t;
