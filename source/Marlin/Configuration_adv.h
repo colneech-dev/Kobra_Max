@@ -32,6 +32,9 @@
  */
 #define CONFIGURATION_ADV_H_VERSION 02010206
 
+// Anycubic: the old firmware moved at 2000 mm/min until the first F word (2.1.2.9 defaults to 4000)
+#define DEFAULT_FEEDRATE_MM_M 2000
+
 // @section develop
 
 /**

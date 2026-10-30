@@ -38,6 +38,10 @@
 
 // All displays share the MarlinUI class
 #include "marlinui.h"
+
+#if ENABLED(EXTENSIBLE_UI)
+  #include "extui/ui_api.h"   // probe_preheating_start/stop report to the display
+#endif
 MarlinUI ui;
 
 #if HAS_DISPLAY

@@ -17,13 +17,17 @@ Upstream trees used for comparison live in `_marlin_upstream/` (git-ignored): `M
 | Config | Every setting that differs from vanilla 2.0.8 was applied to the 2.1.2.9 files by script (`Configuration.h`: ~80, `_adv.h`: ~85), then by hand: PID names (`DEFAULT_KP/KI/KD`, `DEFAULT_BED_*`), `DEFAULT_STEPPER_TIMEOUT_SEC 0`, `ANYCUBIC_LCD_DGUS` + `LCD_SERIAL_PORT 4`, `FIL_SENSOR_OPTIONAL`. |
 | LCD | `ANYCUBIC_LCD_DGUS` added to `Conditionals_LCD.h` (EXTENSIBLE_UI, serial host) and `SanityCheck.h`. DGUS library at `lcd/extui/lib/anycubic_dgus/`, glue `lcd/extui/anycubic_dgus_lcd.cpp` (hooks renamed: `onHomingDone`, `onPrintDone`, `onSettingsStored/Loaded`, `onLevelingStart/Done`, `onSetPowerLoss`, `FSTR_P` kill strings). |
 | ExtUI additions | `onParamInit` (via `MarlinUI::param_init`, called after `settings.first_load()`), `clearProgress_seconds_elapsed`, `getFilamentRunoutOriginState`, `getProbeState`, `ProbeTare`, `language_t` / `audio_t`. `getMeshValid` -> `getLevelingIsValid`. |
-| Kobra Max core mods | `gcodeComment`, `activeFilamentChange`, `mel_PrintAbort` (MarlinCore); G28 / M600 flags; `T` = colour change (M600); optional filament sensor (`state_original`, `FIL_SENSOR_OPTIONAL`) in `feature/runout.*`; `print_progress` saved in the power-loss record; `CardReader::getLongPath`. |
+| Kobra Max core mods | `gcodeComment`, `activeFilamentChange`, `mel_PrintAbort` (MarlinCore); G28 / M600 flags; `T` = colour change (M600); optional filament sensor (`state_original`, `FIL_SENSOR_OPTIONAL`) in `feature/runout.*`; `print_progress` saved in the power-loss record; `CardReader::getLongPath`. Found later by review (they carry no marker comments): strain-gauge probe reset (`AUTO_LEVEL_TX`) before every probe move (`module/probe.cpp`); `ui.probe_preheating_start/stop` hooks (G29 pre-heat page); 5 s startup grace for MIN/MAXTEMP errors (`module/temperature.cpp`); M117 text kept in `gcodeComment`; `mel_PrintAbort` honoured by `PrintCounter`. |
 | Display tools | `tools/`, `DWIN_SET/`, `docs/` synced from `kobra-max-hc32`. |
 
 ## Not ported yet / to verify on hardware
 
 * Anycubic's flash-based outage record (`FLASH_OUTAGE_DATA_ADDR`): the 2.1.2.9 SD-file power-loss recovery is used instead; outage detection through `POWER_LOSS_PIN` (PC2, also the voltage monitor) needs checking.
-* `mel_PrintAbort` no longer affects `PrintCounter` (2.1.2.9 counts a print as finished only when `stop(true)`).
 * Case light: the pin-mode fix (plain output when brightness control is off) is in `feature/caselight.h` (`init()`).
 * The Terminal reply-capture hook (`SERIAL_RUNTIME_HOOK`) and every other change made on `kobra-max-hc32` after commit 7cfa4d5 live in the DGUS library, which was copied from that branch's latest state.
+* **The first boot after flashing resets the saved settings.** The EEPROM format version changed (`V82` -> `V88`), so `eeprom.dat` from the old firmware is ignored: Z offset, bed mesh, PID, display language and sound are all back to defaults. Run `M503` on the old firmware first and note the values; level and set the Z offset again, then `M500`.
 * Nothing from this branch has been flashed yet.
+
+## How the missing customizations were found
+
+The old tree's base is Anycubic's own source (github.com/ANYCUBIC-3D/Kobra_Max, a `bugfix-2.0.x` snapshot), not vanilla 2.0.8. Comparing the old tree with that source (ignoring whitespace and comments) lists what was changed since; comparing every `ExtUI::on*` call site in both trees lists the hooks the display depends on; marker words (`AUTO_LEVEL_TX`, `outage`, `state_original`, ...) in Anycubic's source locate the vendor changes.

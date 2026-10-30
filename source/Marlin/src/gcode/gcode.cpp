@@ -404,7 +404,7 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
         case 27: G27(); break;                                    // G27: Nozzle Park
       #endif
 
-      case 28: G28(); break;                                      // G28: Home one or more axes
+      case 28: colourCounter = 0; G28(); break;                   // G28: Home one or more axes (and restart the T colour-change count)
 
       #if HAS_LEVELING
         case 29:                                                  // G29: Bed leveling calibration

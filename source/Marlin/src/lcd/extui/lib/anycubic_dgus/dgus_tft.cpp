@@ -862,7 +862,7 @@ void DgusTFT::ConfirmationRequest(const char * const msg)  {
           //          SendtoTFTLN(AC_msg_paused); // enable continue button
         }
         // Filament Purging, send acknowledgement enter run mode
-        else if (strcmp_P(msg, MARLIN_msg_filament_purging) == 0) {
+        else if (strcmp_P(msg, MARLIN_msg_filament_purging) == 0 || strstr_P(msg, PSTR("filament purge"))) {   // 1-line / 2-line wording
           pause_state = AC_paused_purging_filament;
           //          SendtoTFTLN(AC_msg_paused); // enable continue button
         } else if (strcmp_P(msg, MARLIN_msg_nozzle_parked) == 0) {
