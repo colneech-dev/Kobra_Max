@@ -63,3 +63,5 @@ Power loss (decisions 1-3, done):
 
 Independent review (2026-10-30): R1 fixed (`PROBING_MARGIN 10` had been dropped, G29 would have probed the bed edge); B3 fixed (upload size limit 480 KB).
 Open from that review: B2 watchdog ~21 s, B5 internal G28 clears the filament-change flag, B1 looser thermal protection, features: M73 progress, variance monitor, bilinear subdivision, EXTRA_PROBING, linear advance, input shaping (hardware tests).
+
+Low-risk features enabled: THERMAL_PROTECTION_VARIANCE_MONITOR, SET_PROGRESS_MANUALLY (M73 progress/remaining time), EXTRA_PROBING 1 (4 probes per point, worst discarded), ABL_BILINEAR_SUBDIVISION (3). Flash 39.0% of 448 KB, RAM 10.0%. If the variance monitor ever kills a healthy heat-up, turn it off first.
