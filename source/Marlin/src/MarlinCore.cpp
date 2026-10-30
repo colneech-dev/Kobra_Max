@@ -264,6 +264,7 @@ MarlinState marlin_state = MF_INITIALIZING;
 // Kobra Max (MEL_MOD) state used by the DGUS display, M600 / T colour changes and the print counter
 const char * gcodeComment = "G-Code Status Area";
 bool activeFilamentChange = false;   // a filament change (M600) is in progress
+int16_t colourCounter = 0;
 bool mel_PrintAbort = false;         // the print was aborted: do not count it as finished
 
 bool wait_for_heatup = true;

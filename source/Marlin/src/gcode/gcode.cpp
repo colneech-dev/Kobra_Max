@@ -30,7 +30,7 @@ GcodeSuite gcode;
 
 // Kobra Max: a slicer's tool change (T1, T2 ...) is treated as a colour change, i.e. M600 (the first T0 is ignored)
 #define KOBRAMAX_COLOUR_CHANGE true
-static int16_t colourCounter = 0;
+// colourCounter: MarlinCore.cpp (reset when a print starts)
 
 #if ENABLED(WIFI_CUSTOM_COMMAND)
   extern bool wifi_custom_command(char * const command_ptr);
