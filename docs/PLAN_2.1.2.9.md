@@ -48,3 +48,8 @@ New 2.1.x features wait until this base has run on the printer.
 Done in `8376509`: build include (0), homing-failure axis (4), `G28` colour counter (5), pause strings (6), unused EEPROM backends (7), default feedrate 2000.
 Done after that: manual Z-offset page parks at a saved start height (default 1.0 mm, `-`/`+` row on the Leveling menu) instead of Z0.
 Held for decisions: power loss (1, 2, 3, `M413 O`), thermistor variance monitor. Auto Z offset: see the chat discussion (needs a design choice).
+Auto Z offset (b3de2f5): third button on the Leveling menu. Checks for a bed mesh (runs the normal probe pre-check and G29 first when none exists),
+heats, homes and runs `M48 P5` at the bed centre, reads the "Range:" from the reply and shows it on the Z page ("Spread 0.012 mm OK/FAIR/NOISY",
+thresholds 0.03 / 0.08 mm), then parks at the manual start height with the heaters off. The user sets the final offset with the manual controls;
+the offset applies to the whole mesh (the mesh holds contact heights, see the comment above `save_zoffset`). Untested on hardware: the spread
+thresholds are guesses until real strain-gauge numbers are seen.
