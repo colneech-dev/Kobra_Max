@@ -53,3 +53,10 @@ heats, homes and runs `M48 P5` at the bed centre, reads the "Range:" from the re
 thresholds 0.03 / 0.08 mm), then parks at the manual start height with the heaters off. The user sets the final offset with the manual controls;
 the offset applies to the whole mesh (the mesh holds contact heights, see the comment above `save_zoffset`). Untested on hardware: the spread
 thresholds are guesses until real strain-gauge numbers are seen.
+
+Power loss (decisions 1-3, done):
+* Detection: raw PC2 ADC (new `PowerMonitor::getVoltsRaw()`) below 2200/4095 and still falling after more than 4 samples, as on the original firmware. Heaters are switched off before the SD write.
+* Resume: `G92.9 Z<saved>`, lift `POWER_LOSS_ZRAISE` = 5 mm, `G28 R0 XY`, move to {0,0}, `G28 H Z` (home Z on the spot, no safe-homing move), lift back, continue.
+  CORRECTION to the earlier recommendation "ZRAISE 0": in 2.1.2.9 that value is the resume lift when there is no UPS, so 0 would drag the nozzle across the print while XY homes. The original firmware got its lift from Z_HOMING_HEIGHT in G28.
+* `M413 O` (simulated outage, via `DEBUG_POWER_LOSS_RECOVERY`) is back. It saves the job and ends the print without killing the board; power-cycle and resume to test.
+* Untested on hardware. Test with `M413 O` on a short print first.
