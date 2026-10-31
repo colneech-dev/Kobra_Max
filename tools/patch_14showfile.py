@@ -296,9 +296,9 @@ TXT_ES_CUR      = 0x2FC0
 TXT_ES_ACTUAL   = 0x2FD0
 TXT_ES_NEW      = 0x2FE0
 TXT_ES_STATUS   = 0x2FF0
-TXT_LA_K        = 0x3000
-TXT_LA_STATUS   = 0x3010
-TXT_WZ_STATUS0  = 0x3020   # setup wizard (172): status line under each of the 4 steps, 0x10 apart
+TXT_LA_K        = 0x3100
+TXT_LA_STATUS   = 0x3110
+TXT_WZ_STATUS0  = 0x3120   # setup wizard (172): status line under each of the 4 steps, 0x10 apart
 TXT_TUNE_STATUS = 0x2DA0   # Thermal Tuning (216) progress line; dgus_tft.h
 TERM_LINES, TERM_ROW_H, TERM_Y0 = uf.TERM_LINES, uf.TERM_ROW_H, uf.TERM_Y0
 

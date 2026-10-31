@@ -270,8 +270,8 @@ _ZONES = [
     ([216],   8, 429, 264, 473, 1), # BACK                 (KEY_TUNE_BACK  = 1)
 
     # ── PAGE 172  Setup wizard ────────────────────────────────────────────────
-    ([172], *uf.WZ_BTN(0), 2),  # 1 Z OFFSET (manual Z page, returns here)
-    ([172], *uf.WZ_BTN(1), 3),  # 2 BED MESH (G29, returns here)
+    ([172], *uf.WZ_BTN(0), 2),  # 1 BED MESH (G29, returns here)
+    ([172], *uf.WZ_BTN(1), 3),  # 2 Z OFFSET (manual Z page, needs the mesh, returns here)
     ([172], *uf.WZ_BTN(2), 4),  # 3 PROBE CHECK (M48 x5, stays here)
     ([172], *uf.WZ_BTN(3), 5),  # 4 FIRST LAYER TEST (tap again to stop)
     ([172],   8, 429, 264, 473, 1), # BACK
@@ -309,6 +309,8 @@ def _expand_zones(raw):
         if isinstance(pages, int):
             pages = [pages]
         for p in pages:
+            if p in uf.HIDDEN_PAGES:
+                continue   # no picture, no touch zones (see HIDDEN_PAGES in ui_features.py)
             yield (p, x0, y0, x1, y1, key)
 
 

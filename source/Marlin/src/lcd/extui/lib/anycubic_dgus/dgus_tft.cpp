@@ -146,6 +146,7 @@ static bool wz_launch = false;
 static bool wz_done[4] = { false, false, false, false };
 static char wz_msg[4][26] = { "", "", "", "" };
 static bool az_check_only = false;    // AUTO Z OFFSET run for the wizard: measure the spread, do not park for the manual step
+static void wizard_background();   // wizard / E-steps jobs, run from IdleLoop whatever page is shown
 static uint32_t wz_back(const uint32_t normal) {   // where a finished step goes: the wizard if it started there
   if (!wz_launch) return normal;
   wz_launch = false;
@@ -459,6 +460,7 @@ static bool boot_tune_pending = false;
 void DgusTFT::IdleLoop()  {
   hal.watchdog_refresh(); // prevent WDT fire during DGUS packet processing
   term_rx_drain();
+  wizard_background();
 
   // One-shot diagnostics on first entry (debug builds only; it printed on every boot before).
   static bool diag_done = false;
@@ -961,7 +963,7 @@ void DgusTFT::StatusChange(const char * const msg)  {
             else {
               injectCommands_P(PSTR("M500\nM104 S0\nM140 S0"));   // save the mesh and Z offset, then heaters off
               heaters_off_when_idle();
-              if (wz_launch) { wz_done[1] = true; strcpy_P(wz_msg[1], PSTR("Mesh saved")); }
+              if (wz_launch) { wz_done[0] = true; strcpy_P(wz_msg[0], PSTR("Mesh saved")); }
               ChangePageOfTFT(wz_back(PAGE_PreLEVEL));   // wait pages 34/154 have no touch zones: must leave them explicitly
             }
             msg_matched = true;
@@ -2889,7 +2891,7 @@ void DgusTFT::page14_handle(void)
 static float es_actual = 100.0f;   // the length the user measured (mm), 100 = "extruded exactly what was asked"
 enum es_stage_t : uint8_t { ES_IDLE, ES_HEATING, ES_EXTRUDING, ES_DONE };
 static es_stage_t es_stage = ES_IDLE;
-static char es_msg[26] = "";
+static char es_msg[28] = "";
 static float la_k = 0.0f;
 static char la_msg[26] = "";
 
@@ -3047,6 +3049,13 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
 
     case 3:
       if (BlockedWhilePrinting()) break;
+      if (!getLevelingIsValid()) {
+        // The offset is only the gap above the bed while the mesh is active; set before the mesh it would be counted twice.
+        // So without a mesh this is the AUTO Z OFFSET flow: level first, then the probe test, then this page.
+        az_stage = AZ_MESH;
+        ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);
+        break;
+      }
       {
         char str_buf[10];
         str_buf[0] = 0;
@@ -3193,7 +3202,7 @@ void DgusTFT::page17_handle(void)
       else if (z_change) {
         z_change = false;
         setZOffset_mm(getZOffset_mm() + z_manual_start);   // the paper spot becomes Z0
-        if (wz_launch) { wz_done[0] = true; strcpy_P(wz_msg[0], PSTR("Offset saved")); }
+        if (wz_launch) { wz_done[1] = true; strcpy_P(wz_msg[1], PSTR("Offset saved")); }
         injectCommands_P(PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0"));
       }
       else
@@ -4465,6 +4474,23 @@ static void es_show() {
   DgusTFT::SendTxtToTFT(es_msg[0] ? es_msg : " ", TXT_ES_STATUS);
 }
 
+// E-steps heating / extruding progress. Runs from wizard_background(), so it goes on when another page is shown.
+static void es_poll() {
+  if (es_stage == ES_HEATING) {
+    snprintf(es_msg, sizeof(es_msg), "Heating %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_ESTEPS_TEMP);
+    if (getActualTemp_celsius(E0) >= AC_ESTEPS_TEMP - 3) {
+      injectCommands_P(PSTR("M83\nG1 E100 F100\nM82\nM400"));   // 100 mm at 100 mm/min
+      es_stage = ES_EXTRUDING;
+      strcpy_P(es_msg, PSTR("Extruding 100 mm..."));
+    }
+  }
+  else if (es_stage == ES_EXTRUDING && !commandsInQueue()) {
+    es_stage = ES_DONE;
+    setTargetTemp_celsius(0, E0);
+    strcpy_P(es_msg, PSTR("Done: measure, enter, SAVE"));
+  }
+}
+
 void DgusTFT::page210_handle(void) {
   static millis_t flash_time = 0;
 
@@ -4498,20 +4524,6 @@ void DgusTFT::page210_handle(void) {
       strcpy_P(es_msg, PSTR("Saved"));
       es_actual = 100.0f;   // the stored value is the new reference
     } break;
-  }
-
-  if (es_stage == ES_HEATING) {
-    snprintf(es_msg, sizeof(es_msg), "Heating %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_ESTEPS_TEMP);
-    if (getActualTemp_celsius(E0) >= AC_ESTEPS_TEMP - 3) {
-      injectCommands_P(PSTR("M83\nG1 E100 F100\nM82\nM400"));   // 100 mm at 100 mm/min
-      es_stage = ES_EXTRUDING;
-      strcpy_P(es_msg, PSTR("Extruding 100 mm..."));
-    }
-  }
-  else if (es_stage == ES_EXTRUDING && !commandsInQueue()) {
-    es_stage = ES_DONE;
-    setTargetTemp_celsius(0, E0);
-    strcpy_P(es_msg, PSTR("Done: measure, enter, SAVE"));
   }
 
   if (key_value) flash_time = 0;
@@ -4561,7 +4573,7 @@ void DgusTFT::page174_handle(void) {
 // Page 172 - SETUP WIZARD. Steps 1 and 2 start the manual Z page and the bed levelling and come back here when they end;
 // step 3 runs the 5-probe test (M48) here; step 4 prints five 24 mm squares as a first layer test, one move at a time
 // from fl_poll() (the G-code buffer is tiny, so a few moves are queued whenever it runs empty).
-enum fl_stage_t : uint8_t { FL_IDLE, FL_HEAT, FL_HOME, FL_PURGE, FL_SQUARES, FL_END };
+enum fl_stage_t : uint8_t { FL_IDLE, FL_HEAT, FL_HOME, FL_PURGE, FL_SQUARES, FL_END, FL_TAIL };
 static fl_stage_t fl_stage = FL_IDLE;
 static int8_t  fl_sq = 0;          // square being printed
 static int16_t fl_row = -2;        // -2 travel there, -1 lower, 0.. one zig-zag row (X pass + Y step), FL_ROWS = done
@@ -4594,7 +4606,7 @@ static void fl_start() {
 
 static void fl_poll() {
   if (fl_stage == FL_IDLE) return;
-  if (fl_abort && fl_stage != FL_END) fl_stage = FL_END;
+  if (fl_abort && fl_stage != FL_END && fl_stage != FL_TAIL) fl_stage = FL_END;
 
   if (fl_stage == FL_HEAT) {
     snprintf(wz_msg[3], sizeof(wz_msg[3]), "Heat %u/%u  bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_FL_NOZZLE_TEMP,
@@ -4659,6 +4671,11 @@ static void fl_poll() {
     case FL_END:
       if (fl_homed) injectCommands_P(PSTR("G1 E-1 F1800\nG1 Z10 F600\nM82\nM104 S0\nM140 S0"));
       else          injectCommands_P(PSTR("M82\nM104 S0\nM140 S0"));
+      fl_stage = FL_TAIL;
+      strcpy_P(wz_msg[3], PSTR("Finishing..."));
+      break;
+
+    case FL_TAIL:   // the finishing commands have run (the queue is empty): the test is over
       fl_stage = FL_IDLE;
       if (fl_abort) strcpy_P(wz_msg[3], PSTR("Stopped"));
       else { wz_done[3] = true; strcpy_P(wz_msg[3], PSTR("Done: check the 5 squares")); }
@@ -4668,10 +4685,11 @@ static void fl_poll() {
   }
 }
 
-void DgusTFT::page172_handle(void) {
-  static millis_t flash_time = 0;
+// Runs from IdleLoop whatever page is on screen: a multi-step job must not be stranded by a page change (a pop-up, a runout).
+static void wizard_background() {
+  if (fl_stage != FL_IDLE && isPrintingFromMedia()) fl_abort = true;   // a real print started: stop the test
 
-  // Step 3 finished (the 5-probe test ran from this page)
+  // Step 3 finished (the 5-probe test)
   if (az_check_only && az_stage == AZ_TEST && !commandsInQueue()) {
     az_listen = false;
     az_make_msg();
@@ -4682,6 +4700,11 @@ void DgusTFT::page172_handle(void) {
     injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift, heaters off
   }
   fl_poll();
+  es_poll();
+}
+
+void DgusTFT::page172_handle(void) {
+  static millis_t flash_time = 0;
 
   const bool busy = (fl_stage != FL_IDLE) || (az_check_only && az_stage == AZ_TEST);
   wz_launch = false;   // nothing started from the wizard is waiting on another page now
@@ -4694,28 +4717,29 @@ void DgusTFT::page172_handle(void) {
       GoSystemPage();
       return;
 
-    case 2: { // 1 Z OFFSET: the manual Z page, SAVE comes back here
+    case 2: // 1 BED MESH: the probe pre-check, then G29; the mesh page comes back here
       if (busy || BlockedWhilePrinting()) break;
       wz_done[0] = false;
       wz_msg[0][0] = '\0';
       wz_launch = true;
-      ChangePageOfTFT(PAGE_LEVEL_ADVANCE);
-      const uint8_t t = z_start_tenths();
-      z_manual_start = t / 10.0f;
-      z_entry_offset = getZOffset_mm();
-      char cmd[80];
-      sprintf_P(cmd, PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000\nG1 Z%u.%u F200"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2), t / 10, t % 10);
-      injectCommands(cmd);
-      zoffset_moving = true;
-    } break;
+      ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);
+      break;
 
-    case 3: // 2 BED MESH: the probe pre-check, then G29; the mesh page comes back here
+    case 3: { // 2 Z OFFSET: the manual Z page (it needs the mesh: the offset is the gap above the bed WITH the mesh on), SAVE comes back here
       if (busy || BlockedWhilePrinting()) break;
+      if (!getLevelingIsValid()) { strcpy_P(wz_msg[1], PSTR("Make the bed mesh first")); break; }
       wz_done[1] = false;
       wz_msg[1][0] = '\0';
       wz_launch = true;
-      ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);
-      break;
+      ChangePageOfTFT(PAGE_LEVEL_ADVANCE);
+      const uint8_t zt = z_start_tenths();
+      z_manual_start = zt / 10.0f;
+      z_entry_offset = getZOffset_mm();
+      char cmd[80];
+      sprintf_P(cmd, PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000\nG1 Z%u.%u F200"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2), zt / 10, zt % 10);
+      injectCommands(cmd);
+      zoffset_moving = true;
+    } break;
 
     case 4: // 3 PROBE CHECK: M48 here, the result appears under the button
       if (busy || BlockedWhilePrinting()) break;

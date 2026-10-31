@@ -318,9 +318,9 @@
 #define TXT_ES_ACTUAL   0x2FD0  //   length the user measured
 #define TXT_ES_NEW      0x2FE0  //   new steps/mm
 #define TXT_ES_STATUS   0x2FF0  //   progress / result line
-#define TXT_LA_K        0x3000  // Linear advance page (174): K factor
-#define TXT_LA_STATUS   0x3010  //   result line
-#define TXT_WZ_STATUS0  0x3020  // Setup wizard page (172): status line of step 1, steps 2-4 follow 0x10 apart
+#define TXT_LA_K        0x3100  // Linear advance page (174): K factor
+#define TXT_LA_STATUS   0x3110  //   result line
+#define TXT_WZ_STATUS0  0x3120  // Setup wizard page (172): status line of step 1, steps 2-4 follow 0x10 apart
 #define AC_TERM_HIST   64       // lines kept for scrolling back (page 215 up / down buttons)
 
 

@@ -161,6 +161,16 @@ def _define(text, name, default):
     return int(v) if re.fullmatch(r'-?\d+', v) else v
 
 _cfg_text = _read(_CFG)
+
+# Pages the firmware has no way to show (found by tracing every ChangePageOfTFT target, 2026-10-31). Their pictures cost
+# about 40 KB each of the 13-slot picture library, which has no room to spare.
+#  - 20 / 140 "done" and 30 / 150 "filament heating": PAGE_DONE / PAGE_FILAMENT_HEAT are never navigated to
+#  - 185 / 186 and 197 / 198: left / right Z endstop faults (single Z motor, the pages are never raised)
+HIDDEN_PAGES |= {20, 140, 30, 150, 185, 186, 197, 198}
+# Tools (7 / 127) and Print Settings (5 / 125) without a case-light button: with CASE_LIGHT_ENABLE the firmware shows
+# 207 / 209 and 211 / 212 instead (GoToolsPage, GoPrintSettingsPage)
+if re.search(r'^\s*#define\s+CASE_LIGHT_ENABLE', _read(_CFG.parent / 'Configuration_adv.h'), re.M):
+    HIDDEN_PAGES |= {5, 125, 7, 127}
 _defs_text = _read(_DEFS)
 PID_HOTEND_TUNE_TEMP = _define(_defs_text, "AC_PID_HOTEND_TUNE_TEMP", PID_HOTEND_TUNE_TEMP)
 PID_BED_TUNE_TEMP    = _define(_defs_text, "AC_PID_BED_TUNE_TEMP", PID_BED_TUNE_TEMP)
