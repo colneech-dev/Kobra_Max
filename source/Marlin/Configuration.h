@@ -1595,7 +1595,7 @@
 #define Z_CLEARANCE_MULTI_PROBE     5 // (mm) Z Clearance between multiple probes
 //#define Z_AFTER_PROBING           5 // (mm) Z position after probing is done
 
-#define Z_PROBE_LOW_POINT -4 // (mm) Farthest distance below the trigger-point to go before stopping (was -10: a gauge that fails to trigger pushed the nozzle that far into the bed)
+#define Z_PROBE_LOW_POINT -10 // (mm) Farthest distance below the Z endstop plane the probe may go. Keep -10 until the real bed gap is known (see M420 V1 after a G29): -4 fails probing when the bed is more than 4 mm below the endstop
 
 // For M851 give a range for adjusting the Z probe offset
 #define Z_PROBE_OFFSET_RANGE_MIN -20
@@ -1964,7 +1964,7 @@
    */
   #define ENABLE_LEVELING_FADE_HEIGHT
   #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
-    #define DEFAULT_LEVELING_FADE_HEIGHT 10.0 // (mm) Default fade height: the bed-mesh correction fades out over the first 10 mm (M420 Z)
+    #define DEFAULT_LEVELING_FADE_HEIGHT 0.0 // (mm) Default fade height. Keep 0: the mesh holds the absolute bed height above the Z endstop plane (a few mm), and fading it would stretch the first 10 mm of layers
   #endif
 
   /**

@@ -715,3 +715,12 @@ pre-check and G29; both come back here through `wz_launch` / `wz_back()` (the Le
 Step 3 runs `az_start_test` in check-only mode (`az_check_only`: no parking, result shown here). Step 4 is the first-layer test: `fl_poll()` heats to
 `AC_FL_NOZZLE_TEMP` / `AC_FL_BED_TEMP`, homes, prints a purge line and five 24 mm squares of 53 zig-zag rows (0.45 mm spacing, E = 0.0374 mm per mm), queueing
 a row at a time whenever the G-code buffer is empty; tapping the step again stops it. The done flags and messages live in RAM only.
+
+## Page audit and picture library budget (2026-10-31)
+
+The 13-slot picture library (3,407,872 bytes) overflowed by 185 KB when the four new pages and their pressed pictures were added. Cleaned up instead of
+thinning the boot animation: pictures the firmware can never show are no longer built (`HIDDEN_PAGES` in `tools/ui_features.py`, found by tracing every
+ChangePageOfTFT target): 20 / 140 (done), 30 / 150 (filament heating), 185 / 186 and 197 / 198 (left / right Z endstop faults), and 5 / 125 / 7 / 127 (Tools and
+Print Settings without a case-light button; the firmware uses 207 / 209 and 211 / 212 while `CASE_LIGHT_ENABLE` is on, the tools read that from Configuration_adv.h).
+Hidden pages get no touch zones, and `generate_screens.py` now deletes pressed pictures that no touch zone uses (ten old leftovers). Library now 3,252,680 bytes,
+155 KB under the limit. The Chinese pages are untouched.

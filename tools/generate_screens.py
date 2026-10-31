@@ -734,8 +734,8 @@ def page_wizard():
     img, draw = new_page()
     status_bar(draw)
     title_bar(draw, "SETUP WIZARD")
-    steps = [("1  Z OFFSET  (paper test)", 'primary', 0xf338),
-             ("2  BED MESH  (G29)",        'normal',  0xf05b),
+    steps = [("1  BED MESH  (G29)",        'primary', 0xf05b),
+             ("2  Z OFFSET  (paper test)", 'normal',  0xf338),
              ("3  PROBE CHECK  (5 probes)", 'normal',  0xf063),
              ("4  FIRST LAYER TEST",       'normal',  0xf1de)]
     for i, (lbl, sty, ico) in enumerate(steps):
@@ -1321,6 +1321,13 @@ def generate_pressed(page_map):
         out.save(os.path.join(OUT_DIR, f'{pid:03d}.bmp'))
         written.append(pid)
     print(f"{len(written)} pressed-button pictures generated: {written[0]}..{written[-1]}")
+    # Pressed pictures that no touch zone uses any more (pages that are hidden or never had zones) must not stay on
+    # disk: the library builder packs every numbered BMP, and each costs 5 to 20 KB of a library with no room to spare.
+    for pid in pe.all_pressed_ids():
+        f = os.path.join(OUT_DIR, f'{pid:03d}.bmp')
+        if pid not in written and os.path.exists(f):
+            os.remove(f)
+            print(f"  removed unused pressed picture {pid:03d}.bmp")
     return written
 
 

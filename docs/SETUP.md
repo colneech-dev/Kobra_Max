@@ -23,20 +23,23 @@ the first homing.
 
 ## Set up the printer
 
-The System page (main page > SYSTEM) has a **SETUP WIZARD** button that does steps 8 to 12 below as four buttons with a status line under each:
-1 Z OFFSET (the manual Z page; SAVE returns to the wizard), 2 BED MESH (the probe pre-check and G29, then back),
+The System page (main page > SYSTEM) has a **SETUP WIZARD** button that does steps 8 to 10 and 12 below as four buttons with a status line
+under each: 1 BED MESH (the probe pre-check and G29, then back), 2 Z OFFSET (the manual Z page; SAVE returns to the wizard),
 3 PROBE CHECK (the 5-probe test; the spread appears under the button), 4 FIRST LAYER TEST (see step 12). Do them in order; tap a
-step again to redo it. Everything stays inactive while a print or another step is running. The manual steps below describe
-the same things.
+step again to redo it. Everything stays inactive while a print or another step is running.
+
+**Mesh first, offset second.** The Z offset is only the small gap between the nozzle and the paper while the bed mesh is active
+(the mesh already holds the distance from the Z endstop to the bed). Set before the mesh, it would be counted twice and the nozzle
+would end up that much too low. For the same reason the manual Z page and the wizard refuse to start without a mesh and level first.
 
 7. Home all axes (Prepare > Leveling > MANUAL Z ADJUST does it for you).
-8. Z offset, once: Leveling menu > MANUAL Z ADJUST. The nozzle parks at the start height above the bed (1.0 mm by default; change it
-   with the - / + row on the Leveling menu, minimum 0.3 mm). Lower it with the - buttons until a sheet of paper just drags, then SAVE.
-   The offset is stored with the settings and applied at every home.
-9. Bed mesh: Leveling menu > AUTO BED LEVEL. It heats and probes 7 x 7 points (several minutes). The mesh is stored and re-applied
+8. Bed mesh: Leveling menu > AUTO BED LEVEL. It heats and probes 7 x 7 points (several minutes). The mesh is stored and re-applied
    after every home.
-10. Probe check: AUTO Z OFFSET runs a 5-probe test at the bed centre and shows the spread (OK up to 0.03 mm, FAIR up to 0.08 mm,
-    NOISY above), then parks for the manual step. Noisy results mean the nozzle or the probe wiring needs attention.
+9. Z offset, once, with the mesh in place: Leveling menu > MANUAL Z ADJUST. The nozzle parks at the start height above the bed (1.0 mm by
+   default; change it with the - / + row on the Leveling menu, minimum 0.3 mm). Lower it with the - buttons until a sheet of paper just
+   drags, then SAVE. The offset is stored with the settings and applied at every home.
+10. Probe check: AUTO Z OFFSET runs the mesh (if there is none), a 5-probe test at the bed centre with the spread (OK up to 0.03 mm, FAIR up
+    to 0.08 mm, NOISY above), then parks for the manual step. Noisy results mean the nozzle or the probe wiring needs attention.
 11. Look at the mesh: Leveling menu > VIEW BED MESH (heights in 0.01 mm relative to the average, back of the bed at the top).
 
 ## First print
