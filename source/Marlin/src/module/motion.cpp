@@ -2330,12 +2330,12 @@ void set_axis_is_at_home(const AxisEnum axis) {
    */
   #if HAS_BED_PROBE && Z_HOME_TO_MIN
     if (axis == Z_AXIS) {
-      #if HOMING_Z_WITH_PROBE
-        current_position.z -= probe.offset.z;
-        if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPGM("*** Z HOMED WITH PROBE (Z_MIN_PROBE_USES_Z_MIN_ENDSTOP_PIN) ***\n> probe.offset.z = ", probe.offset.z);
-      #else
-        if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPGM("*** Z HOMED TO ENDSTOP ***");
-      #endif
+      // Anycubic: the Z offset (M851 Z, set on the display's Z pages) ALWAYS shifts Z0 at homing, as in the vendor's
+      // 2.0.8 code. Marlin 2.1 only does this when Z homes with the probe (HOMING_Z_WITH_PROBE); here Z homes on the
+      // Z-min endstop, so without this the saved offset did nothing until the next G29 (the bed mesh then holds
+      // contact heights, independent of the offset - see the comment above save_zoffset() in dgus_tft.cpp).
+      current_position.z -= probe.offset.z;
+      if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPGM("*** Z HOMED, Z0 SHIFTED BY THE PROBE OFFSET ***\n> probe.offset.z = ", probe.offset.z);
     }
   #endif
 
