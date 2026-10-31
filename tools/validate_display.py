@@ -307,7 +307,7 @@ def translate_chs_arg(page_num):
     """
     # Language-neutral pages — no ENG offset applied in ChangePageOfTFT
     # 115 = PAGE_AUTO_OFFSET: calibration page, shared across languages, no ENG BMP generated
-    if page_num in (115, 214, 215, 216, 217, 208, 210, 174):
+    if page_num in (115, 214, 215, 216, 217, 208, 210, 174, 172):
         return {page_num}
     # CHS error/homing pages (177–188) → +12 in ENG mode
     if 177 <= page_num <= 188:

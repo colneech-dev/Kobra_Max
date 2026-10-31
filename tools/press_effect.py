@@ -25,7 +25,7 @@ TWIN.update({213: 93, 170: 117, 173: 171, 199: 187, 200: 188, 204: 201, 206: 203
 # Pressed-picture IDs for pages outside 1-34 (those use page + 34, as in the stock UI).
 SPECIAL_ID = {93: 69, 117: 70, 171: 71, 187: 72, 188: 73, 201: 74, 203: 75, 207: 76, 209: 77,
               211: 78, 212: 79, 214: 80, 215: 81, 216: 82, 217: 83,
-              208: 155, 210: 156, 174: 157}   # bed mesh / E-steps / linear advance: free IDs (no shift, outside the boot range)
+              208: 155, 210: 156, 174: 157, 172: 158}   # bed mesh / E-steps / linear advance: free IDs (no shift, outside the boot range)
 
 NO_EFFECT = 0xFF00     # "no press effect" marker used by the stock touch file
 

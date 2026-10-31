@@ -340,6 +340,7 @@ def page_main():
     btn(draw, gx3,    138, W-MARGIN, 200, "TOOLS",   style='normal',  icon=0xf0ad)
     btn(draw, MARGIN, 212, gx2,      274, "PREPARE", style='normal',  icon=0xf1de)
     btn(draw, gx3,    212, W-MARGIN, 274, "SYSTEM",  style='normal',  icon=0xf013)
+    btn(draw, MARGIN, 286, W-MARGIN, 346, "SETUP WIZARD", style='teal', icon=0xf0d0)   # page 172
     return img
 
 
@@ -726,6 +727,22 @@ def page_level_advance():
     text_center(draw, (0, y + 32, W, y + 48), "Nozzle starts at the saved start height", F_TINY, GRAY)
     text_center(draw, (0, y + 50, W, y + 66), "Lower it until paper just drags, then SAVE", F_TINY, GRAY)
     footer_2btn(draw, "BACK", "SAVE", l_style='ghost', r_style='primary')
+    return img
+
+
+def page_wizard():
+    img, draw = new_page()
+    status_bar(draw)
+    title_bar(draw, "SETUP WIZARD")
+    steps = [("1  Z OFFSET  (paper test)", 'primary', 0xf338),
+             ("2  BED MESH  (G29)",        'normal',  0xf05b),
+             ("3  PROBE CHECK  (5 probes)", 'normal',  0xf063),
+             ("4  FIRST LAYER TEST",       'normal',  0xf1de)]
+    for i, (lbl, sty, ico) in enumerate(steps):
+        btn(draw, *uf.WZ_BTN(i), lbl, style=sty, icon=ico)
+        vp_area(draw, *uf.WZ_STATUS(i), 'Not done yet')
+    text_center(draw, (0, 404, W, 418), "Tap step 4 again while it runs to stop", F_TINY, GRAY)
+    footer_1btn(draw, "BACK", style='ghost')
     return img
 
 
@@ -1263,6 +1280,7 @@ def _build_page_map():
     m['214'] = page_thumbnail
     m['215'] = page_terminal
     m['216'] = page_thermal_tune
+    m['172'] = page_wizard
     m['208'] = page_mesh_view
     m['210'] = page_esteps
     m['174'] = page_linadv

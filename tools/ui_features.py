@@ -225,6 +225,11 @@ LEVEL_START_PLUS  = (212, 358, 264, 394)
 # New single-language pages (IDs below 215 that no stock page uses; their "button held" pictures are the free IDs 155-157,
 # see press_effect.SPECIAL_ID). dgus_tft.h has the same numbers (PAGE_MESH_VIEW, PAGE_ESTEPS, PAGE_LIN_ADVANCE).
 PAGE_MESH_VIEW, PAGE_ESTEPS, PAGE_LINADV = 208, 210, 174
+# Setup wizard (from the main page): four step buttons, each with a status line under it. Pressed picture 158.
+PAGE_WIZARD = 172
+WZ_Y0, WZ_PITCH = 100, 76
+def WZ_BTN(i):    return (8, WZ_Y0 + i * WZ_PITCH, 264, WZ_Y0 + i * WZ_PITCH + 44)
+def WZ_STATUS(i): return (8, WZ_Y0 + i * WZ_PITCH + 48, 264, WZ_Y0 + i * WZ_PITCH + 68)
 # Bed mesh viewer: MESH_N x MESH_N text cells (one text field each, 0.01 mm relative to the mesh average).
 MESH_N = int(GRID_POINTS ** 0.5)
 MESH_X0, MESH_Y0, MESH_CELL_W, MESH_CELL_H = 10, 112, 36, 36
