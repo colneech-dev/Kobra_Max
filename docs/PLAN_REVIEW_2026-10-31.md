@@ -9,6 +9,37 @@ Approved by the owner (2026-10-31): Phase 1 yes, Phase 2 yes, Phase 3 (thumbnail
 
 ---
 
+## 0. Status (updated 2026-10-31 evening)
+
+**release_v47** is built (commit c23d88d, local only; not pushed until Phases 1 to 4 are done, as agreed). It is the build to
+test first; release_v46 stays as the fallback. Build result: Flash 83.5% (177,920 of 212,992 B), RAM 10.3%, first-try
+compile, About page shows a clean build id (2.1.2.9-hc32-c23d88d), display cross-check 0 errors, picture library current
+(201 pictures), `13TouchFile.bin` and `14ShowFile.bin` byte-identical to v46 (only the two About-page pictures and the library
+build differ, so the display set is the same screens). Nothing in v47 has run on the printer. What went into v47 and how it differs from the table in section 3:
+
+| Item | In v47 | Notes |
+|---|---|---|
+| 1.2 T codes | yes | `colourCounter` now holds the last T number + 1 (0 = none): the first T is ignored, a different T is M600, a repeat is nothing. |
+| 1.3 long file name | yes | `getLongPath()` walks every segment like `printLongPath()`; the result is the long name of the LAST segment (the file), not "folder/file": the display field is short. A segment that is not found keeps its short name (the old code could show the last directory entry read). |
+| 1.5 comments / leftovers | yes | `G29` comment, sysclock comment, `BOARD_XTAL_FREQUENCY` note in platformio.ini, `HANG_ON_PANIC` removed (our `panic_end()` in MinSerial.cpp always resets). |
+| 1.7 injection guard | yes, narrower than planned | After auditing all 62 sites: most injections already refuse while commands are pending (`BlockedWhilePrinting()` counts queued commands) or are single-line. The ones that can lose something are the `M500` saves and the "lift, heaters off" tails: they now go through `inject_after_P()`, which holds them until the queue has run dry (direct during an SD print, as before). Multi-step jobs (wizard, first layer, E-steps, AUTO Z) already check the queue themselves. |
+| 1.9 first-layer test | yes | Rows are queued when `queue.has_commands_queued()` is false, not when the planner is empty; at most 6 blocks ahead; the finish still waits for the planner. |
+| 1.10 busy taps | yes | "Busy, wait a moment" on the tapped wizard step for 3 s. |
+| 1.11 probe check finish | yes | The Leveling menu no longer clears a running probe check. |
+| 1.12 mesh viewer | yes | Values sent 3 times when the page opens (0, 0.6, 2.1 s); NaN points show "--" and are left out of the average. |
+| 1.13 boot tune comment | yes | |
+| 1.14 hot paper test | yes | `z_heat_wait` poll in `page17_handle`; BACK works while heating; status "Heat 120/190  bed 45/60"; all three entries (wizard step 2, Leveling menu manual Z, AUTO Z park) heat to the leveling temperatures. SETUP.md updated. |
+| C1, C9 | yes (SETUP.md) | M119 before the first homing; display SD card FAT32 / 4096. |
+| 1.1 E spreadCycle | NO | Waits for the TMC2208 addressing test in Phase 0. |
+| 1.4 remove page 115 | NO | Changes the display files; done in a build where the display is reflashed anyway. |
+| 1.6, 1.8, 1.15 | NO | 1.6 boot warning, 1.8 power-loss debug stays on until `M413 O` is proven, 1.15 tool work. |
+| Phases 2 to 4, section 10 items | NO | Not started. |
+
+Facts learned while building v47 (read from `gcode/queue.cpp`): a PROGMEM injection clears its pointer BEFORE its last line
+runs, an SRAM injection keeps `injected_commands[0]` set until its last line has FINISHED. So `has_commands_queued()` false
+means "no line is waiting", not "idle". `injected_commands` holds 63 characters; a longer string is cut silently, which is why
+the paper-test chain no longer carries the final lower (it would be 69 characters with the heating waits).
+
 ## 1. What was reviewed
 
 | Source | Result |
