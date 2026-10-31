@@ -1888,10 +1888,6 @@ void DgusTFT::page1_handle(void) {
       GoSystemPage();
       break;
 
-    case 5:   // setup wizard
-      wz_launch = false;
-      ChangePageOfTFT(PAGE_SETUP_WIZARD);
-      break;
   }
 
 #if 0
@@ -2820,6 +2816,11 @@ void DgusTFT::page11_handle(void) {// SYSTEM PAGE BUTTONS
 
     case 6: // FACTORY RESET (was "Records"/PAGE_RECORD)
       ChangePageOfTFT(PAGE_FACTORY_RESET);
+      break;
+
+    case 7: // SETUP WIZARD
+      wz_launch = false;
+      ChangePageOfTFT(PAGE_SETUP_WIZARD);
       break;
 
   }
@@ -4688,9 +4689,9 @@ void DgusTFT::page172_handle(void) {
   switch (key_value) {
     case 0: break;
 
-    case 1: // BACK
+    case 1: // BACK to the System page
       if (busy) break;
-      ChangePageOfTFT(PAGE_MAIN);
+      GoSystemPage();
       return;
 
     case 2: { // 1 Z OFFSET: the manual Z page, SAVE comes back here

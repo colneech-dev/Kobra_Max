@@ -709,7 +709,7 @@ Single-language pages at IDs that no stock page uses (below 215, so the show fil
 
 ## Setup wizard, page 172 (2026-10-31, unbuilt, untested)
 
-Single-language page reached from the main page (key 5, "SETUP WIZARD"). Four step buttons (keys 2-5, `uf.WZ_BTN(i)`) with a status text under each
+Single-language page reached from the System page (key 7, "SETUP WIZARD"; BACK returns there). Four step buttons (keys 2-5, `uf.WZ_BTN(i)`) with a status text under each
 (`TXT_WZ_STATUS0` 0x3020 + 0x10 * i), BACK key 1; pressed picture 158. Steps reuse the existing flows: step 1 starts the manual Z page, step 2 the probe
 pre-check and G29; both come back here through `wz_launch` / `wz_back()` (the Leveling menu and Prepare page clear `wz_launch`: the user went elsewhere).
 Step 3 runs `az_start_test` in check-only mode (`az_check_only`: no parking, result shown here). Step 4 is the first-layer test: `fl_poll()` heats to
