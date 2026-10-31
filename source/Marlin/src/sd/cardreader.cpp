@@ -364,19 +364,22 @@ void CardReader::ls(const uint8_t lsflags/*=0*/) {
 
 #if ENABLED(LONG_FILENAME_HOST_SUPPORT)
 
-  // Anycubic: the long name of the file at a DOS 8.3 path, into pathLong (the DGUS power-loss page)
+  // Anycubic: the long name of the file at a DOS 8.3 path, into pathLong (64 bytes; the DGUS power-loss page).
+  // Walks the path like printLongPath() does, so a file in a sub-folder gets ITS name, not the folder's. The result is the
+  // long name of the last segment (a file without a long name keeps its short name; a path that is not found keeps the
+  // short name of the segment). i always moves on, so the loop ends: an earlier version spun forever on an empty or
+  // too long name and boot-looped the printer through the watchdog on power-loss recovery.
   void CardReader::getLongPath(char *pathLong, char * const pathShort) {
 
-    int i, pathLen = strlen(pathShort);
     char bufShort[MAXPATHNAMELENGTH] = { '\0' };   // a whole path, not one 8.3 name (a 13-byte buffer overflowed)
     strlcpy(bufShort, pathShort, sizeof(bufShort));
-    pathLen = strlen(bufShort);
+    const int pathLen = strlen(bufShort);
 
     // Zero out slashes to make segments
-    for (i = 0; i < pathLen; i++) if (bufShort[i] == '/') bufShort[i] = '\0';
+    for (int i = 0; i < pathLen; i++) if (bufShort[i] == '/') bufShort[i] = '\0';
 
     MediaFile diveDir = root; // start from the root for segment 1
-    for (i = 0; i < pathLen;) {
+    for (int i = 0; i < pathLen;) {
 
       if (bufShort[i] == '\0') i++; // move past a single nul
 
@@ -385,18 +388,22 @@ void CardReader::ls(const uint8_t lsflags/*=0*/) {
       // If a segment is empty (extra-slash) then exit
       if (!*segment) break;
 
-      // SERIAL_ECHOPGM("Looking for segment: "); SERIAL_ECHOLN(segment);
+      // Go to the next segment
+      while (bufShort[++i]) { }
 
-      // Find the item, setting the long filename
+      // Find the item, setting the long filename (filename and longFilename hold the LAST entry read if nothing matched)
       diveDir.rewind();
       selectByName(diveDir, segment);
-      diveDir.close();
+      const bool found = strcasecmp(segment, filename) == 0;
+      strlcpy(pathLong, (found && longFilename[0]) ? longFilename : segment, 64);
 
-      // Always leave the loop (it used to spin forever when the name was empty or too long, which boot-looped
-      // the printer through the watchdog on power-loss recovery). A file without a long name (8.3 only) keeps its short name.
-      if (longFilename[0] && strlen(longFilename) < 64) strcpy(pathLong, longFilename);
-      else if (strlen(segment) < 64) strcpy(pathLong, segment);
-      break;
+      // The file is the answer; a folder is opened and searched for the next segment
+      if (!found || !flag.filenameIsDir) break;
+
+      MediaFile dir;
+      if (!dir.open(&diveDir, segment, O_READ)) break;
+      diveDir.close();
+      diveDir = dir;
     }
   }
 

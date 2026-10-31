@@ -143,9 +143,9 @@ void validate_system_clocks() {
  *
  * See https://github.com/MarlinFirmware/Marlin/pull/27099 for more information.
  *
- * Modified for Kobra Max: try XTAL with high drive strength; fall back to internal 16 MHz HRC
- * if XTAL does not lock within the DDL timeout. Prevents an infinite spin in
- * sysclock_configure_mpll() when the XTAL startup timeout is silently ignored.
+ * Modified for Kobra Max: the MPLL always runs from the internal 16 MHz HRC (see the body). The 8 MHz crystal on the board
+ * is not used: when it did not lock, sysclock_configure_mpll() spun forever (the XTAL startup timeout is silently ignored).
+ * A crystal-first version with an HRC fallback is commit dab2751 in the git tag archive/upgrade-2.1.x.
  */
 void core_hook_sysclock_init() {
   // Set wait cycles, as we are about to switch to 200 MHz HCLK

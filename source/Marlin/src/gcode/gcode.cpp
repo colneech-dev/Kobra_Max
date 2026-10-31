@@ -28,7 +28,8 @@
 #include "gcode.h"
 GcodeSuite gcode;
 
-// Kobra Max: a slicer's tool change (T1, T2 ...) is treated as a colour change, i.e. M600 (the first T0 is ignored)
+// Kobra Max: a slicer's tool change to another tool (T1, T2 ...) is treated as a colour change, i.e. M600. The first T
+// after homing / print start is ignored, and so is a repeat of the tool that is already selected.
 #define KOBRAMAX_COLOUR_CHANGE true
 // colourCounter: MarlinCore.cpp (reset when a print starts)
 
@@ -1109,9 +1110,11 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
     case 'T':                                                     // Tn: Tool Change
       if (!KOBRAMAX_COLOUR_CHANGE)
         T(parser.codenum);
-      else if (colourCounter != 0)
-        M600();
-      colourCounter++;
+      else {
+        // colourCounter = number of the last T + 1 (0 = none since homing / print start)
+        if (colourCounter != 0 && colourCounter != int16_t(parser.codenum) + 1) M600();
+        colourCounter = int16_t(parser.codenum) + 1;
+      }
       break;
 
     #if ENABLED(MARLIN_DEV_MODE)

@@ -14,12 +14,15 @@ the first homing.
 2. Power the printer off completely and wait 15 to 20 seconds.
 3. Flash the display files first (use a SEPARATE SD card for the display), then `firmware.bin` on the printer's own card, as the
    release README describes. Never format the printer's own SD card: it holds `eeprom.dat`.
+   The DISPLAY card must be FAT32 with a 4096-byte allocation unit. With any other cluster size the display's blue update screen
+   shows every count as 000 and flashes nothing.
 
 ## First boot
 
 4. Settings are at their defaults. Open About: it should read `KobraMax 2.1.2.9...` and the display set name of the release.
 5. The power-on jingle plays after the main screen appears (only if sound is on).
 6. Terminal: send `M119`, press the Z input by hand and send `M119` again. The Z line must change between open and triggered.
+   Do this BEFORE the first homing of a new build, and keep a hand on the power switch for that first homing.
 
 ## Set up the printer
 
@@ -35,11 +38,14 @@ would end up that much too low. For the same reason the manual Z page and the wi
 7. Home all axes (Prepare > Leveling > MANUAL Z ADJUST does it for you).
 8. Bed mesh: Leveling menu > AUTO BED LEVEL. It heats and probes 7 x 7 points (several minutes). The mesh is stored and re-applied
    after every home.
-9. Z offset, once, with the mesh in place: Leveling menu > MANUAL Z ADJUST. The nozzle parks at the start height above the bed (1.0 mm by
-   default; change it with the - / + row on the Leveling menu, minimum 0.3 mm). Lower it with the - buttons until a sheet of paper just
-   drags, then SAVE. The offset is stored with the settings and applied at every home.
+9. Z offset, once, with the mesh in place: Leveling menu > MANUAL Z ADJUST. **The paper test is done HOT**, at the same temperatures as the
+   mesh (190 C nozzle, 60 C bed), so the offset matches what the printer does when it prints. The page homes, parks the nozzle 5 mm up,
+   shows `Heat 120/190  bed 45/60` while it heats (BACK still works then; it switches the heaters off) and only then lowers to the start
+   height above the bed (1.0 mm by default; change it with the - / + row on the Leveling menu, minimum 0.3 mm). The nozzle is HOT: use a
+   strip of paper and keep your fingers away from it. Lower it with the - buttons until the paper just drags, then SAVE. The offset is
+   stored with the settings and applied at every home. BACK or SAVE switch the heaters off.
 10. Probe check: AUTO Z OFFSET runs the mesh (if there is none), a 5-probe test at the bed centre with the spread (OK up to 0.03 mm, FAIR up
-    to 0.08 mm, NOISY above), then parks for the manual step. Noisy results mean the nozzle or the probe wiring needs attention.
+    to 0.08 mm, NOISY above), then parks for the manual step (hot, as in step 9). Noisy results mean the nozzle or the probe wiring needs attention.
 11. Look at the mesh: Leveling menu > VIEW BED MESH (heights in 0.01 mm relative to the average, back of the bed at the top).
 
 ## First print

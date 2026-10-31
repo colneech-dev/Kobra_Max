@@ -29,8 +29,6 @@
 
 // force-enable panic handler so that we can use our custom one (in MinSerial)
 #define PANIC_ENABLE 1
-// Hang on panic instead of resetting — breaks reset loops, makes hangs observable
-#define HANG_ON_PANIC 1
 
 // NOTE: runtime clock validation (ALWAYS_VALIDATE_CLOCKS) is already hard-enabled
 // in sysclock.h — do not redefine it here (redefinition warning, no effect).

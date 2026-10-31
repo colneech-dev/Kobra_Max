@@ -45,7 +45,7 @@
 #include "../../../../feature/powerloss.h"
 #include "../../../../module/printcounter.h"
 #include "../../../../module/stepper.h"
-//#include "../../module/planner.h"
+#include "../../../../module/planner.h"   // movesplanned() for the first-layer test
 
 namespace Anycubic {
 
@@ -185,6 +185,37 @@ static void pad_right(char * const buf, const size_t size, const size_t width) {
 // the - / + buttons are ignored meanwhile (babystepping during a homing move would be wrong).
 static bool zoffset_moving = false;
 
+// Paper test HOT. The bed mesh is probed at the leveling temperatures, so the Z offset is set at the same ones (a cold
+// paper test is off by whatever the bed centre moves between cold and 60 C). Every way into the Z offset page parks the
+// nozzle at Z5 and sets z_heat_wait; page17_handle then waits for the temperatures and only then lowers to the start
+// height. It is a poll, not an M190 / M109 in the queue, so BACK still works while heating.
+static bool    z_heat_wait = false;
+static uint8_t z_lower_tenths = 10;   // start height (0.1 mm) to lower to once hot
+static void z_set_hot() {
+#if LEVELING_NOZZLE_TEMP
+  setTargetTemp_celsius(LEVELING_NOZZLE_TEMP, E0);
+#endif
+#if LEVELING_BED_TEMP
+  setTargetTemp_celsius(LEVELING_BED_TEMP, BED);
+#endif
+}
+static bool z_is_hot() {
+  bool hot = true;
+#if LEVELING_NOZZLE_TEMP
+  hot = hot && getActualTemp_celsius(E0) >= LEVELING_NOZZLE_TEMP - 3;
+#endif
+#if LEVELING_BED_TEMP
+  hot = hot && getActualTemp_celsius(BED) >= LEVELING_BED_TEMP - 2;
+#endif
+  return hot;
+}
+
+// Bed mesh viewer (page 208): the values are sent a few times when the page opens, not continuously (see page208_handle).
+static uint8_t  mesh_sends = 0;
+static millis_t mesh_next_ms = 0;
+
+static void inject_after_P(PGM_P const cmds);   // defined with heaters_off_when_idle(): used by save_zoffset() before that
+
 // printf("%f") prints NOTHING on this toolchain (newlib-nano without float support), so a value formatted with
 // "%.2f" shows up blank (the Z-offset value, the print page's X/Y/Z line). Format fixed-point by hand.
 static void fmt_mm(char * const out, const size_t size, const float v, const bool plus = false) {
@@ -259,7 +290,7 @@ static float move_dis = 1.0f;
 //     every change twice);
 //   * the live babystep on the Z page just previews the change until the next home applies the saved offset.
 static void save_zoffset() {
-  injectCommands_P(PSTR("M500"));
+  inject_after_P(PSTR("M500"));
 }
 // NOTE: injectCommands_P() keeps ONE pointer, so a second call before the first has run REPLACES it. Anything
 // that must happen together goes into one string (an M500 followed by a lift used to lose the M500, so the
@@ -271,6 +302,27 @@ static void heaters_off_when_idle() {
   if (isPrinting()) return;
   setTargetTemp_celsius(0, E0);
   setTargetTemp_celsius(0, BED);
+}
+
+// Commands that must not be lost: the "M500" saves and the "lift, heaters off" tails. injectCommands_P() keeps ONE pointer,
+// so injecting while an earlier multi-line sequence still has lines waiting replaces it and the rest is gone (a lost tail
+// leaves the heaters on, a lost M500 loses a setting). If something is still waiting to run, the new commands are held and
+// injected from IdleLoop (inject_after_drain) once the queue has run dry. During an SD print the old direct injection is
+// kept: the queue is never dry then, and the save in the middle of a print was always allowed.
+static PGM_P   inject_wait[4];
+static uint8_t inject_wait_n = 0;
+static void inject_after_P(PGM_P const cmds) {
+  if (!queue.has_commands_queued() || isPrintingFromMedia() || isPrintingPaused() || inject_wait_n >= COUNT(inject_wait)) {
+    injectCommands_P(cmds);
+    return;
+  }
+  inject_wait[inject_wait_n++] = cmds;
+}
+static void inject_after_drain() {
+  if (!inject_wait_n || queue.has_commands_queued()) return;
+  injectCommands_P(inject_wait[0]);
+  for (uint8_t i = 1; i < inject_wait_n; i++) inject_wait[i - 1] = inject_wait[i];
+  inject_wait_n--;
 }
 
 // Values shown when the Print Settings page opens. The page has no read-back: its - / + buttons apply
@@ -298,7 +350,7 @@ static void send_print_page_values() {
 }
 
 static void start_leveling_run() {
-  injectCommands_P(PSTR("G28\nG29"));   // with the stored Z offset, which G29 bakes into the mesh
+  injectCommands_P(PSTR("G28\nG29"));   // the mesh holds absolute heights (independent of the Z offset); the offset only shifts Z0 at homing
   probe_cnt = 0;
 }
 
@@ -454,13 +506,15 @@ void DgusTFT::ParamInit() {
 // Power-on jingle. The stock trigger (the display reports REG_LCD_READY 0x010000, "animation just started") never fires
 // with Marlin 2.1: the firmware needs ~6 s to start and the 2.6 s boot animation is over before the first poll, so the
 // jingle was silent. Instead it is requested when the boot sync completes and played from IdleLoop (not from inside
-// ProcessPanelRequest: the tune waits in idle(), which would re-enter it), if sound is switched on.
+// ProcessPanelRequest: the tune blocks for 3.5 s in safe_delay(), which keeps the heaters and the watchdog going but would
+// leave a display packet half processed), if sound is switched on.
 static bool boot_tune_pending = false;
 
 void DgusTFT::IdleLoop()  {
   hal.watchdog_refresh(); // prevent WDT fire during DGUS packet processing
   term_rx_drain();
   wizard_background();
+  inject_after_drain();
 
   // One-shot diagnostics on first entry (debug builds only; it printed on every boot before).
   static bool diag_done = false;
@@ -2782,7 +2836,7 @@ void DgusTFT::page11_handle(void) {// SYSTEM PAGE BUTTONS
           lcd_info_back.language = lcd_info.language;
           lcd_info_back.audio    = lcd_info.audio;
 
-          injectCommands_P(PSTR("M500"));
+          inject_after_P(PSTR("M500"));
         }
       }
       break;
@@ -3003,6 +3057,7 @@ static void az_start_test(const bool save_first) {
   az_range = -1;
   az_listen = true;
   az_stage = AZ_TEST;
+  z_heat_wait = false;
 #if PROBING_NOZZLE_TEMP || LEVELING_NOZZLE_TEMP
   setTargetTemp_celsius(LEVELING_NOZZLE_TEMP, E0);
 #endif
@@ -3021,9 +3076,13 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
 {
   static millis_t flash_time = 0;
 
-  az_stage = AZ_IDLE;   // this menu is never on screen during an AUTO Z OFFSET run; a stale stage must not carry over
-  az_listen = false;
-  az_check_only = false;
+  // This menu is never on screen during an AUTO Z OFFSET run, so a stale stage must not carry over - but the wizard's probe check
+  // keeps running if this menu is opened meanwhile (a pop-up): it ends by itself in wizard_background (lift, heaters off).
+  if (!(az_check_only && az_stage == AZ_TEST)) {
+    az_stage = AZ_IDLE;
+    az_listen = false;
+    az_check_only = false;
+  }
   wz_launch = false;    // the wizard's mesh run was left (cancelled or failed): the Leveling menu is where the user is now
 
   switch (key_value)
@@ -3031,7 +3090,7 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
     case 0:
       break;
     case 1://return
-      if (z_start_dirty && !isPrinting()) { z_start_dirty = false; injectCommands_P(PSTR("M500")); }   // keep a changed start height
+      if (z_start_dirty && !isPrinting()) { z_start_dirty = false; inject_after_P(PSTR("M500")); }   // keep a changed start height
       ChangePageOfTFT(PAGE_PREPARE);
       break;
 
@@ -3069,9 +3128,12 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
         const uint8_t t = z_start_tenths();
         z_manual_start = t / 10.0f;
         z_entry_offset = getZOffset_mm();
-        char cmd[80];
-        sprintf_P(cmd, PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000\nG1 Z%u.%u F200"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2), t / 10, t % 10);
+        char cmd[64];
+        sprintf_P(cmd, PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2));
         injectCommands(cmd);
+        z_set_hot();   // hot paper test: page17_handle lowers to the start height once the temperatures are reached
+        z_heat_wait = true;
+        z_lower_tenths = t;
         zoffset_moving = true;
       }
       break;
@@ -3096,6 +3158,8 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
       break;
 
     case 8: // VIEW BED MESH
+      mesh_sends = 3;
+      mesh_next_ms = 0;
       ChangePageOfTFT(PAGE_MESH_VIEW);
       break;
 
@@ -3125,15 +3189,31 @@ void DgusTFT::page17_handle(void)
         az_listen = false;
         az_make_msg();
         az_stage = AZ_PARKED;
-        char cmd[64];
-        const uint8_t t = z_start_tenths();
-        sprintf_P(cmd, PSTR("G1 Z5 F600\nG1 Z%u.%u F200\nM104 S0\nM140 S0"), t / 10, t % 10);   // heaters off: paper test is cold
-        injectCommands(cmd);
+        injectCommands_P(PSTR("G1 Z5 F600"));   // lift; the lower to the paper height waits for the temperatures (hot paper test)
+        z_set_hot();
+        z_heat_wait = true;
+        z_lower_tenths = z_start_tenths();
         zoffset_moving = true;
+      }
+      else if (z_heat_wait && !commandsInQueue()) {   // parked at Z5: wait for the paper-test temperatures, then lower
+        if (z_is_hot()) {
+          z_heat_wait = false;
+          char cmd[24];
+          sprintf_P(cmd, PSTR("G1 Z%u.%u F200"), (unsigned)(z_lower_tenths / 10), (unsigned)(z_lower_tenths % 10));
+          injectCommands(cmd);
+        }
       }
       else if (zoffset_moving && !commandsInQueue()) zoffset_moving = false;
       char st[28];
       if (az_stage == AZ_TEST) strcpy_P(st, PSTR("Testing probe (5x)..."));
+      else if (z_heat_wait && !commandsInQueue()) {
+#if LEVELING_NOZZLE_TEMP && LEVELING_BED_TEMP
+        snprintf_P(st, sizeof(st), PSTR("Heat %u/%u  bed %u/%u"), (unsigned)getActualTemp_celsius(E0), (unsigned)LEVELING_NOZZLE_TEMP,
+                   (unsigned)getActualTemp_celsius(BED), (unsigned)LEVELING_BED_TEMP);
+#else
+        strcpy_P(st, PSTR("Heating..."));
+#endif
+      }
       else if (zoffset_moving) strcpy_P(st, PSTR("Homing and moving..."));
       else if (az_stage == AZ_PARKED && ((millis() / 3000) & 1)) strlcpy(st, az_msg, sizeof(st));   // alternates with the prompt
       else strcpy_P(st, PSTR("Lower to paper, then SAVE"));
@@ -3145,7 +3225,8 @@ void DgusTFT::page17_handle(void)
       SendTxtToTFT(zv, TXT_LEVEL_OFFSET);
     }
   }
-  if (zoffset_moving && key_value) return;   // every key waits: a new command would overwrite the sequence still running
+  // every key waits: a new command would overwrite the sequence still running (BACK is allowed while only heating: the queue is empty then)
+  if (zoffset_moving && key_value && !(z_heat_wait && key_value == 1 && !commandsInQueue())) return;
 
   switch (key_value)
   {
@@ -3160,7 +3241,9 @@ void DgusTFT::page17_handle(void)
       }
       az_stage = AZ_IDLE;
       az_listen = false;
-      if (!isPrinting()) injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift off the bed, heaters off (never into a host print)
+      z_heat_wait = false;
+      zoffset_moving = false;
+      if (!isPrinting()) inject_after_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift off the bed, heaters off (never into a host print)
       heaters_off_when_idle();
       ChangePageOfTFT(wz_back(PAGE_PreLEVEL));
       break;
@@ -3197,16 +3280,16 @@ void DgusTFT::page17_handle(void)
 #endif
       // ONE injection: save (if changed), lift the nozzle off the bed, heaters off
       if (isPrinting()) {
-        if (z_change) { z_change = false; injectCommands_P(PSTR("M500")); }
+        if (z_change) { z_change = false; inject_after_P(PSTR("M500")); }
       }
       else if (z_change) {
         z_change = false;
         setZOffset_mm(getZOffset_mm() + z_manual_start);   // the paper spot becomes Z0
         if (wz_launch) { wz_done[1] = true; strcpy_P(wz_msg[1], PSTR("Offset saved")); }
-        injectCommands_P(PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0"));
+        inject_after_P(PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0"));
       }
       else
-        injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));
+        inject_after_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));
       heaters_off_when_idle();
       ChangePageOfTFT(wz_back(PAGE_PREPARE));
       break;
@@ -4403,44 +4486,51 @@ void DgusTFT::page216_handle(void) {
 // average (row 0 at the top is the BACK of the bed, column 0 the left). Re-sent every 2 s: a text field is only drawn
 // when written.
 void DgusTFT::page208_handle(void) {
-  static millis_t flash_time = 0;
-
   switch (key_value) {
     case 0: break;
     case 1: ChangePageOfTFT(PAGE_PreLEVEL); return;   // BACK
   }
-  if (key_value) flash_time = 0;
-  if (millis() < flash_time + 2000) return;
-  flash_time = millis();
+
+  // The values go out when the page opens (three times: the display drops text written before the page is drawn), not every
+  // 2 s as before: that is 51 writes each time, a lot of traffic on the display link, and during a print every byte counts.
+  if (!mesh_sends || millis() < mesh_next_ms) return;
+  mesh_next_ms = millis() + (mesh_sends == 3 ? 600 : 1500);
+  mesh_sends--;
 
   #if HAS_MESH
     static_assert(GRID_MAX_POINTS_X == GRID_MAX_POINTS_Y, "the mesh page assumes a square grid");
     constexpr uint8_t n = GRID_MAX_POINTS_X;
 
-    if (!getLevelingIsValid()) {
+    float v[n][n], sum = 0, lo = 1e9f, hi = -1e9f;
+    uint8_t good = 0;   // points that have a real height (a failed probe point is NaN)
+    if (getLevelingIsValid()) {
+      for (uint8_t x = 0; x < n; x++) {
+        for (uint8_t y = 0; y < n; y++) {
+          xy_uint8_t p;
+          p.x = x; p.y = y;
+          v[x][y] = getMeshPoint(p);
+          if (isnan(v[x][y])) continue;
+          sum += v[x][y];
+          lo = _MIN(lo, v[x][y]);
+          hi = _MAX(hi, v[x][y]);
+          good++;
+        }
+      }
+    }
+    if (!good) {
       for (uint8_t i = 0; i < n * n; i++) SendTxtToTFT(" ", TXT_MESH_BASE + i * 8);
-      SendTxtToTFT("No mesh: run AUTO BED LEVEL", TXT_MESH_INFO1);
+      SendTxtToTFT(getLevelingIsValid() ? "No valid mesh points" : "No mesh: run AUTO BED LEVEL", TXT_MESH_INFO1);
       SendTxtToTFT(" ", TXT_MESH_INFO2);
       return;
     }
-
-    float v[n][n], sum = 0, lo = 1e9f, hi = -1e9f;
-    for (uint8_t x = 0; x < n; x++) {
-      for (uint8_t y = 0; y < n; y++) {
-        xy_uint8_t p;
-        p.x = x; p.y = y;
-        v[x][y] = getMeshPoint(p);
-        sum += v[x][y];
-        lo = _MIN(lo, v[x][y]);
-        hi = _MAX(hi, v[x][y]);
-      }
-    }
-    const float mean = sum / (n * n);
+    const float mean = sum / good;
 
     char b[14];
     for (uint8_t r = 0; r < n; r++) {
       for (uint8_t c = 0; c < n; c++) {
-        const int d = constrain((int)lroundf((v[c][n - 1 - r] - mean) * 100.0f), -999, 999);
+        const float val = v[c][n - 1 - r];
+        if (isnan(val)) { SendTxtToTFT("--", TXT_MESH_BASE + (r * n + c) * 8); continue; }
+        const int d = constrain((int)lroundf((val - mean) * 100.0f), -999, 999);
         snprintf(b, sizeof(b), "%+d", d);
         SendTxtToTFT(b, TXT_MESH_BASE + (r * n + c) * 8);
       }
@@ -4520,7 +4610,7 @@ void DgusTFT::page210_handle(void) {
       const float s = getAxisSteps_per_mm(E0) * 100.0f / es_actual;
       if (s < 20.0f || s > 2000.0f) { strcpy_P(es_msg, PSTR("Value out of range")); break; }
       setAxisSteps_per_mm(s, E0);
-      injectCommands_P(PSTR("M500"));
+      inject_after_P(PSTR("M500"));
       strcpy_P(es_msg, PSTR("Saved"));
       es_actual = 100.0f;   // the stored value is the new reference
     } break;
@@ -4556,7 +4646,7 @@ void DgusTFT::page174_handle(void) {
       case 6:   // SAVE
         if (BlockedWhilePrinting()) break;
         setLinearAdvance_mm_mm_s(la_k, E0);
-        injectCommands_P(PSTR("M500"));
+        inject_after_P(PSTR("M500"));
         strcpy_P(la_msg, PSTR("Saved"));
         break;
     #else
@@ -4579,6 +4669,7 @@ static int8_t  fl_sq = 0;          // square being printed
 static int16_t fl_row = -2;        // -2 travel there, -1 lower, 0.. one zig-zag row (X pass + Y step), FL_ROWS = done
 static bool    fl_abort = false, fl_homed = false;
 
+#define FL_AHEAD     6                  // blocks the planner may hold before the next rows are queued (a STOP stays quick)
 #define FL_SQUARES_N 5
 #define FL_SIZE      24                 // mm, side of a square
 #define FL_ROWS      53                 // rows per square, 0.45 mm apart: a solid layer
@@ -4619,7 +4710,11 @@ static void fl_poll() {
     return;
   }
 
-  if (commandsInQueue()) return;   // the next moves are queued only when the buffer has run empty
+  // Queue the next moves as soon as the injected commands have RUN (their moves may still be in the planner), so the planner
+  // never runs dry and the nozzle does not stop and blob at the end of every row. Not more than FL_AHEAD blocks ahead.
+  // The finish waits for everything, including the moves.
+  if (fl_stage == FL_TAIL ? commandsInQueue()
+                          : (queue.has_commands_queued() || (fl_stage == FL_SQUARES && planner.movesplanned() > FL_AHEAD))) return;
   char c[64];
 
   switch (fl_stage) {
@@ -4706,10 +4801,19 @@ static void wizard_background() {
 void DgusTFT::page172_handle(void) {
   static millis_t flash_time = 0;
 
+  static millis_t busy_ms = 0;
   const bool busy = (fl_stage != FL_IDLE) || (az_check_only && az_stage == AZ_TEST);
   wz_launch = false;   // nothing started from the wizard is waiting on another page now
 
-  switch (key_value) {
+  // A tap just after a step ended: its lift / heaters-off commands are still running. BlockedWhilePrinting() would throw the
+  // user to the "not while printing" page for that, so say "busy" on the tapped step instead and do nothing.
+  const bool queued_busy = key_value >= 2 && key_value <= 5 && !busy && !isPrintingFromMedia() && commandsInQueue();
+  if (queued_busy) {
+    strcpy_P(wz_msg[key_value - 2], PSTR("Busy, wait a moment"));
+    busy_ms = millis();
+  }
+
+  switch (queued_busy ? 0 : (int)key_value) {
     case 0: break;
 
     case 1: // BACK to the System page
@@ -4735,9 +4839,12 @@ void DgusTFT::page172_handle(void) {
       const uint8_t zt = z_start_tenths();
       z_manual_start = zt / 10.0f;
       z_entry_offset = getZOffset_mm();
-      char cmd[80];
-      sprintf_P(cmd, PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000\nG1 Z%u.%u F200"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2), zt / 10, zt % 10);
+      char cmd[64];
+      sprintf_P(cmd, PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2));
       injectCommands(cmd);
+      z_set_hot();   // hot paper test (see z_heat_wait)
+      z_heat_wait = true;
+      z_lower_tenths = zt;
       zoffset_moving = true;
     } break;
 
@@ -4759,6 +4866,10 @@ void DgusTFT::page172_handle(void) {
   if (key_value) flash_time = 0;
   if (millis() < flash_time + 1000) return;
   flash_time = millis();
+  if (busy_ms && millis() - busy_ms > 3000) {   // the "busy" notes go away by themselves
+    busy_ms = 0;
+    for (uint8_t i = 0; i < 4; i++) if (strcmp_P(wz_msg[i], PSTR("Busy, wait a moment")) == 0) wz_msg[i][0] = '\0';
+  }
   for (uint8_t i = 0; i < 4; i++)
     SendTxtToTFT(wz_msg[i][0] ? wz_msg[i] : (wz_done[i] ? "Done" : "Not done yet"), TXT_WZ_STATUS0 + i * 0x10);
 }

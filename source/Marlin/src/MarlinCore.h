@@ -58,7 +58,7 @@ extern MarlinState marlin_state;
 extern const char * gcodeComment;
 extern bool activeFilamentChange;
 extern bool mel_PrintAbort;
-extern int16_t colourCounter;   // T commands seen since homing / print start (the first T0 is ignored, later ones become M600)
+extern int16_t colourCounter;   // number of the last T command + 1, 0 = none since homing / print start (the first T is ignored, a different T becomes M600)
 inline bool IsRunning() { return marlin_state >= MF_RUNNING; }
 inline bool IsStopped() { return marlin_state == MF_STOPPED; }
 
