@@ -298,6 +298,7 @@ TXT_ES_NEW      = 0x2FE0
 TXT_ES_STATUS   = 0x2FF0
 TXT_LA_K        = 0x3000
 TXT_LA_STATUS   = 0x3010
+TXT_WZ_STATUS0  = 0x3020   # setup wizard (172): status line under each of the 4 steps, 0x10 apart
 TXT_TUNE_STATUS = 0x2DA0   # Thermal Tuning (216) progress line; dgus_tft.h
 TERM_LINES, TERM_ROW_H, TERM_Y0 = uf.TERM_LINES, uf.TERM_ROW_H, uf.TERM_Y0
 
@@ -570,6 +571,7 @@ PAGE210 = STATUS_BAR + [
     _tr(TXT_ES_NEW, uf.ESTEPS_NEW, 10),
     _tr(TXT_ES_STATUS, uf.ESTEPS_STATUS, 25),
 ]
+PAGE172 = STATUS_BAR + [_tr(TXT_WZ_STATUS0 + i * 0x10, uf.WZ_STATUS(i), 25) for i in range(4)]
 PAGE174 = STATUS_BAR + [
     _tr(TXT_LA_K, uf.LINADV_K, 8),
     _tr(TXT_LA_STATUS, uf.LINADV_STATUS, 25),
@@ -652,6 +654,7 @@ _CONTENT = [
     (uf.PAGE_MESH_VIEW, PAGE208),
     (uf.PAGE_ESTEPS, PAGE210),
     (uf.PAGE_LINADV, PAGE174),
+    (uf.PAGE_WIZARD, PAGE172),
 ]
 
 patches = [(pg, STATUS_BAR) for pg in _STATUS_ONLY] + _CONTENT

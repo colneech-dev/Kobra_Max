@@ -65,6 +65,7 @@ _ZONES = [
     ([1, 121], 140, 138, 264, 200, 2),  # TOOLS
     ([1, 121], 8,   212, 132, 274, 3),  # PREPARE
     ([1, 121], 140, 212, 264, 274, 4),  # SETTINGS
+    ([1, 121], 8,   286, 264, 346, 5),  # SETUP WIZARD (page 172)
 
     # ── PAGE 2 / 122  File Browser ───────────────────────────────────────────
     ([2, 122], 228,  58, 264,  88, 4),  # REFRESH (in title bar)
@@ -267,6 +268,13 @@ _ZONES = [
     ([216],   8, 122, 264, 200, 2), # MPC AUTOTUNE HOTEND  (KEY_TUNE_HOTEND = 2)
     ([216],   8, 230, 264, 308, 3), # PID AUTOTUNE BED 60C (KEY_TUNE_BED   = 3)
     ([216],   8, 429, 264, 473, 1), # BACK                 (KEY_TUNE_BACK  = 1)
+
+    # ── PAGE 172  Setup wizard ────────────────────────────────────────────────
+    ([172], *uf.WZ_BTN(0), 2),  # 1 Z OFFSET (manual Z page, returns here)
+    ([172], *uf.WZ_BTN(1), 3),  # 2 BED MESH (G29, returns here)
+    ([172], *uf.WZ_BTN(2), 4),  # 3 PROBE CHECK (M48 x5, stays here)
+    ([172], *uf.WZ_BTN(3), 5),  # 4 FIRST LAYER TEST (tap again to stop)
+    ([172],   8, 429, 264, 473, 1), # BACK
 
     # ── PAGE 208  Bed mesh viewer ─────────────────────────────────────────────
     ([208],   8, 429, 264, 473, 1), # BACK

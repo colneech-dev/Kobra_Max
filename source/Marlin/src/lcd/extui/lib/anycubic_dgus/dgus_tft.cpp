@@ -139,6 +139,18 @@ static bool       az_listen = false;   // the serial hook is looking for M48's s
 static float      az_range = -1;       // "Range:" of the last M48 (max - min of the probe heights), -1 = none yet
 static char       az_msg[28] = "";
 static void az_start_test(const bool save_first);   // defined with the Z-offset pages
+
+// SETUP WIZARD (page 172): the steps reuse the existing flows. wz_launch says a step was started from the wizard, so that
+// the flow returns to the wizard page when it ends (the Leveling menu and the Prepare page clear it: the user went elsewhere).
+static bool wz_launch = false;
+static bool wz_done[4] = { false, false, false, false };
+static char wz_msg[4][26] = { "", "", "", "" };
+static bool az_check_only = false;    // AUTO Z OFFSET run for the wizard: measure the spread, do not park for the manual step
+static uint32_t wz_back(const uint32_t normal) {   // where a finished step goes: the wizard if it started there
+  if (!wz_launch) return normal;
+  wz_launch = false;
+  return PAGE_SETUP_WIZARD;
+}
 // When the probe pre-check last failed; page203_handle returns to the Leveling menu after a timeout.
 static millis_t probe_failed_ms = 0;
 // Characters of the file name the Printing page can show (record is 10 px wide characters in a 256 px box).
@@ -649,6 +661,10 @@ void DgusTFT::IdleLoop()  {
 
     page174_handle();
 
+  } else if (page_index_now == PAGE_SETUP_WIZARD) {
+
+    page172_handle();
+
   } else if (page_index_now == PAGE_FACTORY_RESET) {
 
     page217_handle();
@@ -945,7 +961,8 @@ void DgusTFT::StatusChange(const char * const msg)  {
             else {
               injectCommands_P(PSTR("M500\nM104 S0\nM140 S0"));   // save the mesh and Z offset, then heaters off
               heaters_off_when_idle();
-              ChangePageOfTFT(PAGE_PreLEVEL);   // wait pages 34/154 have no touch zones: must leave them explicitly
+              if (wz_launch) { wz_done[1] = true; strcpy_P(wz_msg[1], PSTR("Mesh saved")); }
+              ChangePageOfTFT(wz_back(PAGE_PreLEVEL));   // wait pages 34/154 have no touch zones: must leave them explicitly
             }
             msg_matched = true;
           }
@@ -1224,7 +1241,7 @@ uint32_t DgusTFT::TranslatePage(uint32_t page_index) {
   if (PAGE_CHS_PRINTING_SETTING == page_index)  return page_index + 1;
   if (page_index == PAGE_THUMBNAIL || page_index == PAGE_TERMINAL || page_index == PAGE_KEYBPARD ||
       page_index == PAGE_THERMAL_TUNING || page_index == PAGE_FACTORY_RESET ||
-      page_index == PAGE_MESH_VIEW || page_index == PAGE_ESTEPS || page_index == PAGE_LIN_ADVANCE ||
+      page_index == PAGE_MESH_VIEW || page_index == PAGE_ESTEPS || page_index == PAGE_LIN_ADVANCE || page_index == PAGE_SETUP_WIZARD ||
       page_index == PAGE_AUTO_OFFSET)           return page_index;  // single-language pages, no ENG mirror
   return page_index + 120;
 }
@@ -1869,6 +1886,11 @@ void DgusTFT::page1_handle(void) {
 
     case 4:   // system
       GoSystemPage();
+      break;
+
+    case 5:   // setup wizard
+      wz_launch = false;
+      ChangePageOfTFT(PAGE_SETUP_WIZARD);
       break;
   }
 
@@ -2874,6 +2896,8 @@ void DgusTFT::page15_handle(void)
 {
   char str_buf[16];
 
+  wz_launch = false;
+
   switch (key_value)
   {
     case 0:
@@ -2961,6 +2985,15 @@ static void z_start_show() {
 
 // AUTO Z OFFSET, step 2 (the mesh exists): heat as for leveling, home, M48 at the bed centre. page17_handle watches for
 // the end of the queue, reads the spread and parks the nozzle. save_first: the mesh was just made, store it before the test.
+static void az_make_msg() {   // "Spread 0.012 mm OK" from az_range
+  if (az_range >= 0) {
+    const unsigned um = (unsigned)lroundf(az_range * 1000.0f);
+    snprintf_P(az_msg, sizeof(az_msg), PSTR("Spread %u.%03u mm %s"), um / 1000, um % 1000,
+               az_range <= 0.03f ? "OK" : az_range <= 0.08f ? "FAIR" : "NOISY");
+  }
+  else strcpy_P(az_msg, PSTR("Probe test: no result"));
+}
+
 static void az_start_test(const bool save_first) {
   z_manual_start = z_start_tenths() / 10.0f;
   z_entry_offset = getZOffset_mm();
@@ -2976,6 +3009,7 @@ static void az_start_test(const bool save_first) {
   char cmd[64];
   sprintf_P(cmd, PSTR("%sG28\nG90\nG1 Z5 F600\nM48 P5 X%d Y%d V1"), save_first ? "M500\n" : "", (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2));
   injectCommands(cmd);
+  if (az_check_only) return;   // the wizard page watches the queue and shows the result
   zoffset_moving = true;
   DgusTFT::ChangePageOfTFT(PAGE_LEVEL_ADVANCE);
 }
@@ -2986,6 +3020,8 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
 
   az_stage = AZ_IDLE;   // this menu is never on screen during an AUTO Z OFFSET run; a stale stage must not carry over
   az_listen = false;
+  az_check_only = false;
+  wz_launch = false;    // the wizard's mesh run was left (cancelled or failed): the Leveling menu is where the user is now
 
   switch (key_value)
   {
@@ -3077,12 +3113,7 @@ void DgusTFT::page17_handle(void)
       if (az_stage == AZ_TEST && !commandsInQueue()) {   // no timeout: injecting over a command that is still running corrupts the buffer
         // M48 has finished (or the wait ran out): read the spread, then park at the start height for the manual step
         az_listen = false;
-        if (az_range >= 0) {
-          const unsigned um = (unsigned)lroundf(az_range * 1000.0f);
-          snprintf_P(az_msg, sizeof(az_msg), PSTR("Spread %u.%03u mm %s"), um / 1000, um % 1000,
-                     az_range <= 0.03f ? "OK" : az_range <= 0.08f ? "FAIR" : "NOISY");
-        }
-        else strcpy_P(az_msg, PSTR("Probe test: no result"));
+        az_make_msg();
         az_stage = AZ_PARKED;
         char cmd[64];
         const uint8_t t = z_start_tenths();
@@ -3121,7 +3152,7 @@ void DgusTFT::page17_handle(void)
       az_listen = false;
       if (!isPrinting()) injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift off the bed, heaters off (never into a host print)
       heaters_off_when_idle();
-      ChangePageOfTFT(PAGE_PreLEVEL);
+      ChangePageOfTFT(wz_back(PAGE_PreLEVEL));
       break;
 
     case 2: // - 0.01 mm
@@ -3161,12 +3192,13 @@ void DgusTFT::page17_handle(void)
       else if (z_change) {
         z_change = false;
         setZOffset_mm(getZOffset_mm() + z_manual_start);   // the paper spot becomes Z0
+        if (wz_launch) { wz_done[0] = true; strcpy_P(wz_msg[0], PSTR("Offset saved")); }
         injectCommands_P(PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0"));
       }
       else
         injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));
       heaters_off_when_idle();
-      ChangePageOfTFT(PAGE_PREPARE);
+      ChangePageOfTFT(wz_back(PAGE_PREPARE));
       break;
   }
 }
@@ -4523,6 +4555,187 @@ void DgusTFT::page174_handle(void) {
   if (millis() < flash_time + 1000) return;
   flash_time = millis();
   la_show();
+}
+
+// Page 172 - SETUP WIZARD. Steps 1 and 2 start the manual Z page and the bed levelling and come back here when they end;
+// step 3 runs the 5-probe test (M48) here; step 4 prints five 24 mm squares as a first layer test, one move at a time
+// from fl_poll() (the G-code buffer is tiny, so a few moves are queued whenever it runs empty).
+enum fl_stage_t : uint8_t { FL_IDLE, FL_HEAT, FL_HOME, FL_PURGE, FL_SQUARES, FL_END };
+static fl_stage_t fl_stage = FL_IDLE;
+static int8_t  fl_sq = 0;          // square being printed
+static int16_t fl_row = -2;        // -2 travel there, -1 lower, 0.. one zig-zag row (X pass + Y step), FL_ROWS = done
+static bool    fl_abort = false, fl_homed = false;
+
+#define FL_SQUARES_N 5
+#define FL_SIZE      24                 // mm, side of a square
+#define FL_ROWS      53                 // rows per square, 0.45 mm apart: a solid layer
+#define FL_E_PER_MM  0.0374f            // mm of 1.75 mm filament per mm of line: 0.45 wide x 0.2 high
+static const uint8_t fl_pct_x[FL_SQUARES_N] = { 25, 75, 50, 25, 75 };   // square centres in % of the bed
+static const uint8_t fl_pct_y[FL_SQUARES_N] = { 25, 25, 50, 75, 75 };
+
+static void fmt_dec(char * const out, const size_t size, const float v, const uint8_t dec) {   // v >= 0, 2 or 4 decimals
+  if (dec == 4) { const uint32_t n = (uint32_t)lroundf(v * 10000.0f); snprintf(out, size, "%lu.%04lu", (unsigned long)(n / 10000), (unsigned long)(n % 10000)); }
+  else          { const uint32_t n = (uint32_t)lroundf(v * 100.0f);   snprintf(out, size, "%lu.%02lu", (unsigned long)(n / 100),   (unsigned long)(n % 100)); }
+}
+
+static void fl_start() {
+  wz_done[3] = false;
+  wz_msg[3][0] = '\0';
+  if (!getLevelingIsValid()) { strcpy_P(wz_msg[3], PSTR("Make the bed mesh first")); return; }
+  setTargetTemp_celsius(AC_FL_NOZZLE_TEMP, E0);
+  setTargetTemp_celsius(AC_FL_BED_TEMP, BED);
+  fl_stage = FL_HEAT;
+  fl_sq = 0;
+  fl_row = -2;
+  fl_abort = false;
+  fl_homed = false;
+}
+
+static void fl_poll() {
+  if (fl_stage == FL_IDLE) return;
+  if (fl_abort && fl_stage != FL_END) fl_stage = FL_END;
+
+  if (fl_stage == FL_HEAT) {
+    snprintf(wz_msg[3], sizeof(wz_msg[3]), "Heat %u/%u  bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_FL_NOZZLE_TEMP,
+             (unsigned)getActualTemp_celsius(BED), (unsigned)AC_FL_BED_TEMP);
+    if (getActualTemp_celsius(E0) >= AC_FL_NOZZLE_TEMP - 3 && getActualTemp_celsius(BED) >= AC_FL_BED_TEMP - 2) {
+      injectCommands_P(PSTR("G28"));
+      fl_stage = FL_HOME;
+      strcpy_P(wz_msg[3], PSTR("Homing..."));
+    }
+    return;
+  }
+
+  if (commandsInQueue()) return;   // the next moves are queued only when the buffer has run empty
+  char c[64];
+
+  switch (fl_stage) {
+    case FL_HOME:
+      fl_homed = true;
+      // purge line along the front edge, then lift
+      injectCommands_P(PSTR("G90\nM83\nG92 E0\nG1 Z5 F900\nG1 X20 Y10 F5000\nG1 Z0.2 F600\nG1 E5 F200\nG1 X140 Y10 E4.5 F1500\nG1 E-1 F1800\nG1 Z1 F900"));
+      fl_stage = FL_PURGE;
+      strcpy_P(wz_msg[3], PSTR("Purge line..."));
+      break;
+
+    case FL_PURGE:
+      fl_stage = FL_SQUARES;
+      break;
+
+    case FL_SQUARES: {
+      const int x0 = (int)(X_BED_SIZE * fl_pct_x[fl_sq] / 100) - FL_SIZE / 2;
+      const int y0 = (int)(Y_BED_SIZE * fl_pct_y[fl_sq] / 100) - FL_SIZE / 2;
+      if (fl_row == -2) {
+        snprintf(c, sizeof(c), "G1 Z1 F900\nG1 X%d Y%d F5000", x0, y0);
+        injectCommands(c);
+        fl_row = -1;
+      }
+      else if (fl_row == -1) {
+        injectCommands_P(PSTR("G1 Z0.2 F600\nG1 E1 F1200\nG1 F1500"));
+        fl_row = 0;
+      }
+      else if (fl_row < FL_ROWS) {
+        char e1[12], e2[12], ys[12];
+        const int xe = (fl_row & 1) ? x0 : x0 + FL_SIZE;
+        fmt_dec(e1, sizeof(e1), FL_SIZE * FL_E_PER_MM, 4);
+        if (fl_row < FL_ROWS - 1) {
+          fmt_dec(e2, sizeof(e2), 0.45f * FL_E_PER_MM, 4);
+          fmt_dec(ys, sizeof(ys), y0 + (fl_row + 1) * 0.45f, 2);
+          snprintf(c, sizeof(c), "G1 X%d E%s\nG1 Y%s E%s", xe, e1, ys, e2);
+        }
+        else snprintf(c, sizeof(c), "G1 X%d E%s", xe, e1);
+        injectCommands(c);
+        fl_row++;
+        snprintf(wz_msg[3], sizeof(wz_msg[3]), "Square %d/%d  row %d/%d", fl_sq + 1, FL_SQUARES_N, (int)fl_row, FL_ROWS);
+      }
+      else {   // square finished: retract, next square
+        injectCommands_P(PSTR("G1 E-1 F1800"));
+        fl_row = -2;
+        if (++fl_sq >= FL_SQUARES_N) fl_stage = FL_END;
+      }
+    } break;
+
+    case FL_END:
+      if (fl_homed) injectCommands_P(PSTR("G1 E-1 F1800\nG1 Z10 F600\nM82\nM104 S0\nM140 S0"));
+      else          injectCommands_P(PSTR("M82\nM104 S0\nM140 S0"));
+      fl_stage = FL_IDLE;
+      if (fl_abort) strcpy_P(wz_msg[3], PSTR("Stopped"));
+      else { wz_done[3] = true; strcpy_P(wz_msg[3], PSTR("Done: check the 5 squares")); }
+      break;
+
+    default: break;
+  }
+}
+
+void DgusTFT::page172_handle(void) {
+  static millis_t flash_time = 0;
+
+  // Step 3 finished (the 5-probe test ran from this page)
+  if (az_check_only && az_stage == AZ_TEST && !commandsInQueue()) {
+    az_listen = false;
+    az_make_msg();
+    strlcpy(wz_msg[2], az_msg, sizeof(wz_msg[2]));
+    wz_done[2] = (az_range >= 0);
+    az_stage = AZ_IDLE;
+    az_check_only = false;
+    injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift, heaters off
+  }
+  fl_poll();
+
+  const bool busy = (fl_stage != FL_IDLE) || (az_check_only && az_stage == AZ_TEST);
+  wz_launch = false;   // nothing started from the wizard is waiting on another page now
+
+  switch (key_value) {
+    case 0: break;
+
+    case 1: // BACK
+      if (busy) break;
+      ChangePageOfTFT(PAGE_MAIN);
+      return;
+
+    case 2: { // 1 Z OFFSET: the manual Z page, SAVE comes back here
+      if (busy || BlockedWhilePrinting()) break;
+      wz_done[0] = false;
+      wz_msg[0][0] = '\0';
+      wz_launch = true;
+      ChangePageOfTFT(PAGE_LEVEL_ADVANCE);
+      const uint8_t t = z_start_tenths();
+      z_manual_start = t / 10.0f;
+      z_entry_offset = getZOffset_mm();
+      char cmd[80];
+      sprintf_P(cmd, PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000\nG1 Z%u.%u F200"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2), t / 10, t % 10);
+      injectCommands(cmd);
+      zoffset_moving = true;
+    } break;
+
+    case 3: // 2 BED MESH: the probe pre-check, then G29; the mesh page comes back here
+      if (busy || BlockedWhilePrinting()) break;
+      wz_done[1] = false;
+      wz_msg[1][0] = '\0';
+      wz_launch = true;
+      ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);
+      break;
+
+    case 4: // 3 PROBE CHECK: M48 here, the result appears under the button
+      if (busy || BlockedWhilePrinting()) break;
+      wz_done[2] = false;
+      strcpy_P(wz_msg[2], PSTR("Testing probe (5x)..."));
+      az_check_only = true;
+      az_start_test(false);
+      break;
+
+    case 5: // 4 FIRST LAYER TEST (tapping it again while it runs stops it)
+      if (fl_stage != FL_IDLE) { fl_abort = true; strcpy_P(wz_msg[3], PSTR("Stopping...")); break; }
+      if (busy || BlockedWhilePrinting()) break;
+      fl_start();
+      break;
+  }
+
+  if (key_value) flash_time = 0;
+  if (millis() < flash_time + 1000) return;
+  flash_time = millis();
+  for (uint8_t i = 0; i < 4; i++)
+    SendTxtToTFT(wz_msg[i][0] ? wz_msg[i] : (wz_done[i] ? "Done" : "Not done yet"), TXT_WZ_STATUS0 + i * 0x10);
 }
 
 void DgusTFT::page217_handle(void) {

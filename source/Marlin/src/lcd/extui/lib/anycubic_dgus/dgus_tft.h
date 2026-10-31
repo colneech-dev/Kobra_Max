@@ -159,6 +159,7 @@
 #define PAGE_MESH_VIEW                            (208+PAGE_OFFSET)   // bed mesh as a grid of numbers
 #define PAGE_ESTEPS                               (210+PAGE_OFFSET)   // extruder E-steps calibration
 #define PAGE_LIN_ADVANCE                          (174+PAGE_OFFSET)   // linear advance K factor
+#define PAGE_SETUP_WIZARD                         (172+PAGE_OFFSET)   // guided Z offset / mesh / probe check / first layer test
 
 
 
@@ -319,6 +320,7 @@
 #define TXT_ES_STATUS   0x2FF0  //   progress / result line
 #define TXT_LA_K        0x3000  // Linear advance page (174): K factor
 #define TXT_LA_STATUS   0x3010  //   result line
+#define TXT_WZ_STATUS0  0x3020  // Setup wizard page (172): status line of step 1, steps 2-4 follow 0x10 apart
 #define AC_TERM_HIST   64       // lines kept for scrolling back (page 215 up / down buttons)
 
 
@@ -572,6 +574,7 @@ namespace Anycubic {
       static void page208_handle(void);
       static void page210_handle(void);
       static void page174_handle(void);
+      static void page172_handle(void);
       static void page217_handle(void);
 
       static void pop_up_manager(void);

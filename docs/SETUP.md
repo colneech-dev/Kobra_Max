@@ -23,6 +23,12 @@ the first homing.
 
 ## Set up the printer
 
+The main page has a **SETUP WIZARD** button that does steps 8 to 12 below as four buttons with a status line under each:
+1 Z OFFSET (the manual Z page; SAVE returns to the wizard), 2 BED MESH (the probe pre-check and G29, then back),
+3 PROBE CHECK (the 5-probe test; the spread appears under the button), 4 FIRST LAYER TEST (see step 12). Do them in order; tap a
+step again to redo it. Everything stays inactive while a print or another step is running. The manual steps below describe
+the same things.
+
 7. Home all axes (Prepare > Leveling > MANUAL Z ADJUST does it for you).
 8. Z offset, once: Leveling menu > MANUAL Z ADJUST. The nozzle parks at the start height above the bed (1.0 mm by default; change it
    with the - / + row on the Leveling menu, minimum 0.3 mm). Lower it with the - buttons until a sheet of paper just drags, then SAVE.
@@ -35,7 +41,9 @@ the first homing.
 
 ## First print
 
-12. Print one small flat layer (a single-layer square). The skirt should be lightly squished: not see-through (too close), not
+12. First layer test (wizard step 4, or print your own): the wizard heats to 200 C / 60 C (PLA), homes, draws a purge line and prints
+    five 24 mm solid squares one layer high, at the corners and the centre of the bed (about 5 minutes). Tap step 4 again to stop it.
+    It needs the bed mesh from step 9. Print one small flat layer (a single-layer square). The skirt should be lightly squished: not see-through (too close), not
     round and lifting (too far). Adjust the offset in steps of 0.02 mm on the manual Z page and SAVE.
 13. Power-loss test, only when the first layer is good: start a short print and send `M413 O` from the Terminal. Then power-cycle and
     use the resume page.
