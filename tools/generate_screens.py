@@ -340,7 +340,6 @@ def page_main():
     btn(draw, gx3,    138, W-MARGIN, 200, "TOOLS",   style='normal',  icon=0xf0ad)
     btn(draw, MARGIN, 212, gx2,      274, "PREPARE", style='normal',  icon=0xf1de)
     btn(draw, gx3,    212, W-MARGIN, 274, "SYSTEM",  style='normal',  icon=0xf013)
-    btn(draw, MARGIN, 286, W-MARGIN, 346, "SETUP WIZARD", style='teal', icon=0xf0d0)   # page 172
     return img
 
 
@@ -590,6 +589,7 @@ def page_system(audio_on=True):
     btn(draw, MARGIN, 180, gx2,       242, "ABOUT",          style='normal', icon=0xf05a)
     btn(draw, gx3,    180, W - MARGIN, 242, "TERMINAL",      style='normal', icon=0xf120)
     btn(draw, MARGIN, 254, W - MARGIN, 314, "FACTORY RESET", style='danger', icon=0xf1f8)
+    btn(draw, MARGIN, 326, W - MARGIN, 386, "SETUP WIZARD", style='teal', icon=0xf0d0)   # page 172
     footer_1btn(draw, "BACK", style='ghost')
     return img
 

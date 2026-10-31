@@ -23,7 +23,7 @@ the first homing.
 
 ## Set up the printer
 
-The main page has a **SETUP WIZARD** button that does steps 8 to 12 below as four buttons with a status line under each:
+The System page (main page > SYSTEM) has a **SETUP WIZARD** button that does steps 8 to 12 below as four buttons with a status line under each:
 1 Z OFFSET (the manual Z page; SAVE returns to the wizard), 2 BED MESH (the probe pre-check and G29, then back),
 3 PROBE CHECK (the 5-probe test; the spread appears under the button), 4 FIRST LAYER TEST (see step 12). Do them in order; tap a
 step again to redo it. Everything stays inactive while a print or another step is running. The manual steps below describe
