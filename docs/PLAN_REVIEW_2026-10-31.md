@@ -93,10 +93,18 @@ report `M420 V1` / `M851`, do not continue.
 | 1.12 | Mesh viewer: send the 49 values on entry and after a key press, not every 2 s (51 text writes, ~0.7 KB on the display serial, also during prints). Skip NaN points (show "--", leave them out of the average). | `page208_handle` | Less serial traffic; a failed probe point would make every value garbage. | Open the page; values stay; no change in print smoothness with the page open. |
 | 1.13 | Fix the boot-tune comment: the tune waits with `safe_delay()` (no `idle()`, so no re-entry), not in `idle()`. | `dgus_tft.cpp` above `boot_tune_pending` | Comment is wrong. | Build only. |
 
-Owner decision (not a bug): the paper test runs cold by design (the park commands switch the heaters off), while the
-mesh is probed hot (190 / 60 °C) and prints run hot. If the bed centre moves between cold and 60 °C, the offset is
-off by that amount. Option: keep nozzle and bed at the leveling temperatures during the Z offset step (wizard step 2
-and the Leveling menu path). Decide after the Phase 0 first-layer result.
+| 1.14 | DECIDED (owner, 2026-10-31): paper test HOT. All three Z offset entries (wizard step 2, Leveling menu manual Z `page16_handle` case 3, and the AUTO Z park in `page17_handle`, which today sends `M104 S0 / M140 S0` "paper test is cold") heat to `LEVELING_NOZZLE_TEMP` / `LEVELING_BED_TEMP` (190 / 60) and WAIT for them (`M190` / `M109` before the final lower to the start height), so the offset is measured at the same temperatures as the mesh. BACK / SAVE keep switching both off (unchanged); the 30 min idle timeout covers a forgotten page. Status line shows "Heating..." until the nozzle is parked. | `dgus_tft.cpp` `page172_handle` case 3, `page16_handle` case 3, `page17_handle` AZ_TEST park; `docs/SETUP.md` (paper test is now hot: careful with fingers) | Mesh probed hot, offset set cold: the bed centre moves between cold and 60 °C, so the offset was off by that amount. | Run each entry: nozzle parks only at temperature; BACK and SAVE switch heaters off; first layer matches the paper feel. |
+| 1.15 | Display checks: move the extra checks from this review into `tools/cross_check_display.py` permanently (release package files = repo files; `13TouchFile.bin` = the generator; IdleLoop dispatch and `fun_array` parsed from the code instead of the hand-kept table; every literal page change lands on a picture that is not hidden, honouring `#if`; VP text ranges do not overlap; each new text field fits its longest string). Default `DISPLAY_SET_TAG` handling so the About page is not reported stale when run by hand. Retire `tools/validate_display.py` (it predates hidden and single-language pages and reports 107 false errors) or fix it. | `tools/cross_check_display.py`, `tools/validate_display.py` | The cross-check reads its touch zones from the generator, not from the flashed file, never looks at the release package, and its "IdleLoop dispatches it" check was a hand-kept table. | Run on release_v46: 0 errors; break one thing of each kind on purpose: each is caught. |
+
+Display cross-check, full run on release_v46 (2026-10-31): `cross_check_display.py` 0 errors / 0 warnings (with
+`DISPLAY_SET_TAG=release_v46`); `check_icl.py --icl release_v46/...` current (201 pictures = 201 BMPs); extra checks:
+release `13TouchFile.bin`, `14ShowFile.bin` and every other file identical to the repo, ICL source BMPs identical;
+`13TouchFile.bin` identical to the generator (334 zones); every zone key has a case in the handler IdleLoop really
+runs (pages 1–34 / 121–154 through `fun_array`, in order); all 49 literal page changes land on existing, not hidden
+pictures (`PAGE_ADJUST` / `PAGE_TOOL` only in the case-light-off branch, compiled out); 442 records / 122 VPs, no
+overlapping text ranges; all new fields fit their longest strings (wizard 31 > 25, E-steps status 31 > 27, K status
+25 > 20, AUTO Z 25 > 21, mesh cells 4 = 4). The script is kept at
+`C:\Users\Colin\AppData\Local\Temp\claude\...\scratchpad\xcheck_extra.py` until 1.15 moves it into the tool.
 
 Checked and correct in the new code: button directions on the E-steps and K pages; E-steps maths (new = old x 100 /
 measured, 20 to 2000 limit, cold-extrusion and 700 mm limits allow the 100 mm push); K range 0 to 10; first-layer
