@@ -83,6 +83,31 @@ report `M420 V1` / `M851`, do not continue.
 | 1.7 | Command-injection guard: helper that refuses (and shows "Busy") when commands from the display are still pending; used by multi-step jobs and every display `M500`. Audit all 62 `injectCommands*` sites and list each as "guarded" or "single tap, safe". | `dgus_tft.cpp` | `injectCommands_P` keeps one pointer; a second call before the first runs replaces it (lost M500, lost heater-off). | Fast double taps on each job's buttons; queue never loses the tail (heaters always end off). |
 | 1.8 | Power-loss debug (`DEBUG_POWER_LOSS_RECOVERY`): leave on until Phase 0 step 5 passes, then turn off unless `M413 O` is still wanted. | `src/feature/powerloss.h` | Costs flash and prints debug on resume. | Owner decides after Phase 0. |
 
+### Phase 1, added: review of our own display code (everything new since release_v44)
+
+| # | Change | Where | Why | How to test |
+|---|---|---|---|---|
+| 1.9 | First-layer test: queue the next rows when the COMMAND queue is empty but moves are still planned (`queue.has_commands_queued()` false), instead of waiting for `commandsInQueue()` (which also waits for the planner to empty). | `dgus_tft.cpp` `fl_poll()` | Today the nozzle stops dead at each of the 265 row ends, which leaves a blob at every turn and makes the squish harder to judge. | Run the test: continuous zig-zag, no blobs along the square edges. |
+| 1.10 | Wizard steps while the previous step's finishing commands (lift, heaters off) are still queued: show "Busy, wait" in that step's status line and ignore the tap. | `page172_handle` | `BlockedWhilePrinting()` counts queued commands as printing, so a tap within a few seconds of a step ending jumps to the "not while printing" page. Safe (nothing starts), but confusing. | Finish step 1, tap step 2 at once: status says busy, then works. |
+| 1.11 | Probe check started from the wizard must always finish: `page16_handle` must not clear `az_check_only` / `az_stage` while that test is running. | `page16_handle` top | If a pop-up sends the user to the Leveling menu mid-test, the finish (lift Z10, heaters off) never runs; the heaters stay on until the 30 min idle timeout. | Hard to trigger; code review plus one normal run. |
+| 1.12 | Mesh viewer: send the 49 values on entry and after a key press, not every 2 s (51 text writes, ~0.7 KB on the display serial, also during prints). Skip NaN points (show "--", leave them out of the average). | `page208_handle` | Less serial traffic; a failed probe point would make every value garbage. | Open the page; values stay; no change in print smoothness with the page open. |
+| 1.13 | Fix the boot-tune comment: the tune waits with `safe_delay()` (no `idle()`, so no re-entry), not in `idle()`. | `dgus_tft.cpp` above `boot_tune_pending` | Comment is wrong. | Build only. |
+
+Owner decision (not a bug): the paper test runs cold by design (the park commands switch the heaters off), while the
+mesh is probed hot (190 / 60 °C) and prints run hot. If the bed centre moves between cold and 60 °C, the offset is
+off by that amount. Option: keep nozzle and bed at the leveling temperatures during the Z offset step (wizard step 2
+and the Leveling menu path). Decide after the Phase 0 first-layer result.
+
+Checked and correct in the new code: button directions on the E-steps and K pages; E-steps maths (new = old x 100 /
+measured, 20 to 2000 limit, cold-extrusion and 700 mm limits allow the 100 mm push); K range 0 to 10; first-layer
+geometry (squares inside the bed, 53 rows x 0.45 mm = 24 mm, 0.0374 mm of filament per mm, retract / prime balance,
+M83 / M82 restored, abort finishes the current row then lifts and switches the heaters off); wizard return paths
+(`wz_back`, cleared by the Leveling menu and Prepare page); text buffer sizes and VP ranges (0x2E00 to 0x2F87,
+0x2F90 / 0x2FA0, 0x2FC0 to 0x2FF0, 0x3100 / 0x3110, 0x3120 to 0x3150, no overlaps); hidden pages are never shown
+(5 / 7 only without the case light, which is enabled; 20, 30, 185, 186, 197, 198 never referenced); the eight new
+pictures are in the release picture library; heaters cannot be left on by the 30 min idle timeout logic during the
+wizard jobs; `isPrinting()` blocks starting a job over queued commands.
+
 Phase 1 build: release_v47. Test list = the "How to test" column plus a short regression (home, mesh view, one print).
 
 ---
