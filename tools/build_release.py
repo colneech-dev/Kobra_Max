@@ -15,6 +15,7 @@ Output:
         22_Config.bin
       firmware.bin  <- copy to SD root, insert SD into mainboard slot
       README.txt    <- flashing instructions
+      SETUP.md      <- first-time setup guide (docs/SETUP.md)
 
 The script regenerates all assets from source before assembling the folder,
 so the release always reflects the current state of the codebase.
@@ -263,6 +264,12 @@ if fw_copied:
 else:
     print(f"  WARNING: firmware.bin not found at {FW_SRC}")
     print(f"           Run 'pio run' first, then re-run this script.")
+
+# First-time setup guide next to the firmware
+_setup = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "SETUP.md")
+if os.path.exists(_setup):
+    shutil.copyfile(_setup, os.path.join(RELEASE_DIR, "SETUP.md"))
+    print("  copied SETUP.md")
 
 # ── 5. Write README ───────────────────────────────────────────────────────────
 
