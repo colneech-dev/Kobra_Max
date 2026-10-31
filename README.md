@@ -6,7 +6,8 @@ Based off Marlin 2.0.8 (bugfix)
 The same Kobra Max firmware rebuilt on a clean **Marlin 2.1.2.9** with the HC32 HAL and the DGUS display work of the branch
 below. It is the newer line; `kobra-max-hc32` (Marlin 2.0.8) stays as the hardware-validated fallback. Notes, plan and
 roadmap: [docs/UPGRADE_2.1.2.9.md](docs/UPGRADE_2.1.2.9.md), [docs/PLAN_2.1.2.9.md](docs/PLAN_2.1.2.9.md),
-[docs/ROADMAP_2.1.2.9.md](docs/ROADMAP_2.1.2.9.md). The first boot of this firmware resets the saved settings.
+[docs/ROADMAP_2.1.2.9.md](docs/ROADMAP_2.1.2.9.md). First-time setup: [docs/SETUP.md](docs/SETUP.md) (also copied into every release folder).
+The first boot of this firmware resets the saved settings.
 It is built for the smallest HC32F460 (256 KB): the program uses `0x8000-0x3C000` and the last two flash sectors are kept free.
 
 **Credits.** [Marlin Firmware](https://github.com/MarlinFirmware/Marlin) (GPLv3); Anycubic's official
