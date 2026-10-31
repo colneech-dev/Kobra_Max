@@ -104,7 +104,9 @@ runs (pages 1–34 / 121–154 through `fun_array`, in order); all 49 literal pa
 pictures (`PAGE_ADJUST` / `PAGE_TOOL` only in the case-light-off branch, compiled out); 442 records / 122 VPs, no
 overlapping text ranges; all new fields fit their longest strings (wizard 31 > 25, E-steps status 31 > 27, K status
 25 > 20, AUTO Z 25 > 21, mesh cells 4 = 4). The script is kept at
-`C:\Users\Colin\AppData\Local\Temp\claude\...\scratchpad\xcheck_extra.py` until 1.15 moves it into the tool.
+`tools/scratch/xcheck_extra.py` (committed) until 1.15 moves it into the tool. Its four "no top-level case"
+flags (pages 171 / 173 / 201 / 203) and the PAGE_ADJUST / PAGE_TOOL flags are its own parser limits (braces in
+`#if` blocks, no preprocessor), checked by hand: the cases exist and the branch is compiled out.
 
 Checked and correct in the new code: button directions on the E-steps and K pages; E-steps maths (new = old x 100 /
 measured, 20 to 2000 limit, cold-extrusion and 700 mm limits allow the 100 mm push); K range 0 to 10; first-layer
@@ -238,7 +240,26 @@ Confirmed correct: lts-2.1.2 = 2.1.2.9; all line references in 1.2 to 1.4; 62 in
 branch; flash limit 245760 = app 0x8000 to 0x3C000; pin matches; wabbitguy and Anycubic have nothing new;
 `panic_end()` always resets.
 
-## 10. Rejected
+## 10. Carried-over open items (from earlier rounds; checked 2026-10-31 that each is not already above)
+
+| # | Item | When | Notes |
+|---|---|---|---|
+| C1 | Before the first `G28` on a new build: `M119`, press the Z endstop (PA8) by hand, confirm it reads TRIGGERED; hand on the power switch. | Phase 0, step 1 | From the port notes; also add to SETUP.md. |
+| C2 | Probe low point: set `Z_PROBE_LOW_POINT` from the real bed gap (`M420 V1` lowest point vs endstop plane) plus a margin; keep -10 until measured. | After Phase 0 | -4 failed in theory when the bed sits >4 mm below the endstop plane. |
+| C3 | AUTO Z spread limits 0.03 / 0.08 mm (OK / FAIR / NOISY) are guesses: set them from the first few real `M48` results. | After Phase 0 | `az_make_msg()`. |
+| C4 | `PROBE_TARE` timing (300 ms hold, 100 ms delay) differs from the vendor tare: watch for missed or late probe triggers in `M48` / G29. | Phase 0 | Change only if probing misbehaves. |
+| C5 | Thermal protection: hotend 10 s / 10 °C is loose (Marlin default 40 s / 4 °C). Tighten after a few clean prints (e.g. 20 s / 4 °C), then test a fan blast on the nozzle does not false-trip. | After Phase 1 | `Configuration_adv.h:302-303`; same values as the old branch. |
+| C6 | Watchdog stays 21.5 s (only other HC32 step is 5.4 s, too short for boot). Note only. | — | `MarlinHAL.cpp` comment. |
+| C7 | Old hardware reports to re-check on v46: Tools-page glitch, random restarts, failures on tall prints, status-bar numbers misaligned on Move Axes. Ask the owner which still happen; restarts need a serial log (`!!` panic lines / reset cause). | Phase 0 | From the 2026-10-27 display notes. |
+| C8 | Display UART noise filter: `TFTSer.begin(115200, &LCD_UART_CFG, false)` vs plain `begin(115200)` (as upstream's Vyper) — A/B test only if the display drops touches. | Only if needed | `dgus_tft.cpp:386-398`. |
+| C9 | SETUP.md: the DISPLAY SD card must be FAT32 with 4096-byte allocation units, or the display flashes nothing (all counts 000). Not in SETUP.md yet. | With 1.14 SETUP.md edit | From the display notes. |
+| C10 | Old decisions MD1–MD6: MD1 driver markings (photo) now also settles the TMC2208 addressing question (Phase 0 step 3); MD2 LA for the 700 mm Bowden (expect K about 0.6) with MD6 `HYBRID_THRESHOLD`, folded into 1.1; MD3 JD done; MD4 input shaping = 3.3; MD5 MPC: not used (PID), closed unless wanted. | 1.1 / 3.3 | `project_pending_fixes` notes. |
+| C11 | Mesh viewer: check the 6x12 numbers are readable on the real screen (Phase 0); larger cells if not. | Phase 0 | Pressed pictures 155–158 are also first seen there. |
+| C12 | ExtUI cleanup: use Marlin's native `onLevelingStart` / `onLevelingDone` / `onMeshUpdate` hooks instead of matching status text in `StatusChange`. Optional, after Phase 1. | Later | Lower risk of a Marlin message change breaking the display flow (relevant for 2.1.2.10). |
+| C13 | Alphabetical SD sort (`SDCARD_SORT_ALPHA`) — see 3.4. | 3.4 | Untested. |
+| C14 | Notes housekeeping: mark the old 2.0.8 build-plan and "pending fixes" memory notes as superseded by this plan. | Phase 5 | Done now (2026-10-31). |
+
+## 11. Rejected
 
 Upstream beta display driver or pins file; 16 MHz crystal; I2C EEPROM; upstream single-sector flash save as is;
 changing the clock source now.
