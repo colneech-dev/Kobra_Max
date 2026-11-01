@@ -4754,13 +4754,15 @@ static void fl_poll() {
         fl_row = -1;
       }
       else if (fl_row == -1) {
-        injectCommands_P(PSTR("G1 Z0.2 F600\nG1 E1 F1200\nG1 F1500"));
+        // No stationary prime here: 1 mm pushed out while the nozzle sat at the start corner made a lump that tore the first rows
+        // (hardware photos 2026-11-01). The retracted 1 mm is put back during the first row instead (see below).
+        injectCommands_P(PSTR("G1 Z0.2 F600\nG1 F1500"));
         fl_row = 0;
       }
       else if (fl_row < FL_ROWS) {
         char e1[12], e2[12], ys[12];
         const int xe = (fl_row & 1) ? x0 : x0 + FL_SIZE;
-        fmt_dec(e1, sizeof(e1), FL_SIZE * FL_E_PER_MM, 4);
+        fmt_dec(e1, sizeof(e1), FL_SIZE * FL_E_PER_MM + (fl_row == 0 ? 1.0f : 0.0f), 4);   // first row: the 1 mm retracted at the end of the previous square comes back here
         if (fl_row < FL_ROWS - 1) {
           fmt_dec(e2, sizeof(e2), 0.45f * FL_E_PER_MM, 4);
           fmt_dec(ys, sizeof(ys), y0 + (fl_row + 1) * 0.45f, 2);
