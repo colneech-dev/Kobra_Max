@@ -4720,10 +4720,13 @@ static void fl_poll() {
   switch (fl_stage) {
     case FL_HOME:
       fl_homed = true;
-      // purge line along the front edge, then lift
-      injectCommands_P(PSTR("G90\nM83\nG92 E0\nG1 Z5 F900\nG1 X20 Y10 F5000\nG1 Z0.2 F600\nG1 E5 F200\nG1 X140 Y10 E4.5 F1500\nG1 E-1 F1800\nG1 Z1 F900"));
+      // Prime and purge along the front edge, then lift. The nozzle has sat hot and has oozed, and the filament has to run the whole
+      // Bowden tube before it flows again: a 5 mm prime left the first square under-extruded (hardware test 2026-11-01). So: 15 mm
+      // pushed out in place (slowly), then two thick passes (X20 to X180 and back, 8 mm each for 160 mm, about 30 % more than a
+      // 0.2 mm line needs) that also show whether the flow is established. About 30 seconds.
+      injectCommands_P(PSTR("G90\nM83\nG92 E0\nG1 Z5 F900\nG1 X20 Y10 F5000\nG1 Z0.3 F600\nG1 E15 F150\nG1 X180 Y10 E8 F1200\nG1 Y13 E0.5 F1200\nG1 X20 E8 F1200\nG1 E-1 F1800\nG1 Z1 F900"));
       fl_stage = FL_PURGE;
-      strcpy_P(wz_msg[3], PSTR("Purge line..."));
+      strcpy_P(wz_msg[3], PSTR("Priming + purge line..."));
       break;
 
     case FL_PURGE:

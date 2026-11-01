@@ -50,7 +50,7 @@ would end up that much too low. For the same reason the manual Z page and the wi
 
 ## First print
 
-12. First layer test (wizard step 4, or print your own): the wizard heats to 200 C / 60 C (PLA), homes, draws a purge line and prints
+12. First layer test (wizard step 4, or print your own): the wizard heats to 200 C / 60 C (PLA), homes, primes 15 mm and draws a two-pass purge line along the front edge (about 30 seconds, so the flow is running before the first square) and prints
     five 24 mm solid squares one layer high, at the corners and the centre of the bed (about 5 minutes). Tap step 4 again to stop it.
     It needs the bed mesh from step 9. Print one small flat layer (a single-layer square). The skirt should be lightly squished: not see-through (too close), not
     round and lifting (too far). Adjust the offset in steps of 0.02 mm on the manual Z page and SAVE.
