@@ -4668,6 +4668,7 @@ static fl_stage_t fl_stage = FL_IDLE;
 static int8_t  fl_sq = 0;          // square being printed
 static int16_t fl_row = -2;        // -2 travel there, -1 lower, 0.. one zig-zag row (X pass + Y step), FL_ROWS = done
 static bool    fl_abort = false, fl_homed = false;
+static bool    fl_mesh_off = false;   // stopped because the bed mesh was not active after homing
 
 #define FL_AHEAD     6                  // blocks the planner may hold before the next rows are queued (a STOP stays quick)
 #define FL_SQUARES_N 5
@@ -4693,6 +4694,7 @@ static void fl_start() {
   fl_row = -2;
   fl_abort = false;
   fl_homed = false;
+  fl_mesh_off = false;
 }
 
 static void fl_poll() {
@@ -4731,12 +4733,15 @@ static void fl_poll() {
       // Bowden tube before it flows again: a 5 mm prime left the first square under-extruded (hardware test 2026-11-01). So: 15 mm
       // pushed out in place (slowly), then two thick passes (X20 to X180 and back, 8 mm each for 160 mm, about 30 % more than a
       // 0.2 mm line needs) that also show whether the flow is established. About 30 seconds.
-      injectCommands_P(PSTR("G90\nM83\nG92 E0\nG1 Z5 F900\nG1 X20 Y10 F5000\nG1 Z0.3 F600\nG1 E15 F150\nG1 X180 Y10 E8 F1200\nG1 Y13 E0.5 F1200\nG1 X20 E8 F1200\nG1 E-1 F1800\nG1 Z1 F900"));
+      injectCommands_P(PSTR("G90\nM420 S1 Z0\nM83\nG92 E0\nG1 Z5 F900\nG1 X20 Y10 F5000\nG1 Z0.3 F600\nG1 E15 F150\nG1 X180 Y10 E8 F1200\nG1 Y13 E0.5 F1200\nG1 X20 E8 F1200\nG1 E-1 F1800\nG1 Z1 F900"));
       fl_stage = FL_PURGE;
       strcpy_P(wz_msg[3], PSTR("Priming + purge line..."));
       break;
 
     case FL_PURGE:
+      // The purge sequence has run, so the G28 before it is finished: the bed mesh must be on now (G28 switches it on again, and the
+      // sequence sends M420 S1 Z0 as well). Without it the nozzle would be several mm off the bed: stop instead of printing in the air.
+      if (!getLevelingActive()) { fl_mesh_off = true; fl_abort = true; break; }
       fl_stage = FL_SQUARES;
       break;
 
@@ -4782,7 +4787,7 @@ static void fl_poll() {
 
     case FL_TAIL:   // the finishing commands have run (the queue is empty): the test is over
       fl_stage = FL_IDLE;
-      if (fl_abort) strcpy_P(wz_msg[3], PSTR("Stopped"));
+      if (fl_abort) strcpy_P(wz_msg[3], fl_mesh_off ? PSTR("Stopped: bed mesh is off") : PSTR("Stopped"));
       else { wz_done[3] = true; strcpy_P(wz_msg[3], PSTR("Done: check the 5 squares")); }
       break;
 
