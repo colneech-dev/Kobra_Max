@@ -4697,7 +4697,14 @@ static void fl_start() {
 
 static void fl_poll() {
   if (fl_stage == FL_IDLE) return;
-  if (fl_abort && fl_stage != FL_END && fl_stage != FL_TAIL) fl_stage = FL_END;
+  if (fl_abort && fl_stage != FL_END && fl_stage != FL_TAIL) {
+    // STOP: forget the purge / square lines that have not started yet. Only the PROGMEM pointer is cleared (every line is copied
+    // before it runs, so that is safe at any time); the SRAM buffer is left alone because its line is parsed in place and may be
+    // running right now (at most two row lines). What is already in the planner still runs (a few seconds), then the nozzle
+    // lifts and the heaters go off (FL_END). A G28 in progress cannot be interrupted: the stop follows it.
+    if (fl_stage == FL_PURGE || fl_stage == FL_SQUARES) injectCommands_P(nullptr);
+    fl_stage = FL_END;
+  }
 
   if (fl_stage == FL_HEAT) {
     snprintf(wz_msg[3], sizeof(wz_msg[3]), "Heat %u/%u  bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_FL_NOZZLE_TEMP,
@@ -4819,7 +4826,11 @@ void DgusTFT::page172_handle(void) {
   switch (queued_busy ? 0 : (int)key_value) {
     case 0: break;
 
-    case 1: // BACK to the System page
+    case 1: // BACK to the System page. While the first-layer test runs BACK is STOP: the test cannot be left running unnoticed
+      if (fl_stage != FL_IDLE) {
+        if (!fl_abort) { fl_abort = true; strcpy_P(wz_msg[3], PSTR("Stopping...")); }
+        break;
+      }
       if (busy) break;
       GoSystemPage();
       return;
@@ -4873,8 +4884,11 @@ void DgusTFT::page172_handle(void) {
     busy_ms = 0;
     for (uint8_t i = 0; i < 4; i++) if (strcmp_P(wz_msg[i], PSTR("Busy, wait a moment")) == 0) wz_msg[i][0] = '\0';
   }
-  for (uint8_t i = 0; i < 4; i++)
+  for (uint8_t i = 0; i < 4; i++) {
+    // while the first-layer test runs, its line alternates with the way to stop it (the buttons keep their pictures)
+    if (i == 3 && fl_stage != FL_IDLE && !fl_abort && ((millis() / 3000) & 1)) { SendTxtToTFT("Tap here or BACK to STOP", TXT_WZ_STATUS0 + i * 0x10); continue; }
     SendTxtToTFT(wz_msg[i][0] ? wz_msg[i] : (wz_done[i] ? "Done" : "Not done yet"), TXT_WZ_STATUS0 + i * 0x10);
+  }
 }
 
 void DgusTFT::page217_handle(void) {
