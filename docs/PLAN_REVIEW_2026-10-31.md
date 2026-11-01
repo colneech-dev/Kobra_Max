@@ -15,7 +15,17 @@ Approved by the owner (2026-10-31): Phase 1 yes, Phase 2 yes, Phase 3 (thumbnail
 test first; release_v46 stays as the fallback. Build result: Flash 83.5% (177,920 of 212,992 B), RAM 10.3%, first-try
 compile, About page shows a clean build id (2.1.2.9-hc32-c23d88d), display cross-check 0 errors, picture library current
 (201 pictures), `13TouchFile.bin` and `14ShowFile.bin` byte-identical to v46 (only the two About-page pictures and the library
-build differ, so the display set is the same screens). Nothing in v47 has run on the printer. What went into v47 and how it differs from the table in section 3:
+build differ, so the display set is the same screens). Nothing in v47 has run on the printer.
+
+**Incident 2026-11-01:** the first v47 package did not boot. Its `firmware.bin` was the right size (177,924 B) but all zeros
+except 249 bytes (stack pointer 0, reset vector 0) although `firmware.elf` was correct: the plain `objcopy -O binary` step
+produced an empty image once (cause not found; disk had 308 GB free, no system event). Fixes: `tools/build_release.py` now
+refuses an image whose stack pointer is not in RAM, whose reset vector is outside 0x8000..0x3C000, or that is more than 75%
+zeros, rebuilds it from the ELF if needed, and verifies the packaged copy; the rebuilt `release_v47` (same source, 93% non-zero,
+stack 0x1FFFF418, reset 0xC389) is byte-identical to an independent objcopy of the ELF. Lesson: look at the vector table of a
+package before flashing, never assume "pio SUCCESS" means a usable image.
+
+What went into v47 and how it differs from the table in section 3:
 
 | Item | In v47 | Notes |
 |---|---|---|
