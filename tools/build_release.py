@@ -21,7 +21,7 @@ The script regenerates all assets from source before assembling the folder,
 so the release always reflects the current state of the codebase.
 """
 
-import os, sys, shutil, subprocess, datetime, glob
+import os, sys, shutil, subprocess, datetime, glob, struct
 
 # Verify PIL is available before doing anything else
 try:
@@ -74,6 +74,32 @@ def copy_file(src, dst_dir, required=True):
         print(f"  WARNING: {src} not found — skipping")
     return False
 
+def check_firmware_bin(path):
+    """None if the file looks like a real HC32 application image, else the reason it does not.
+    (release_v47 once shipped a firmware.bin that was all zeros except its last 250 bytes: the printer did not boot.)"""
+    try:
+        b = open(path, "rb").read()
+    except OSError as e:
+        return f"cannot read {path}: {e}"
+    if not 0x1000 <= len(b) <= 0x34000:
+        return f"size {len(b)} bytes is outside 4 KB .. 208 KB"
+    sp, rv = struct.unpack("<II", b[:8])
+    if not 0x1FFF8000 <= sp <= 0x20030000:
+        return f"initial stack pointer 0x{sp:08X} is not in RAM"
+    if not rv & 1 or not 0x8000 <= (rv & ~1) < 0x3C000:
+        return f"reset vector 0x{rv:08X} is not in the application area"
+    nonzero = len(b) - b.count(0)
+    if nonzero < len(b) // 4:
+        return f"only {nonzero} of {len(b)} bytes are not zero"
+    return None
+
+def regenerate_bin_from_elf():
+    """Same step the platform runs (objcopy -O binary), repeated on the finished firmware.elf."""
+    elf = FW_SRC[:-4] + ".elf"
+    tool = shutil.which("arm-none-eabi-objcopy") or os.path.join(
+        os.path.expanduser("~"), ".platformio", "packages", "toolchain-gccarmnoneeabi", "bin", "arm-none-eabi-objcopy")
+    subprocess.run([tool, "-O", "binary", elf, FW_SRC], check=True)
+
 def git_info():
     try:
         sha = subprocess.check_output(
@@ -106,6 +132,20 @@ for line in result.stdout.splitlines():
         print(f"  {line.strip()}")
         break
 print("  ok")
+
+# The image must be a real one: check its vector table and that it is not (mostly) zeros, and repair it from firmware.elf if not.
+bad = check_firmware_bin(FW_SRC)
+if bad:
+    print(f"  WARNING: firmware.bin is not usable ({bad}); rebuilding it from firmware.elf")
+    try:
+        regenerate_bin_from_elf()
+    except (OSError, subprocess.CalledProcessError) as e:
+        print(f"  objcopy failed: {e}")
+    bad = check_firmware_bin(FW_SRC)
+    if bad:
+        print(f"FAILED: firmware.bin is still not usable: {bad}")
+        sys.exit(1)
+print("  firmware.bin checked: vector table and contents look right")
 
 # ── 2. Regenerate all DWIN assets from source ─────────────────────────────────
 
@@ -259,8 +299,14 @@ if SCRIPT_ICL:
 
 fw_copied = copy_file(FW_SRC, RELEASE_DIR, required=False)
 if fw_copied:
-    size = os.path.getsize(os.path.join(RELEASE_DIR, "firmware.bin"))
-    print(f"  copied firmware.bin  ({size:,} bytes)")
+    fw_out = os.path.join(RELEASE_DIR, "firmware.bin")
+    size = os.path.getsize(fw_out)
+    bad = check_firmware_bin(fw_out) or (None if open(fw_out, "rb").read() == open(FW_SRC, "rb").read() else "the copy differs from the build")
+    if bad:
+        print(f"FAILED: the packaged firmware.bin is not usable: {bad}")
+        sys.exit(1)
+    sp, rv = struct.unpack("<II", open(fw_out, "rb").read(8))
+    print(f"  copied firmware.bin  ({size:,} bytes, stack 0x{sp:08X}, reset 0x{rv:08X}) - checked")
 else:
     print(f"  WARNING: firmware.bin not found at {FW_SRC}")
     print(f"           Run 'pio run' first, then re-run this script.")
