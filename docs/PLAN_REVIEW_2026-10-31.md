@@ -25,6 +25,15 @@ zeros, rebuilds it from the ELF if needed, and verifies the packaged copy; the r
 stack 0x1FFFF418, reset 0xC389) is byte-identical to an independent objcopy of the ELF. Lesson: look at the vector table of a
 package before flashing, never assume "pio SUCCESS" means a usable image.
 
+**Phase 0 results so far (2026-11-01, release_v47 running on the printer):**
+- Boots; display, Terminal and the mesh viewer work. The 49 numbers are readable (up to `-166`) and agree with `M420 V1` (top and bottom rows checked).
+- Mesh (absolute heights above the Z endstop plane): -3.45 to -6.13 mm, mean -4.46, range 2.67 mm, FRONT row lowest (-5.2 to -6.1), back row -4.1 to -4.9. Fade is off. So C2: `Z_PROBE_LOW_POINT` stays -10 (3.9 mm below the lowest point; anything above -7 would fail at the front edge). C11 (mesh viewer legible): done.
+- `M851` reported Z2.36 (the display font makes 3 and 9 hard to tell apart; could be 2.96). By the offset model (derived from the code, not yet confirmed on the printer) a mesh followed by a completed hot paper test + SAVE should leave a SMALL number (about 0.1, the paper gap). 2.36 is not that: either the paper test was not saved or the value is stale from v44 (eeprom.dat persists and the settings version is unchanged). OPEN: ask what was done before the `M851`; redo mesh then hot paper test from `M851 Z0` + `G28`.
+- `M122`: all four drivers "connection OK". Set currents 800 / 1100 / 1300 / 800 mA, stealthChop on for all. X and E read the same in CS actual (12/31), uStep count (24), pwm offset auto (36) and the DRV_STATUS line (0xC0:0C:00:00); their settings are equal, so that proves nothing. `M906 X700` then `M906` showed E still 800, but `M906` prints stored values, not chip values, so it is not decisive either. Decisive test (item 1.1 depends on it): `M906 E500`, `M122` (E "CS actual" should fall to about 7-8/31 while X stays 12/31; if E stays 12/31 it does not take its own settings), then `M906 E800`.
+- `M119` showed y_min, z_min and z_probe all TRIGGERED (circumstances unknown: was the nozzle being pressed?). z_probe TRIGGERED at idle would need a look.
+- The Terminal clips lines at about 36 characters, so `M420 V1` shows 5 of its 7 columns; the mesh viewer shows all 49.
+- Not reported yet: boot tune, hot paper test behaviour (park, `Heat n/190  bed n/60`, BACK while heating), AUTO Z spread, first-layer test.
+
 What went into v47 and how it differs from the table in section 3:
 
 | Item | In v47 | Notes |
