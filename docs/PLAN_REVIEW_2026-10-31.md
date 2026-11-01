@@ -9,6 +9,10 @@ Approved by the owner (2026-10-31): Phase 1 yes, Phase 2 yes, Phase 3 (thumbnail
 
 ---
 
+## 0a. release_v48 (built 2026-11-01, commit 18c1bf5, local only)
+
+Flash 83.7% (178,176 of 212,992 B), RAM 10.3%, cross-check 0 errors, library current, `firmware.bin` checked (stack 0x1FFFF418, reset 0xC389, 93% non-zero, byte-identical to an independent objcopy of the ELF). The first `pio run` attempt failed for a reason that was not captured (the log is overwritten by the retry; the second attempt compiled the same source without error): treat it as transient. Contents beyond v47: 1.17 (15 mm prime + two-pass purge), 1.18 (BACK = STOP, status hint, stop clears the pending purge/square lines), 1.19 (explicit `M420 S1 Z0`, stop if the mesh is off), 1.20 (no stationary prime at each square start). Display files other than the About picture are the same as v47: flashing `firmware.bin` alone is enough. Not in v48: 1.1 (impossible, see 1.1), 1.4, 1.6, 1.8, 1.15, 1.16, Phases 2 to 4.
+
 ## 0. Status (updated 2026-10-31 evening)
 
 **release_v47** is built (commit c23d88d, local only; not pushed until Phases 1 to 4 are done, as agreed). It is the build to
