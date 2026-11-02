@@ -1511,7 +1511,11 @@
  *     |    [-]    |
  *     O-- FRONT --+
  */
-#define NOZZLE_TO_PROBE_OFFSET { 0, 0, 0 }
+// Kobra Max: the nozzle is the probe, so X and Y are 0. Z is the Z offset (M851 Z; the Z-offset page sets it), which also shifts Z0 at
+// every home (motion.cpp). 1.9 is the value found with the glass plate and metal sheet (paper test, hot): the strain gauge triggers
+// about 1.8 mm "late" and the paper gap is 0.1. A fresh install or a cleared SD card therefore starts with Z0 near the paper.
+// Without the glass plate it was 2.36. Redo the Z-offset page whenever the bed surface changes.
+#define NOZZLE_TO_PROBE_OFFSET { 0, 0, 1.9 }
 
 // Most probes should stay away from the edges of the bed, but
 // with NOZZLE_AS_PROBE this can be negative for a wider probing area.
