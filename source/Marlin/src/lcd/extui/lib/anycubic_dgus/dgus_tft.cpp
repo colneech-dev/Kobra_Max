@@ -3216,6 +3216,12 @@ void DgusTFT::page17_handle(void)
       }
       else if (zoffset_moving) strcpy_P(st, PSTR("Homing and moving..."));
       else if (az_stage == AZ_PARKED && ((millis() / 3000) & 1)) strlcpy(st, az_msg, sizeof(st));   // alternates with the prompt
+      else if ((millis() / 3000) & 1) {
+        // The big number is the height above Z0, NOT the saved offset: say what SAVE will store, so a reading of 2.4 on a first run
+        // (offset 0) and 0.0 on a later run (offset 2.4) is not mistaken for a changed measurement.
+        const float o = z_change ? getZOffset_mm() + z_manual_start : getZOffset_mm();
+        snprintf_P(st, sizeof(st), z_change ? PSTR("SAVE stores offset %s") : PSTR("Saved offset %s"), ftostr(o));
+      }
       else strcpy_P(st, PSTR("Lower to paper, then SAVE"));
       SendTxtToTFT(st, TXT_WAIT_STATUS);
       // The value box goes blank when a button press makes the display redraw the page (it only draws a
