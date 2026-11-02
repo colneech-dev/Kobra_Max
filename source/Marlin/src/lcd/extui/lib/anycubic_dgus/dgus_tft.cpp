@@ -3227,7 +3227,10 @@ void DgusTFT::page17_handle(void)
       // The value box goes blank when a button press makes the display redraw the page (it only draws a
       // text field when it is written), so send it again with every status refresh.
       char zv[10];
-      fmt_mm(zv, sizeof(zv), z_nozzle_height());
+      // While the nozzle is homing, parked at Z5 waiting for the temperatures or lowering, it is NOT at the number: showing 1.00 then
+      // made the nozzle look much higher than "1 mm" (hardware photos 2026-11-02: 1.00 on screen, nozzle 5 mm up, 158/190 and bed 32/60).
+      if (zoffset_moving || z_heat_wait) strcpy_P(zv, PSTR("---"));
+      else fmt_mm(zv, sizeof(zv), z_nozzle_height());
       SendTxtToTFT(zv, TXT_LEVEL_OFFSET);
     }
   }
