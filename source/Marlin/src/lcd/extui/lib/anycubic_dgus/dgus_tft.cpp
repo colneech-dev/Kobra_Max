@@ -4781,7 +4781,8 @@ static void fl_poll() {
     } break;
 
     case FL_END:
-      if (fl_homed) injectCommands_P(PSTR("G1 E-1 F1800\nG1 Z10 F600\nM82\nM104 S0\nM140 S0"));
+      // lift, then park at the back centre so the last square is not hidden under the head (owner, 2026-11-02)
+      if (fl_homed) injectCommands_P(PSTR("G1 E-1 F1800\nG1 Z10 F600\nG1 X200 Y395 F6000\nM82\nM104 S0\nM140 S0"));
       else          injectCommands_P(PSTR("M82\nM104 S0\nM140 S0"));
       fl_stage = FL_TAIL;
       strcpy_P(wz_msg[3], PSTR("Finishing..."));
