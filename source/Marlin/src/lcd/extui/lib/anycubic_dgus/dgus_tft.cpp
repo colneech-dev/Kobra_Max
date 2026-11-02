@@ -43,6 +43,7 @@
 //#include "../../../../libs/build_date.h"
 #include "../../../../MarlinCore.h"
 #include "../../../../feature/powerloss.h"
+#include "../../../../feature/bedlevel/bedlevel.h"   // the bed mesh nodes (5-point Z page)
 #include "../../../../module/printcounter.h"
 #include "../../../../module/stepper.h"
 #include "../../../../module/planner.h"   // movesplanned() for the first-layer test
@@ -143,8 +144,15 @@ static void az_start_test(const bool save_first);   // defined with the Z-offset
 // SETUP WIZARD (page 172): the steps reuse the existing flows. wz_launch says a step was started from the wizard, so that
 // the flow returns to the wizard page when it ends (the Leveling menu and the Prepare page clear it: the user went elsewhere).
 static bool wz_launch = false;
-static bool wz_done[4] = { false, false, false, false };
-static char wz_msg[4][26] = { "", "", "", "" };
+#define WZ_MESH   0   // the five steps (their status lines under the buttons, in this order)
+#define WZ_OFFSET 1
+#define WZ_POINTS 2
+#define WZ_PROBE  3
+#define WZ_FIRST  4
+#define WZ_N      5
+static bool wz_done[WZ_N] = { false, false, false, false, false };
+static char wz_msg[WZ_N][26] = { "", "", "", "", "" };
+static void p5_open(const bool from_wizard);   // 5-point Z page (below)
 static bool az_check_only = false;    // AUTO Z OFFSET run for the wizard: measure the spread, do not park for the manual step
 static void wizard_background();   // wizard / E-steps jobs, run from IdleLoop whatever page is shown
 static uint32_t wz_back(const uint32_t normal) {   // where a finished step goes: the wizard if it started there
@@ -716,6 +724,10 @@ void DgusTFT::IdleLoop()  {
   } else if (page_index_now == PAGE_LIN_ADVANCE) {
 
     page174_handle();
+
+  } else if (page_index_now == PAGE_P5) {
+
+    page119_handle();
 
   } else if (page_index_now == PAGE_SETUP_WIZARD) {
 
@@ -1297,7 +1309,7 @@ uint32_t DgusTFT::TranslatePage(uint32_t page_index) {
   if (PAGE_CHS_PRINTING_SETTING == page_index)  return page_index + 1;
   if (page_index == PAGE_THUMBNAIL || page_index == PAGE_TERMINAL || page_index == PAGE_KEYBPARD ||
       page_index == PAGE_THERMAL_TUNING || page_index == PAGE_FACTORY_RESET ||
-      page_index == PAGE_MESH_VIEW || page_index == PAGE_ESTEPS || page_index == PAGE_LIN_ADVANCE || page_index == PAGE_SETUP_WIZARD ||
+      page_index == PAGE_MESH_VIEW || page_index == PAGE_ESTEPS || page_index == PAGE_LIN_ADVANCE || page_index == PAGE_SETUP_WIZARD || page_index == PAGE_P5 ||
       page_index == PAGE_AUTO_OFFSET)           return page_index;  // single-language pages, no ENG mirror
   return page_index + 120;
 }
@@ -3163,6 +3175,13 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
       ChangePageOfTFT(PAGE_MESH_VIEW);
       break;
 
+    case 9: // 5-POINT Z (corner paper tests -> smooth mesh correction)
+      if (BlockedWhilePrinting()) break;
+      if (!getLevelingIsValid()) { ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK); az_stage = AZ_MESH; break; }   // no mesh yet: make it first
+      p5_open(false);
+      ChangePageOfTFT(PAGE_P5);
+      break;
+
   }
 
   // A text field is only drawn when written and a button press blanks it: send the value now and then.
@@ -4697,9 +4716,9 @@ static void fmt_dec(char * const out, const size_t size, const float v, const ui
 }
 
 static void fl_start() {
-  wz_done[3] = false;
-  wz_msg[3][0] = '\0';
-  if (!getLevelingIsValid()) { strcpy_P(wz_msg[3], PSTR("Make the bed mesh first")); return; }
+  wz_done[WZ_FIRST] = false;
+  wz_msg[WZ_FIRST][0] = '\0';
+  if (!getLevelingIsValid()) { strcpy_P(wz_msg[WZ_FIRST], PSTR("Make the bed mesh first")); return; }
   setTargetTemp_celsius(AC_FL_NOZZLE_TEMP, E0);
   setTargetTemp_celsius(AC_FL_BED_TEMP, BED);
   fl_stage = FL_HEAT;
@@ -4722,12 +4741,12 @@ static void fl_poll() {
   }
 
   if (fl_stage == FL_HEAT) {
-    snprintf(wz_msg[3], sizeof(wz_msg[3]), "Heat %u/%u  bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_FL_NOZZLE_TEMP,
+    snprintf(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), "Heat %u/%u  bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_FL_NOZZLE_TEMP,
              (unsigned)getActualTemp_celsius(BED), (unsigned)AC_FL_BED_TEMP);
     if (getActualTemp_celsius(E0) >= AC_FL_NOZZLE_TEMP - 3 && getActualTemp_celsius(BED) >= AC_FL_BED_TEMP - 2) {
       injectCommands_P(PSTR("G28"));
       fl_stage = FL_HOME;
-      strcpy_P(wz_msg[3], PSTR("Homing..."));
+      strcpy_P(wz_msg[WZ_FIRST], PSTR("Homing..."));
     }
     return;
   }
@@ -4748,7 +4767,7 @@ static void fl_poll() {
       // 0.2 mm line needs) that also show whether the flow is established. About 30 seconds.
       injectCommands_P(PSTR("G90\nM420 S1 Z0\nM83\nG92 E0\nG1 Z5 F900\nG1 X20 Y10 F5000\nG1 Z0.3 F600\nG1 E15 F150\nG1 X180 Y10 E8 F1200\nG1 Y13 E0.5 F1200\nG1 X20 E8 F1200\nG1 E-1 F1800\nG1 Z1 F900"));
       fl_stage = FL_PURGE;
-      strcpy_P(wz_msg[3], PSTR("Priming + purge line..."));
+      strcpy_P(wz_msg[WZ_FIRST], PSTR("Priming + purge line..."));
       break;
 
     case FL_PURGE:
@@ -4791,7 +4810,7 @@ static void fl_poll() {
           fl_row = 0;
         }
         injectCommands(c);
-        snprintf(wz_msg[3], sizeof(wz_msg[3]), "Square %d/%d  outline", fl_sq + 1, FL_SQUARES_N);
+        snprintf(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), "Square %d/%d  outline", fl_sq + 1, FL_SQUARES_N);
       }
       else if (fl_row < FL_ROWS) {
         char e1[12], e2[12], ys[12], xs[12];
@@ -4806,7 +4825,7 @@ static void fl_poll() {
         else snprintf(c, sizeof(c), "G1 X%s E%s", xs, e1);
         injectCommands(c);
         fl_row++;
-        snprintf(wz_msg[3], sizeof(wz_msg[3]), "Square %d/%d  row %d/%d", fl_sq + 1, FL_SQUARES_N, (int)fl_row, FL_ROWS);
+        snprintf(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), "Square %d/%d  row %d/%d", fl_sq + 1, FL_SQUARES_N, (int)fl_row, FL_ROWS);
       }
       else {   // square finished: retract, next square
         injectCommands_P(PSTR("G1 E-1 F1800"));
@@ -4820,13 +4839,13 @@ static void fl_poll() {
       if (fl_homed) injectCommands_P(PSTR("G1 E-1 F1800\nG1 Z10 F600\nG1 X200 Y395 F6000\nM82\nM104 S0\nM140 S0"));
       else          injectCommands_P(PSTR("M82\nM104 S0\nM140 S0"));
       fl_stage = FL_TAIL;
-      strcpy_P(wz_msg[3], PSTR("Finishing..."));
+      strcpy_P(wz_msg[WZ_FIRST], PSTR("Finishing..."));
       break;
 
     case FL_TAIL:   // the finishing commands have run (the queue is empty): the test is over
       fl_stage = FL_IDLE;
-      if (fl_abort) strcpy_P(wz_msg[3], fl_mesh_off ? PSTR("Stopped: bed mesh is off") : PSTR("Stopped"));
-      else { wz_done[3] = true; strcpy_P(wz_msg[3], PSTR("Done: check the 5 squares")); }
+      if (fl_abort) strcpy_P(wz_msg[WZ_FIRST], fl_mesh_off ? PSTR("Stopped: bed mesh is off") : PSTR("Stopped"));
+      else { wz_done[WZ_FIRST] = true; strcpy_P(wz_msg[WZ_FIRST], PSTR("Done: check the 5 squares")); }
       break;
 
     default: break;
@@ -4841,8 +4860,8 @@ static void wizard_background() {
   if (az_check_only && az_stage == AZ_TEST && !commandsInQueue()) {
     az_listen = false;
     az_make_msg();
-    strlcpy(wz_msg[2], az_msg, sizeof(wz_msg[2]));
-    wz_done[2] = (az_range >= 0);
+    strlcpy(wz_msg[WZ_PROBE], az_msg, sizeof(wz_msg[WZ_PROBE]));
+    wz_done[WZ_PROBE] = (az_range >= 0);
     az_stage = AZ_IDLE;
     az_check_only = false;
     injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift, heaters off
@@ -4851,6 +4870,187 @@ static void wizard_background() {
   es_poll();
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// Page 119 - 5-POINT Z. The single Z offset (paper test at the bed centre) cannot remove a position error of the mesh: hardware tests
+// on 2026-11-01/02 showed the squares at the left of the bed failing while the others printed. Here the paper test is repeated at the
+// four corner squares of the first layer test (X / Y at 25 % and 75 %). The reading at paper contact is the mesh error at that corner
+// (0.00 = right; the centre reads 0.00 after the normal Z offset). STORE adds it to that corner's total; the totals of the four corners
+// define a smooth correction surface over the WHOLE mesh (a planar tilt in X and Y, a twist and a bowl: it fits the four corners exactly
+// and is zero at the centre, limited to +-0.5 mm) that is added to the mesh as it was when the page opened. SAVE keeps it (M500), BACK
+// puts the old mesh back. The nozzle is lowered with babysteps, which are undone before the next move: they are only for the reading.
+// ---------------------------------------------------------------------------------------------------------------------------
+#define P5_START_TENTHS 5   // start height above Z0 at a corner (0.5 mm)
+static int8_t   p5_pt = -1;                    // corner being checked: 0 back left, 1 back right, 2 front left, 3 front right; -1 none
+static float    p5_h = 0;                      // height above Z0 (start height plus the presses)
+static int16_t  p5_steps = 0;                  // babysteps applied since the nozzle was lowered (undone before the next move)
+static float    p5_total[4] = { 0, 0, 0, 0 };  // correction at each corner relative to the mesh when the page opened
+static bool     p5_set[4] = { false, false, false, false };
+static float    p5_orig[GRID_MAX_POINTS_X][GRID_MAX_POINTS_Y];   // the mesh when the page opened
+static bool     p5_homed = false, p5_heat_wait = false, p5_busy = false, p5_dirty = false;
+static char     p5_msg[26] = "";
+static millis_t p5_msg_ms = 0;
+static const uint8_t p5_pct_x[4] = { 25, 75, 25, 75 }, p5_pct_y[4] = { 75, 75, 25, 25 };   // corner positions in % of the bed
+
+static void p5_say(PGM_P const m) { strlcpy_P(p5_msg, m, sizeof(p5_msg)); p5_msg_ms = millis(); }
+
+static void p5_open(const bool from_wizard) {
+  UNUSED(from_wizard);   // (the way back is wz_back())
+  p5_pt = -1; p5_h = 0; p5_steps = 0;
+  for (uint8_t k = 0; k < 4; k++) { p5_total[k] = 0; p5_set[k] = false; }
+  p5_homed = p5_heat_wait = p5_busy = p5_dirty = false;
+  p5_msg[0] = '\0';
+  for (uint8_t i = 0; i < GRID_MAX_POINTS_X; i++)
+    for (uint8_t j = 0; j < GRID_MAX_POINTS_Y; j++) p5_orig[i][j] = bedlevel.z_values[i][j];
+}
+
+// The correction surface at bed position (x, y); u and v are -1 / +1 at the corner squares (100 and 300 mm on a 400 mm bed).
+static float p5_model(const float x, const float y) {
+  const float u = (x - X_BED_SIZE * 0.5f) / (X_BED_SIZE * 0.25f), v = (y - Y_BED_SIZE * 0.5f) / (Y_BED_SIZE * 0.25f);
+  const float tbl = p5_total[0], tbr = p5_total[1], tfl = p5_total[2], tfr = p5_total[3];
+  const float e = (tbl + tbr + tfl + tfr) / 8.0f,          // bowl: the same at all four corners, zero at the centre
+              b = (tbr + tfr - tbl - tfl) / 4.0f,          // tilt along X
+              c = (tbl + tbr - tfl - tfr) / 4.0f,          // tilt along Y
+              d = (tbr - tbl - tfr + tfl) / 4.0f;          // twist
+  return constrain(b * u + c * v + d * u * v + e * (u * u + v * v), -0.5f, 0.5f);
+}
+
+static void p5_apply() {   // mesh = the mesh at page open + the correction surface
+  for (uint8_t i = 0; i < GRID_MAX_POINTS_X; i++)
+    for (uint8_t j = 0; j < GRID_MAX_POINTS_Y; j++)
+      bedlevel.z_values[i][j] = p5_orig[i][j] + p5_model(bedlevel.get_mesh_x(i), bedlevel.get_mesh_y(j));
+  bedlevel.refresh_bed_level();   // rebuilds the smoothed grid the planner uses
+}
+
+static void p5_restore() {
+  for (uint8_t i = 0; i < GRID_MAX_POINTS_X; i++)
+    for (uint8_t j = 0; j < GRID_MAX_POINTS_Y; j++) bedlevel.z_values[i][j] = p5_orig[i][j];
+  bedlevel.refresh_bed_level();
+}
+
+static void p5_undo() { if (p5_steps) { babystepAxis_steps(-p5_steps, Z); p5_steps = 0; } }
+
+void DgusTFT::page119_handle(void) {
+  static millis_t flash_time = 0, poll_ms = 0;
+
+  // progress of the homing / move / heating / lowering (the queue is empty between the steps)
+  if (millis() - poll_ms > 500) {
+    poll_ms = millis();
+    if (p5_busy && !commandsInQueue()) {
+      if (p5_heat_wait) {
+        if (z_is_hot()) {
+          p5_heat_wait = false;
+          char cmd[24];
+          sprintf_P(cmd, PSTR("G1 Z%u.%u F200"), (unsigned)(P5_START_TENTHS / 10), (unsigned)(P5_START_TENTHS % 10));
+          injectCommands(cmd);
+        }
+      }
+      else { p5_busy = false; p5_h = P5_START_TENTHS / 10.0f; }   // lowered: the reading starts here
+    }
+  }
+
+  switch (key_value) {
+    case 0: break;
+
+    case 1: // BACK: undo what was not saved, lift, heaters off. Allowed while only heating (nothing is moving then).
+      if (p5_busy && !(p5_heat_wait && !commandsInQueue())) break;
+      p5_undo();
+      if (p5_dirty) { p5_restore(); p5_dirty = false; }
+      if (!isPrinting()) inject_after_P(p5_homed ? PSTR("G1 Z10 F600\nM104 S0\nM140 S0") : PSTR("M104 S0\nM140 S0"));
+      heaters_off_when_idle();
+      ChangePageOfTFT(wz_back(PAGE_PreLEVEL));
+      return;
+
+    case 2: case 3: case 4: case 5: { // go to a corner (home and heat first time)
+      const uint8_t p = key_value - 2;
+      if (p5_busy || commandsInQueue()) { p5_say(PSTR("Busy, wait a moment")); break; }
+      if (BlockedWhilePrinting()) break;
+      if (!getLevelingIsValid()) { p5_say(PSTR("Make the bed mesh first")); break; }
+      p5_undo();   // the previous corner's babysteps must not carry over
+      p5_pt = p;
+      p5_h = 0;
+      char cmd[64];
+      sprintf_P(cmd, p5_homed ? PSTR("G90\nG1 Z5 F600\nG1 X%d Y%d F4000") : PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000"),
+                (int)(X_BED_SIZE * p5_pct_x[p] / 100), (int)(Y_BED_SIZE * p5_pct_y[p] / 100));
+      injectCommands(cmd);
+      z_set_hot();   // hot, like the paper test of the Z offset
+      p5_homed = true;
+      p5_heat_wait = true;
+      p5_busy = true;
+    } break;
+
+    case 6: case 7: case 8: case 9: { // - 0.1, + 0.1, - 0.01, + 0.01 mm: babystep the nozzle and the reading together
+      if (p5_busy || p5_pt < 0) break;
+      const float step = (key_value == 6 || key_value == 7) ? 0.1f : 0.01f;
+      const bool plus = (key_value == 7 || key_value == 9);
+      if (plus ? (p5_h >= 3.0f) : (p5_h <= -1.5f)) break;
+      const int16_t n = mmToWholeSteps(plus ? step : -step, Z);
+      babystepAxis_steps(n, Z);
+      p5_steps += n;
+      p5_h = roundf((p5_h + (plus ? step : -step)) * 100.0f) / 100.0f;
+    } break;
+
+    case 10: // STORE THIS POINT: the reading is the mesh error at this corner
+      if (p5_busy || p5_pt < 0) break;
+      p5_total[p5_pt] += p5_h;
+      p5_set[p5_pt] = true;
+      p5_dirty = true;
+      p5_undo();
+      p5_apply();
+      inject_after_P(PSTR("G1 Z5 F600"));   // lift
+      p5_pt = -1;
+      p5_h = 0;
+      p5_say(PSTR("Stored: tap a corner"));
+      break;
+
+    case 11: // SAVE: keep the corrected mesh with the settings
+      if (p5_busy) break;
+      p5_undo();
+      inject_after_P(p5_homed ? PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0") : PSTR("M500\nM104 S0\nM140 S0"));
+      if (wz_launch) {
+        wz_done[WZ_POINTS] = p5_dirty;
+        strcpy_P(wz_msg[WZ_POINTS], p5_dirty ? PSTR("Corrections saved") : PSTR("No corrections made"));
+      }
+      p5_dirty = false;
+      heaters_off_when_idle();
+      ChangePageOfTFT(wz_back(PAGE_PreLEVEL));
+      return;
+  }
+
+  if (key_value) flash_time = 0;
+  if (millis() < flash_time + 600) return;
+  flash_time = millis();
+
+  char b[28];
+  if (p5_busy || p5_pt < 0) strcpy_P(b, PSTR("---"));
+  else fmt_mm(b, sizeof(b), p5_h);
+  SendTxtToTFT(b, TXT_P5_VALUE);
+
+  if (p5_msg[0] && millis() - p5_msg_ms > 3000) p5_msg[0] = '\0';
+  if (p5_msg[0]) strlcpy(b, p5_msg, sizeof(b));
+  else if (p5_busy && p5_heat_wait && !commandsInQueue()) {
+#if LEVELING_NOZZLE_TEMP && LEVELING_BED_TEMP
+    snprintf_P(b, sizeof(b), PSTR("Heat %u/%u  bed %u/%u"), (unsigned)getActualTemp_celsius(E0), (unsigned)LEVELING_NOZZLE_TEMP,
+               (unsigned)getActualTemp_celsius(BED), (unsigned)LEVELING_BED_TEMP);
+#else
+    strcpy_P(b, PSTR("Heating..."));
+#endif
+  }
+  else if (p5_busy) strcpy_P(b, PSTR("Homing and moving..."));
+  else if (p5_pt < 0) strcpy_P(b, PSTR("Tap a corner to go there"));
+  else strcpy_P(b, PSTR("Lower to paper, then STORE"));
+  SendTxtToTFT(b, TXT_P5_STATUS);
+
+  for (uint8_t k = 0; k < 4; k++) {
+    char v[12];
+    if (p5_set[k]) { fmt_mm(v, sizeof(v), p5_total[k], true); snprintf(b, sizeof(b), "stored %s", v); }
+    else strcpy_P(b, PSTR("not measured"));
+    SendTxtToTFT(b, TXT_P5_CORR0 + k * 0x10);
+  }
+}
+
+// Page 172 - SETUP WIZARD. Steps 1, 2 and 3 start the Leveling flow, the manual Z page and the 5-point Z page and come back here when they
+// end; step 4 runs the 5-probe test here; step 5 prints five 24 mm squares (an outline loop, then rows) as a first layer test, one move
+// at a time from fl_poll() (the G-code buffer is tiny, so a few moves are queued whenever it runs empty).
 void DgusTFT::page172_handle(void) {
   static millis_t flash_time = 0;
 
@@ -4860,7 +5060,7 @@ void DgusTFT::page172_handle(void) {
 
   // A tap just after a step ended: its lift / heaters-off commands are still running. BlockedWhilePrinting() would throw the
   // user to the "not while printing" page for that, so say "busy" on the tapped step instead and do nothing.
-  const bool queued_busy = key_value >= 2 && key_value <= 5 && !busy && !isPrintingFromMedia() && commandsInQueue();
+  const bool queued_busy = key_value >= 2 && key_value <= 6 && !busy && !isPrintingFromMedia() && commandsInQueue();
   if (queued_busy) {
     strcpy_P(wz_msg[key_value - 2], PSTR("Busy, wait a moment"));
     busy_ms = millis();
@@ -4871,7 +5071,7 @@ void DgusTFT::page172_handle(void) {
 
     case 1: // BACK to the System page. While the first-layer test runs BACK is STOP: the test cannot be left running unnoticed
       if (fl_stage != FL_IDLE) {
-        if (!fl_abort) { fl_abort = true; strcpy_P(wz_msg[3], PSTR("Stopping...")); }
+        if (!fl_abort) { fl_abort = true; strcpy_P(wz_msg[WZ_FIRST], PSTR("Stopping...")); }
         break;
       }
       if (busy) break;
@@ -4880,17 +5080,17 @@ void DgusTFT::page172_handle(void) {
 
     case 2: // 1 BED MESH: the probe pre-check, then G29; the mesh page comes back here
       if (busy || BlockedWhilePrinting()) break;
-      wz_done[0] = false;
-      wz_msg[0][0] = '\0';
+      wz_done[WZ_MESH] = false;
+      wz_msg[WZ_MESH][0] = '\0';
       wz_launch = true;
       ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);
       break;
 
     case 3: { // 2 Z OFFSET: the manual Z page (it needs the mesh: the offset is the gap above the bed WITH the mesh on), SAVE comes back here
       if (busy || BlockedWhilePrinting()) break;
-      if (!getLevelingIsValid()) { strcpy_P(wz_msg[1], PSTR("Make the bed mesh first")); break; }
-      wz_done[1] = false;
-      wz_msg[1][0] = '\0';
+      if (!getLevelingIsValid()) { strcpy_P(wz_msg[WZ_OFFSET], PSTR("Make the bed mesh first")); break; }
+      wz_done[WZ_OFFSET] = false;
+      wz_msg[WZ_OFFSET][0] = '\0';
       wz_launch = true;
       ChangePageOfTFT(PAGE_LEVEL_ADVANCE);
       const uint8_t zt = z_start_tenths();
@@ -4905,16 +5105,26 @@ void DgusTFT::page172_handle(void) {
       zoffset_moving = true;
     } break;
 
-    case 4: // 3 PROBE CHECK: M48 here, the result appears under the button
+    case 4: // 3 5-POINT Z: paper tests at the four corners, a smooth mesh correction; SAVE or BACK comes back here
       if (busy || BlockedWhilePrinting()) break;
-      wz_done[2] = false;
-      strcpy_P(wz_msg[2], PSTR("Testing probe (5x)..."));
+      if (!getLevelingIsValid()) { strcpy_P(wz_msg[WZ_POINTS], PSTR("Make the bed mesh first")); break; }
+      wz_done[WZ_POINTS] = false;
+      wz_msg[WZ_POINTS][0] = '\0';
+      wz_launch = true;
+      p5_open(true);
+      ChangePageOfTFT(PAGE_P5);
+      break;
+
+    case 5: // 4 PROBE CHECK: M48 here, the result appears under the button
+      if (busy || BlockedWhilePrinting()) break;
+      wz_done[WZ_PROBE] = false;
+      strcpy_P(wz_msg[WZ_PROBE], PSTR("Testing probe (5x)..."));
       az_check_only = true;
       az_start_test(false);
       break;
 
-    case 5: // 4 FIRST LAYER TEST (tapping it again while it runs stops it)
-      if (fl_stage != FL_IDLE) { fl_abort = true; strcpy_P(wz_msg[3], PSTR("Stopping...")); break; }
+    case 6: // 5 FIRST LAYER TEST (tapping it again while it runs stops it)
+      if (fl_stage != FL_IDLE) { fl_abort = true; strcpy_P(wz_msg[WZ_FIRST], PSTR("Stopping...")); break; }
       if (busy || BlockedWhilePrinting()) break;
       fl_start();
       break;
@@ -4925,11 +5135,11 @@ void DgusTFT::page172_handle(void) {
   flash_time = millis();
   if (busy_ms && millis() - busy_ms > 3000) {   // the "busy" notes go away by themselves
     busy_ms = 0;
-    for (uint8_t i = 0; i < 4; i++) if (strcmp_P(wz_msg[i], PSTR("Busy, wait a moment")) == 0) wz_msg[i][0] = '\0';
+    for (uint8_t i = 0; i < WZ_N; i++) if (strcmp_P(wz_msg[i], PSTR("Busy, wait a moment")) == 0) wz_msg[i][0] = '\0';
   }
-  for (uint8_t i = 0; i < 4; i++) {
+  for (uint8_t i = 0; i < WZ_N; i++) {
     // while the first-layer test runs, its line alternates with the way to stop it (the buttons keep their pictures)
-    if (i == 3 && fl_stage != FL_IDLE && !fl_abort && ((millis() / 3000) & 1)) { SendTxtToTFT("Tap here or BACK to STOP", TXT_WZ_STATUS0 + i * 0x10); continue; }
+    if (i == WZ_FIRST && fl_stage != FL_IDLE && !fl_abort && ((millis() / 3000) & 1)) { SendTxtToTFT("Tap here or BACK to STOP", TXT_WZ_STATUS0 + i * 0x10); continue; }
     SendTxtToTFT(wz_msg[i][0] ? wz_msg[i] : (wz_done[i] ? "Done" : "Not done yet"), TXT_WZ_STATUS0 + i * 0x10);
   }
 }

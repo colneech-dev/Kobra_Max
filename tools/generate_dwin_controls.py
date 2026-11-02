@@ -163,12 +163,13 @@ _ZONES = [
     ([15, 135],   8, 429, 264, 473, 1), # BACK
 
     # ── PAGE 16 / 136  Pre-Level menu ────────────────────────────────────────
-    ([16, 136],   8, 112, 264, 156, 2), # AUTO BED LEVEL G29
-    ([16, 136],   8, 168, 264, 212, 3), # MANUAL Z ADJUST
+    ([16, 136],   8, 100, 264, 142, 2), # AUTO BED LEVEL G29
+    ([16, 136],   8, 148, 264, 190, 3), # MANUAL Z ADJUST
     ([16, 136], *uf.LEVEL_START_MINUS, 6),  # manual start height - 0.1 mm
     ([16, 136], *uf.LEVEL_START_PLUS,  7),  # manual start height + 0.1 mm
-    ([16, 136],   8, 224, 264, 268, 4), # AUTO Z OFFSET (mesh check, M48 probe test, manual page)
-    ([16, 136],   8, 280, 264, 324, 8), # VIEW BED MESH (page 208)
+    ([16, 136],   8, 196, 264, 238, 4), # AUTO Z OFFSET (mesh check, M48 probe test, manual page)
+    ([16, 136],   8, 244, 264, 286, 8), # VIEW BED MESH (page 208)
+    ([16, 136],   8, 292, 264, 334, 9), # 5-POINT Z (page 119)
     ([16, 136],   8, 429, 264, 473, 1), # BACK
 
     # ── PAGE 17 / 137  Z-Offset Adjust ───────────────────────────────────────
@@ -272,9 +273,23 @@ _ZONES = [
     # ── PAGE 172  Setup wizard ────────────────────────────────────────────────
     ([172], *uf.WZ_BTN(0), 2),  # 1 BED MESH (G29, returns here)
     ([172], *uf.WZ_BTN(1), 3),  # 2 Z OFFSET (manual Z page, needs the mesh, returns here)
-    ([172], *uf.WZ_BTN(2), 4),  # 3 PROBE CHECK (M48 x5, stays here)
-    ([172], *uf.WZ_BTN(3), 5),  # 4 FIRST LAYER TEST (tap again to stop)
+    ([172], *uf.WZ_BTN(2), 4),  # 3 5-POINT Z (page 119, returns here)
+    ([172], *uf.WZ_BTN(3), 5),  # 4 PROBE CHECK (M48 x5, stays here)
+    ([172], *uf.WZ_BTN(4), 6),  # 5 FIRST LAYER TEST (tap again or BACK to stop)
     ([172],   8, 429, 264, 473, 1), # BACK
+
+    # ── PAGE 119  5-point Z (corner paper tests -> mesh correction) ────────────────────────────────────
+    ([119], *uf.P5_BTN[0], 2),  # back left
+    ([119], *uf.P5_BTN[1], 3),  # back right
+    ([119], *uf.P5_BTN[2], 4),  # front left
+    ([119], *uf.P5_BTN[3], 5),  # front right
+    ([119], *uf.P5_MINUS1, 6),  # -0.1 mm
+    ([119], *uf.P5_PLUS1,  7),  # +0.1 mm
+    ([119], *uf.P5_MINUS2, 8),  # -0.01 mm
+    ([119], *uf.P5_PLUS2,  9),  # +0.01 mm
+    ([119], *uf.P5_STORE, 10),  # STORE THIS POINT
+    ([119],   8, 429, 132, 473, 1), # BACK
+    ([119], 140, 429, 264, 473, 11), # SAVE
 
     # ── PAGE 208  Bed mesh viewer ─────────────────────────────────────────────
     ([208],   8, 429, 264, 473, 1), # BACK

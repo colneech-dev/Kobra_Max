@@ -692,13 +692,14 @@ def page_pre_level():
     img, draw = new_page()
     status_bar(draw)
     title_bar(draw, "LEVELING MENU")
-    y = CONTENT_Y1 + 20
+    y = 100
     items = [("AUTO BED LEVEL  G29", 'primary', 0xf05b),
              ("MANUAL Z ADJUST",      'normal',  0xf338),
              ("AUTO Z OFFSET",        'normal',  0xf063),   # mesh check + probe test, then the manual page
-             ("VIEW BED MESH",        'normal',  0xf00a)]   # page 208
+             ("VIEW BED MESH",        'normal',  0xf00a),   # page 208
+             ("5-POINT Z  (corners)", 'normal',  0xf0b2)]   # page 119
     for lbl, sty, ico in items:
-        btn(draw, MARGIN, y, W - MARGIN, y + 44, lbl, style=sty, icon=ico);  y += 56
+        btn(draw, MARGIN, y, W - MARGIN, y + 42, lbl, style=sty, icon=ico);  y += 48
     # saved start height of the manual Z adjust (the nozzle parks this high above the bed, not at Z0)
     assert y <= uf.LEVEL_START_LABEL_Y, "Leveling menu buttons overlap the start-height row"
     text_left(draw, MARGIN, uf.LEVEL_START_LABEL_Y, "MANUAL Z: START HEIGHT (mm)", F_SMALL, GRAY)
@@ -736,13 +737,34 @@ def page_wizard():
     title_bar(draw, "SETUP WIZARD")
     steps = [("1  BED MESH  (G29)",        'primary', 0xf05b),
              ("2  Z OFFSET  (paper test)", 'normal',  0xf338),
-             ("3  PROBE CHECK  (5 probes)", 'normal',  0xf063),
-             ("4  FIRST LAYER TEST",       'normal',  0xf1de)]
+             ("3  5-POINT Z  (corners)",   'normal',  0xf0b2),
+             ("4  PROBE CHECK  (5 probes)", 'normal',  0xf063),
+             ("5  FIRST LAYER TEST",       'normal',  0xf1de)]
+    assert len(steps) == uf.WZ_N
     for i, (lbl, sty, ico) in enumerate(steps):
         btn(draw, *uf.WZ_BTN(i), lbl, style=sty, icon=ico)
         vp_area(draw, *uf.WZ_STATUS(i), 'Not done yet')
-    text_center(draw, (0, 404, W, 418), "Tap step 4 again while it runs to stop", F_TINY, GRAY)
-    footer_1btn(draw, "BACK", style='ghost')
+    footer_1btn(draw, "BACK", style='ghost')   # (while the first layer test runs its status line says how to stop it)
+    return img
+
+
+def page_p5():
+    img, draw = new_page()
+    status_bar(draw)
+    title_bar(draw, "5-POINT Z")
+    names = ["BACK LEFT", "BACK RIGHT", "FRONT LEFT", "FRONT RIGHT"]
+    for i, nm in enumerate(names):
+        btn(draw, *uf.P5_BTN[i], nm, style='normal', icon=0xf192)
+        vp_area(draw, *uf.P5_CORR[i], 'stored -0.15')
+    text_center(draw, (0, 210, W, 226), "HEIGHT ABOVE Z0  (0.00 = paper level)", F_TINY, GRAY)
+    vp_area(draw, *uf.P5_VALUE, '0.50')
+    btn(draw, *uf.P5_MINUS1, "- 0.1 mm",  style='normal',  icon=0xf068)
+    btn(draw, *uf.P5_PLUS1,  "+ 0.1 mm",  style='primary', icon=0xf067)
+    btn(draw, *uf.P5_MINUS2, "- 0.01 mm", style='normal',  icon=0xf068)
+    btn(draw, *uf.P5_PLUS2,  "+ 0.01 mm", style='primary', icon=0xf067)
+    btn(draw, *uf.P5_STORE, "STORE THIS POINT", style='primary', icon=0xf0c7)
+    vp_area(draw, *uf.P5_STATUS, 'Tap a corner to go there')
+    footer_2btn(draw, "BACK", "SAVE", l_style='ghost', r_style='primary')
     return img
 
 
@@ -1281,6 +1303,7 @@ def _build_page_map():
     m['215'] = page_terminal
     m['216'] = page_thermal_tune
     m['172'] = page_wizard
+    m['119'] = page_p5
     m['208'] = page_mesh_view
     m['210'] = page_esteps
     m['174'] = page_linadv

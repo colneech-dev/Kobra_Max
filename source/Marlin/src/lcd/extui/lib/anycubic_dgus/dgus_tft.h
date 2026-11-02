@@ -160,6 +160,7 @@
 #define PAGE_ESTEPS                               (210+PAGE_OFFSET)   // extruder E-steps calibration
 #define PAGE_LIN_ADVANCE                          (174+PAGE_OFFSET)   // linear advance K factor
 #define PAGE_SETUP_WIZARD                         (172+PAGE_OFFSET)   // guided Z offset / mesh / probe check / first layer test
+#define PAGE_P5                                   (119+PAGE_OFFSET)   // 5-point Z: paper test at the four corners, mesh correction
 
 
 
@@ -320,7 +321,10 @@
 #define TXT_ES_STATUS   0x2FF0  //   progress / result line
 #define TXT_LA_K        0x3100  // Linear advance page (174): K factor
 #define TXT_LA_STATUS   0x3110  //   result line
-#define TXT_WZ_STATUS0  0x3120  // Setup wizard page (172): status line of step 1, steps 2-4 follow 0x10 apart
+#define TXT_WZ_STATUS0  0x3120  // Setup wizard page (172): status line of step 1, steps 2-5 follow 0x10 apart (0x3120 .. 0x3160)
+#define TXT_P5_VALUE    0x3180  // 5-point Z page (119): height above Z0
+#define TXT_P5_STATUS   0x3190  //   status line
+#define TXT_P5_CORR0    0x31A0  //   stored correction under each corner button, 0x10 apart (back left, back right, front left, front right)
 #define AC_TERM_HIST   64       // lines kept for scrolling back (page 215 up / down buttons)
 
 
@@ -575,6 +579,7 @@ namespace Anycubic {
       static void page210_handle(void);
       static void page174_handle(void);
       static void page172_handle(void);
+      static void page119_handle(void);
       static void page217_handle(void);
 
       static void pop_up_manager(void);

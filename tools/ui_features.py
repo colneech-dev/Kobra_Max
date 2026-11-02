@@ -237,9 +237,21 @@ LEVEL_START_PLUS  = (212, 358, 264, 394)
 PAGE_MESH_VIEW, PAGE_ESTEPS, PAGE_LINADV = 208, 210, 174
 # Setup wizard (from the main page): four step buttons, each with a status line under it. Pressed picture 158.
 PAGE_WIZARD = 172
-WZ_Y0, WZ_PITCH = 100, 76
-def WZ_BTN(i):    return (8, WZ_Y0 + i * WZ_PITCH, 264, WZ_Y0 + i * WZ_PITCH + 44)
-def WZ_STATUS(i): return (8, WZ_Y0 + i * WZ_PITCH + 48, 264, WZ_Y0 + i * WZ_PITCH + 68)
+WZ_N = 5                                   # steps: bed mesh, Z offset, 5-point Z, probe check, first layer test
+WZ_Y0, WZ_PITCH = 96, 66
+def WZ_BTN(i):    return (8, WZ_Y0 + i * WZ_PITCH, 264, WZ_Y0 + i * WZ_PITCH + 40)
+def WZ_STATUS(i): return (8, WZ_Y0 + i * WZ_PITCH + 42, 264, WZ_Y0 + i * WZ_PITCH + 62)
+# 5-POINT Z (page 119, single language; pressed picture 159): a paper test at the four corner squares of the first layer test
+# (X / Y at 25 % and 75 % of the bed). The reading at paper contact is the mesh error there and is added to the four mesh nodes
+# round the corner. Order of the corners everywhere: back left, back right, front left, front right.
+PAGE_P5 = 119
+P5_BTN  = [(8, 96, 132, 130), (140, 96, 264, 130), (8, 153, 132, 187), (140, 153, 264, 187)]
+P5_CORR = [(8, 131, 132, 149), (140, 131, 264, 149), (8, 188, 132, 206), (140, 188, 264, 206)]   # stored correction under each button
+P5_VALUE  = (8, 228, 264, 272)             # height above Z0
+P5_MINUS1, P5_PLUS1 = (8, 278, 132, 310), (140, 278, 264, 310)     # -0.1 / +0.1 mm
+P5_MINUS2, P5_PLUS2 = (8, 314, 132, 346), (140, 314, 264, 346)     # -0.01 / +0.01 mm
+P5_STORE  = (8, 352, 264, 384)
+P5_STATUS = (8, 390, 264, 410)
 # Bed mesh viewer: MESH_N x MESH_N text cells (one text field each, 0.01 mm relative to the mesh average).
 MESH_N = int(GRID_POINTS ** 0.5)
 MESH_X0, MESH_Y0, MESH_CELL_W, MESH_CELL_H = 10, 112, 36, 36

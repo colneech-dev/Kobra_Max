@@ -298,7 +298,10 @@ TXT_ES_NEW      = 0x2FE0
 TXT_ES_STATUS   = 0x2FF0
 TXT_LA_K        = 0x3100
 TXT_LA_STATUS   = 0x3110
-TXT_WZ_STATUS0  = 0x3120   # setup wizard (172): status line under each of the 4 steps, 0x10 apart
+TXT_WZ_STATUS0  = 0x3120   # setup wizard (172): status line under each of the 5 steps, 0x10 apart (0x3120 .. 0x3160)
+TXT_P5_VALUE    = 0x3180   # 5-point Z (119): height above Z0
+TXT_P5_STATUS   = 0x3190
+TXT_P5_CORR0    = 0x31A0   # stored correction under each corner button, 0x10 apart (back left, back right, front left, front right)
 TXT_TUNE_STATUS = 0x2DA0   # Thermal Tuning (216) progress line; dgus_tft.h
 TERM_LINES, TERM_ROW_H, TERM_Y0 = uf.TERM_LINES, uf.TERM_ROW_H, uf.TERM_Y0
 
@@ -571,7 +574,11 @@ PAGE210 = STATUS_BAR + [
     _tr(TXT_ES_NEW, uf.ESTEPS_NEW, 10),
     _tr(TXT_ES_STATUS, uf.ESTEPS_STATUS, 25),
 ]
-PAGE172 = STATUS_BAR + [_tr(TXT_WZ_STATUS0 + i * 0x10, uf.WZ_STATUS(i), 25) for i in range(4)]
+PAGE172 = STATUS_BAR + [_tr(TXT_WZ_STATUS0 + i * 0x10, uf.WZ_STATUS(i), 25) for i in range(uf.WZ_N)]
+PAGE119 = STATUS_BAR + [
+    _tr(TXT_P5_VALUE, uf.P5_VALUE, 8),
+    _tr(TXT_P5_STATUS, uf.P5_STATUS, 25),
+] + [_tr(TXT_P5_CORR0 + i * 0x10, uf.P5_CORR[i], 14) for i in range(4)]
 PAGE174 = STATUS_BAR + [
     _tr(TXT_LA_K, uf.LINADV_K, 8),
     _tr(TXT_LA_STATUS, uf.LINADV_STATUS, 25),
@@ -655,6 +662,7 @@ _CONTENT = [
     (uf.PAGE_ESTEPS, PAGE210),
     (uf.PAGE_LINADV, PAGE174),
     (uf.PAGE_WIZARD, PAGE172),
+    (uf.PAGE_P5, PAGE119),
 ]
 
 patches = [(pg, STATUS_BAR) for pg in _STATUS_ONLY] + _CONTENT
