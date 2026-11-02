@@ -4681,8 +4681,11 @@ static bool    fl_mesh_off = false;   // stopped because the bed mesh was not ac
 #define FL_SIZE      24                 // mm, side of a square
 #define FL_ROWS      53                 // rows per square, 0.45 mm apart: a solid layer
 #define FL_E_PER_MM  0.0374f            // mm of 1.75 mm filament per mm of line: 0.45 wide x 0.2 high
-static const uint8_t fl_pct_x[FL_SQUARES_N] = { 25, 75, 50, 25, 75 };   // square centres in % of the bed
-static const uint8_t fl_pct_y[FL_SQUARES_N] = { 25, 25, 50, 75, 75 };
+// Square centres in % of the bed, in print order: centre, back-right, back-left, front-right, front-left. The front-left used to come
+// first and was the only poor one (2026-11-02): printing it last tells a bad position (still poor) from a bad first square (the new
+// first square is poor instead).
+static const uint8_t fl_pct_x[FL_SQUARES_N] = { 50, 75, 25, 75, 25 };
+static const uint8_t fl_pct_y[FL_SQUARES_N] = { 50, 75, 75, 25, 25 };
 
 static void fmt_dec(char * const out, const size_t size, const float v, const uint8_t dec) {   // v >= 0, 2 or 4 decimals
   if (dec == 4) { const uint32_t n = (uint32_t)lroundf(v * 10000.0f); snprintf(out, size, "%lu.%04lu", (unsigned long)(n / 10000), (unsigned long)(n % 10000)); }
