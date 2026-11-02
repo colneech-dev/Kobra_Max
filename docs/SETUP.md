@@ -51,7 +51,7 @@ would end up that much too low. For the same reason the manual Z page and the wi
 ## First print
 
 12. First layer test (wizard step 4, or print your own): the wizard heats to 200 C / 60 C (PLA), homes, primes 15 mm and draws a two-pass purge line along the front edge (about 30 seconds, so the flow is running before the first square) and prints
-    five 24 mm solid squares one layer high, at the corners and the centre of the bed (about 5 minutes). To stop it, tap step 4 again or press BACK (the status line says so): it finishes the moves already planned (a few seconds), lifts the nozzle and switches the heaters off.
+    five 24 mm squares one layer high (an outline loop, then solid rows inside it), at the corners and the centre of the bed (about 5 minutes). To stop it, tap step 4 again or press BACK (the status line says so): it finishes the moves already planned (a few seconds), lifts the nozzle and switches the heaters off.
     It needs the bed mesh from step 9. Print one small flat layer (a single-layer square). The skirt should be lightly squished: not see-through (too close), not
     round and lifting (too far). Adjust the offset in steps of 0.02 mm on the manual Z page and SAVE.
 13. Power-loss test, only when the first layer is good: start a short print and send `M413 O` from the Terminal. Then power-cycle and

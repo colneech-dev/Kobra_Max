@@ -4675,14 +4675,15 @@ void DgusTFT::page174_handle(void) {
 enum fl_stage_t : uint8_t { FL_IDLE, FL_HEAT, FL_HOME, FL_PURGE, FL_SQUARES, FL_END, FL_TAIL };
 static fl_stage_t fl_stage = FL_IDLE;
 static int8_t  fl_sq = 0;          // square being printed
-static int16_t fl_row = -2;        // -2 travel there, -1 lower, 0.. one zig-zag row (X pass + Y step), FL_ROWS = done
+static int16_t fl_row = -2;        // -2 travel there, -1 lower, -3 / -4 outline, 0.. one zig-zag row (X pass + Y step), FL_ROWS = done
 static bool    fl_abort = false, fl_homed = false;
 static bool    fl_mesh_off = false;   // stopped because the bed mesh was not active after homing
 
 #define FL_AHEAD     6                  // blocks the planner may hold before the next rows are queued (a STOP stays quick)
 #define FL_SQUARES_N 5
 #define FL_SIZE      24                 // mm, side of a square
-#define FL_ROWS      53                 // rows per square, 0.45 mm apart: a solid layer
+#define FL_INSET     0.45f              // mm, the rows start this far inside the outline
+#define FL_ROWS      52                 // rows per square, 0.45 mm apart inside the outline: a solid layer
 #define FL_E_PER_MM  0.0374f            // mm of 1.75 mm filament per mm of line: 0.45 wide x 0.2 high
 // Square centres in % of the bed, in print order: centre, back-right, back-left, front-right, front-left. The front-left used to come
 // first and was the only poor one (2026-11-02): printing it last tells a bad position (still poor) from a bad first square (the new
@@ -4769,18 +4770,40 @@ static void fl_poll() {
         // No stationary prime here: 1 mm pushed out while the nozzle sat at the start corner made a lump that tore the first rows
         // (hardware photos 2026-11-01). The retracted 1 mm is put back during the first row instead (see below).
         injectCommands_P(PSTR("G1 Z0.2 F600\nG1 F1500"));
-        fl_row = 0;
+        fl_row = -3;
+      }
+      else if (fl_row == -3 || fl_row == -4) {
+        // Outline first, like a slicer's outer wall: one loop round the square (two injections of two sides). It anchors the rows, shows
+        // line width and flow, and starts the flow on a short path; the 1 mm retracted at the end of the previous square comes back on
+        // the first side. The second injection ends with the move to the first row.
+        char ea[12], eb[12];
+        fmt_dec(ea, sizeof(ea), FL_SIZE * FL_E_PER_MM + (fl_row == -3 ? 1.0f : 0.0f), 4);
+        fmt_dec(eb, sizeof(eb), FL_SIZE * FL_E_PER_MM, 4);
+        if (fl_row == -3) {
+          snprintf(c, sizeof(c), "G1 X%d E%s\nG1 Y%d E%s", x0 + FL_SIZE, ea, y0 + FL_SIZE, eb);
+          fl_row = -4;
+        }
+        else {
+          char xs[12], ys[12];
+          fmt_dec(xs, sizeof(xs), x0 + FL_INSET, 2);
+          fmt_dec(ys, sizeof(ys), y0 + FL_INSET, 2);
+          snprintf(c, sizeof(c), "G1 X%d E%s\nG1 Y%d E%s\nG1 X%s Y%s E0.0240", x0, eb, y0, eb, xs, ys);
+          fl_row = 0;
+        }
+        injectCommands(c);
+        snprintf(wz_msg[3], sizeof(wz_msg[3]), "Square %d/%d  outline", fl_sq + 1, FL_SQUARES_N);
       }
       else if (fl_row < FL_ROWS) {
-        char e1[12], e2[12], ys[12];
-        const int xe = (fl_row & 1) ? x0 : x0 + FL_SIZE;
-        fmt_dec(e1, sizeof(e1), FL_SIZE * FL_E_PER_MM + (fl_row == 0 ? 1.0f : 0.0f), 4);   // first row: the 1 mm retracted at the end of the previous square comes back here
+        char e1[12], e2[12], ys[12], xs[12];
+        const float xa = x0 + FL_INSET, xb = x0 + FL_SIZE - FL_INSET;
+        fmt_dec(xs, sizeof(xs), (fl_row & 1) ? xa : xb, 2);
+        fmt_dec(e1, sizeof(e1), (xb - xa) * FL_E_PER_MM, 4);
         if (fl_row < FL_ROWS - 1) {
           fmt_dec(e2, sizeof(e2), 0.45f * FL_E_PER_MM, 4);
-          fmt_dec(ys, sizeof(ys), y0 + (fl_row + 1) * 0.45f, 2);
-          snprintf(c, sizeof(c), "G1 X%d E%s\nG1 Y%s E%s", xe, e1, ys, e2);
+          fmt_dec(ys, sizeof(ys), y0 + FL_INSET + (fl_row + 1) * 0.45f, 2);
+          snprintf(c, sizeof(c), "G1 X%s E%s\nG1 Y%s E%s", xs, e1, ys, e2);
         }
-        else snprintf(c, sizeof(c), "G1 X%d E%s", xe, e1);
+        else snprintf(c, sizeof(c), "G1 X%s E%s", xs, e1);
         injectCommands(c);
         fl_row++;
         snprintf(wz_msg[3], sizeof(wz_msg[3]), "Square %d/%d  row %d/%d", fl_sq + 1, FL_SQUARES_N, (int)fl_row, FL_ROWS);
