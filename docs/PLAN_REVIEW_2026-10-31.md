@@ -9,6 +9,10 @@ Approved by the owner (2026-10-31): Phase 1 yes, Phase 2 yes, Phase 3 (thumbnail
 
 ---
 
+## 0b. release_v50 (built 2026-11-03, commit fae5ae4, local only)
+
+Flash 85.4% (181,992 of 212,992 B), RAM 10.4%; first `pio run` attempt succeeded (own build folder `.pio_release`, log kept in `build_logs/`), `firmware.bin` needed no repair (stack 0x1FFFF570, reset 0xC389, 93% non-zero, identical to an independent objcopy); release check 0 errors. Contains everything of v49 (5-POINT Z page 119, wizard of 5 steps) plus the review fixes: 5-point surface clamp and 0.3 mm limit, restore on leaving the page, stale-mesh check (G30 at the centre node, Z page / 5-point / first layer test), no-mesh warning at homing, Leveling-menu no-mesh message, inject slots 8, Terminal wraps long replies, page 115 and M1024 removed, X/E build check, boot temperature warning, thermal protection 40 s / 4 C. Open work: `docs/OPEN_ITEMS.md`. Needs the v50 display set AND firmware together. UNTESTED on hardware.
+
 ## 0a. release_v48 (built 2026-11-01, commit 18c1bf5, local only)
 
 Flash 83.7% (178,176 of 212,992 B), RAM 10.3%, cross-check 0 errors, library current, `firmware.bin` checked (stack 0x1FFFF418, reset 0xC389, 93% non-zero, byte-identical to an independent objcopy of the ELF). The first `pio run` attempt failed for a reason that was not captured (the log is overwritten by the retry; the second attempt compiled the same source without error): treat it as transient. Contents beyond v47: 1.17 (15 mm prime + two-pass purge), 1.18 (BACK = STOP, status hint, stop clears the pending purge/square lines), 1.19 (explicit `M420 S1 Z0`, stop if the mesh is off), 1.20 (no stationary prime at each square start). Display files other than the About picture are the same as v47: flashing `firmware.bin` alone is enough. Not in v48: 1.1 (impossible, see 1.1), 1.4, 1.6, 1.8, 1.15, 1.16, Phases 2 to 4.
