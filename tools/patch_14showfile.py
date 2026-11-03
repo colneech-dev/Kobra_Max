@@ -597,7 +597,6 @@ _STATUS_ONLY = [
     121, 127, 131, 132, 135, 136,
     140, 141, 144, 145, 146, 147, 148, 149, 150, 151, 153,
     # Standalone system/utility pages
-    115,   # auto Z offset
     117,   # system CHS audio-off
     170,   # system ENG audio-off
     # CHS error/status pages (177-188: homing, heater/therm/endstop faults)

@@ -1037,21 +1037,6 @@ def page_stats():
     return img
 
 
-def page_auto_offset():
-    img, draw = new_page()
-    status_bar(draw)
-    title_bar(draw, "AUTO Z OFFSET")
-    y = CONTENT_Y1 + 18
-    btn(draw, MARGIN, y, W - MARGIN, y + 42, "PREPARE  (move to centre)", style='ghost',   icon=0xf05b);  y += 54
-    btn(draw, MARGIN, y, W//2-4, y+42, "-1.0 mm", style='normal',  icon=0xf068)
-    btn(draw, W//2+4, y, W-MARGIN, y+42, "+1.0 mm", style='primary', icon=0xf067);  y += 54
-    btn(draw, MARGIN, y, W//2-4, y+42, "-0.1 mm", style='normal',  icon=0xf068)
-    btn(draw, W//2+4, y, W-MARGIN, y+42, "+0.1 mm", style='primary', icon=0xf067);  y += 54
-    btn(draw, MARGIN, y, W - MARGIN, y + 42, "FINE  +0.1 mm", style='ghost',   icon=0xf067)
-    footer_1btn(draw, "BACK", style='ghost')
-    return img
-
-
 def page_outage_recovery():
     img, draw = new_page()
     status_bar(draw)
@@ -1246,7 +1231,6 @@ def _build_page_map():
 
     # Special standalone pages
     m['093'] = page_stats   # (its picture is not written while it is a boot frame; the map entry is still the base of a pressed picture)
-    m['115'] = page_auto_offset
     m['117'] = lambda: page_system(audio_on=False)   # CHS mute
     m['170'] = lambda: page_system(audio_on=False)   # ENG mute
 

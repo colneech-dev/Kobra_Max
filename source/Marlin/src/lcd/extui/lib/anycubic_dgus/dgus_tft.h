@@ -94,7 +94,6 @@
 
 #define PAGE_PRINTERSTATS   (93+PAGE_OFFSET)// MEL_MOD for printer stats (213)
 
-#define PAGE_AUTO_OFFSET    (115+PAGE_OFFSET)
 
 #define PAGE_SYSTEM_CHS_AUDIO_OFF   (117+PAGE_OFFSET)
 
@@ -551,7 +550,6 @@ namespace Anycubic {
       static void page32_handle(void);
       static void page33_handle(void);
       static void page34_handle(void);
-      static void page115_handle(void);
       static void page171_handle(void);     // CHS power outage resume handler
       static void page173_handle(void);     // ENG power outage resume handler
       static void page175_handle(void);     // ENG probe preheating handler

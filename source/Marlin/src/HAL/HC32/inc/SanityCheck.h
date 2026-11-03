@@ -108,3 +108,16 @@
     #error "SERIAL_DMA is not supported with arduino core version < 1.1.0."
   #endif
 #endif
+
+// Kobra Max: X (TMC2209, address 0) and E0 (TMC2208, no address pins, answers address 0 as well) share one UART address. Every write for one
+// reaches both, so their settings can never differ (proven on hardware 2026-11-01: M906 E500 also changed X). Stop a later edit from
+// silently making them differ.
+#if defined(X_CURRENT) && defined(E0_CURRENT) && (X_CURRENT != E0_CURRENT)
+  #error "X_CURRENT and E0_CURRENT must be equal: the X and E0 drivers share UART address 0 (see HAL/HC32/inc/SanityCheck.h)."
+#endif
+#if defined(X_MICROSTEPS) && defined(E0_MICROSTEPS) && (X_MICROSTEPS != E0_MICROSTEPS)
+  #error "X_MICROSTEPS and E0_MICROSTEPS must be equal: the X and E0 drivers share UART address 0."
+#endif
+#if ENABLED(STEALTHCHOP_XY) != ENABLED(STEALTHCHOP_E)
+  #error "STEALTHCHOP_XY and STEALTHCHOP_E must both be on or both off: the X and E0 drivers share UART address 0."
+#endif

@@ -299,8 +299,8 @@
  * THERMAL_PROTECTION_HYSTERESIS and/or THERMAL_PROTECTION_PERIOD
  */
 #if ENABLED(THERMAL_PROTECTION_HOTENDS)
-  #define THERMAL_PROTECTION_PERIOD 10        // (seconds)
-  #define THERMAL_PROTECTION_HYSTERESIS 10     // (°C)
+  #define THERMAL_PROTECTION_PERIOD 40        // (seconds) Marlin's default (was 10; untested on prints: revert if a part-cooling fan causes false errors)
+  #define THERMAL_PROTECTION_HYSTERESIS 4      // (°C) Marlin's default (was 10)
 
   //#define ADAPTIVE_FAN_SLOWING              // Slow part cooling fan if temperature drops
   #if BOTH(ADAPTIVE_FAN_SLOWING, PIDTEMP)

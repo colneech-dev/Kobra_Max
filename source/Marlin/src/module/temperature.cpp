@@ -1350,6 +1350,8 @@ void Temperature::maxtemp_error(const heater_id_t heater_id) {
     DWIN_Popup_Temperature(1);
   #endif
   if (millis() < 5000) {   // Anycubic: ADC filters are still filling at boot: ignore the fault, but never leave a heater on
+    static bool warned = false;
+    if (!warned) { warned = true; SERIAL_ECHO_MSG("Warning: temperature fault ignored during start-up (heaters off)"); }
     disable_all_heaters();
     return;
   }
@@ -1361,6 +1363,8 @@ void Temperature::mintemp_error(const heater_id_t heater_id) {
     DWIN_Popup_Temperature(0);
   #endif
   if (millis() < 5000) {   // Anycubic: see maxtemp_error
+    static bool warned = false;
+    if (!warned) { warned = true; SERIAL_ECHO_MSG("Warning: temperature fault ignored during start-up (heaters off)"); }
     disable_all_heaters();
     return;
   }

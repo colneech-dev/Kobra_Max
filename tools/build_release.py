@@ -42,7 +42,11 @@ NL          = chr(10)   # (kept as chr() so this file has no escape sequences to
 RELEASE_DIR = sys.argv[sys.argv.index("--out") + 1] if "--out" in sys.argv else "release"
 DWIN_OUT    = os.path.join(RELEASE_DIR, "DWIN_SET")
 os.environ["DISPLAY_SET_TAG"] = os.path.basename(os.path.normpath(RELEASE_DIR))   # shown on the About page (generate_screens.py)
-FW_SRC      = os.path.join(".pio", "build", "HC32F460E_kobra_max", "firmware.bin")
+# Release builds run in their OWN build folder: an IDE (VS Code PlatformIO) building or cleaning .pio/build at the same time produced an
+# empty firmware.bin twice and failed the first attempt of every build. Every attempt's log is kept in build_logs/.
+BUILD_ROOT  = ".pio_release"
+LOG_DIR     = "build_logs"
+FW_SRC      = os.path.join(BUILD_ROOT, "HC32F460E_kobra_max", "firmware.bin")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -118,8 +122,21 @@ def git_info():
 # ── 1. Build firmware ────────────────────────────────────────────────────────
 
 step("Building firmware (pio run)")
-print("  this takes a minute ...", flush=True)
-result = subprocess.run(["pio", "run"], capture_output=True, text=True)
+print("  this takes several minutes ...", flush=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+_pio_env = dict(os.environ, PLATFORMIO_BUILD_DIR=os.path.abspath(BUILD_ROOT))
+_tag = os.path.basename(os.path.normpath(RELEASE_DIR))
+result = None
+for _attempt in (1, 2, 3):
+    result = subprocess.run(["pio", "run"], capture_output=True, text=True, env=_pio_env)
+    _log = os.path.join(LOG_DIR, f"{_tag}_attempt{_attempt}.log")
+    with open(_log, "w", encoding="utf-8", errors="replace") as _f:
+        _f.write(result.stdout + chr(10) + result.stderr)
+    if result.returncode == 0:
+        print(f"  build ok on attempt {_attempt} (log: {_log})")
+        break
+    print(f"  attempt {_attempt} failed (log: {_log})", flush=True)
+BUILD_LOG = _log
 if result.returncode != 0:
     print("FAILED")
     # Print last 30 lines of output for diagnosis
@@ -297,6 +314,7 @@ if SCRIPT_ICL:
 
 # ── 4. Copy firmware binary ───────────────────────────────────────────────────
 
+shutil.copyfile(BUILD_LOG, os.path.join(RELEASE_DIR, "build.log"))
 fw_copied = copy_file(FW_SRC, RELEASE_DIR, required=False)
 if fw_copied:
     fw_out = os.path.join(RELEASE_DIR, "firmware.bin")
@@ -340,6 +358,10 @@ Build: {git_ref}
 Date:  {build_ts}
 =======================================================
 {stale_banner}
+FLASH THE DISPLAY FILES AND firmware.bin OF THE *SAME* RELEASE. The firmware sends key codes the display files define: a mixed
+set mis-routes buttons (the wizard keys were renumbered in release_v49). Check About after flashing: the build id is the
+firmware, "display set: release_vNN" is the display.
+
 SD CARD CONTENTS
 ----------------
 The SD card needs two separate flashing passes:
@@ -455,5 +477,19 @@ print(f"  output: {os.path.abspath(RELEASE_DIR)}/")
 if not fw_copied:
     print()
     print("  *** Run 'pio run' then re-run this script to include firmware.bin ***")
+# The package must hold exactly the repository's display files (and the flashed touch file the generator's zones).
+_chk = subprocess.run([PYTHON, os.path.join("tools", "cross_check_display.py"), "--release", RELEASE_DIR], capture_output=True, text=True)
+print("  release check: " + (_chk.stdout.strip().splitlines() or ["(no output)"])[-1])
+if _chk.returncode != 0:
+    print(_chk.stdout[-1500:])
+    print("FAILED: the release package does not match the repository display files")
+    sys.exit(1)
+
+# The About pictures carry the release name; do not leave the tagged copies in the working tree (they made 013.bmp / 133.bmp
+# show as modified after every build).
+try:
+    subprocess.run(["git", "checkout", "--", "DWIN_SET/013.bmp", "DWIN_SET/133.bmp"], capture_output=True)
+except OSError:
+    pass
 print()
 print("Done.")

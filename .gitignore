@@ -110,3 +110,7 @@ release_v*/
 # Script-generated display artefacts (rebuild with tools/build_icl.py / generate_spinner_icons.py)
 DWIN_SET/auto_icl/
 DWIN_SET/spinner_icons/
+
+# Release builds use their own build folder (tools/build_release.py) so an IDE build in .pio cannot collide with them
+.pio_release/
+build_logs/

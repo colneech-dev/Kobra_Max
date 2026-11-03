@@ -214,17 +214,6 @@ _ZONES = [
     # ── PAGE 93 / 213  Printer Stats ─────────────────────────────────────────
     ([93, 213], 8, 429, 264, 473, 1),  # BACK
 
-    # ── PAGE 115  Auto Z-Offset — only when M1024 exists (see ui_features) ──
-    *([] if not uf.HAS_M1024 else [
-        ([115],   8, 110, 264, 152, 6), # PREPARE (move to centre)
-        ([115],   8, 164, 132, 206, 2), # −1.0 mm
-        ([115], 140, 164, 264, 206, 3), # +1.0 mm
-        ([115],   8, 218, 132, 260, 4), # −0.1 mm
-        ([115], 140, 218, 264, 260, 5), # +0.1 mm
-        ([115],   8, 272, 264, 314, 7), # FINE +0.1 mm (fine-step command)
-        ([115],   8, 429, 264, 473, 1), # BACK
-    ]),
-
     # ── PAGES 171 / 173  Power-Loss Recovery ─────────────────────────────────
     # CANCEL=left(key2), RESUME=right(key1)
     ([171, 173],   8, 429, 132, 473, 2), # CANCEL

@@ -29,14 +29,11 @@ _VER = ROOT / "source/Marlin/src/inc/Version.h"
 
 HAS_INPUT_SHAPING = False   # M593  — Marlin 2.1.x only
 HAS_MPC           = False   # M306  — Marlin 2.1.x only (this branch tunes with M303 PID)
-HAS_M1024         = False   # stock-Anycubic Z-offset wizard command; no G-code implements it
 
 # Screens that exist as BMPs but are unreachable while their feature flag is off.
 # They are not drawn into the cross-check and get no touch zones.
 HIDDEN_PAGES = set()
 HIDDEN_PAGES |= {126}      # page 6 is the Terminal's on-screen keyboard now (single page for both languages)
-if not HAS_M1024:
-    HIDDEN_PAGES |= {115}
 
 # ── Display features that need extra files on the display ──────────────────────────────────────
 #

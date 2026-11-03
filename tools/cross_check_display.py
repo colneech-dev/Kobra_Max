@@ -22,6 +22,8 @@ Run from the project root:
 
 --overlay DIR writes each screen with touch zones (red, key number) and show-file
 records (cyan) drawn on top, for eyeballing.
+--release DIR also checks that a release package holds the repository's display files.
+Also checked: the flashed 13TouchFile.bin equals the generator's zones; no two text fields overlap in display memory.
 
 Exit code: 0 = no errors, 1 = errors. Warnings never fail the run.
 """
@@ -159,7 +161,7 @@ def parse_handlers(text):
 def handler_for(page, idle_text):
     """Name of the handler IdleLoop runs for a device page, or None."""
     # Mirrors the explicit branches of DgusTFT::IdleLoop (keep in sync when they change).
-    explicit = {115: '115', 117: '11', 170: '11', 171: '171',   # the Mute pages run the System page's handler
+    explicit = {117: '11', 170: '11', 171: '171',   # the Mute pages run the System page's handler
                 173: '173',
                 175: '175', 176: '176', 213: '213', 93: '213', 214: '214', 215: '215',
                 216: '216', 217: '217', 187: '199_to_200', 188: '199_to_200',
@@ -205,6 +207,73 @@ def check_press_effect(page_map):
         a, b = page_map.get(f"{page:03d}"), page_map.get(f"{twin:03d}")
         if a and b and ImageChops.difference(a(), b()).getbbox():
             err(f"pages {page} and {twin} share a pressed picture but their art differs")
+
+
+def check_touch_file():
+    """[8] The flashed 13TouchFile.bin must hold exactly the zones (page, rectangle, key) the generator defines; everything above
+    works from the generator, so a stale binary on disk was invisible."""
+    tf = Path("DWIN_SET/13TouchFile.bin")
+    if not tf.exists():
+        warn("13TouchFile.bin missing")
+        return
+    raw = tf.read_bytes()
+    binz = set()
+    for i in range(0, len(raw) - 31, 32):
+        r = raw[i:i + 32]
+        if r[:2] == b'\xff\xff':
+            break
+        binz.add(tuple(int.from_bytes(r[k:k + 2], 'big') for k in (0, 2, 4, 6, 8)) + (r[21],))
+    genz = set(gc._expand_zones(gc._ZONES))
+    if binz != genz:
+        err(f"13TouchFile.bin differs from the generator: only in the file {sorted(binz - genz)[:5]}, only in the generator {sorted(genz - binz)[:5]}"
+            " - run tools/generate_dwin_controls.py")
+
+
+def check_vp_overlap():
+    """[9] No two text fields may overlap in the display's variable memory (a text record of Text_Length n uses ceil(n / 2) words)."""
+    if not SHOWFILE.exists():
+        return
+    d = SHOWFILE.read_bytes()
+    longest = {}
+    for pg in range(int.from_bytes(d[8:10], 'big')):
+        n = int.from_bytes(d[16 + pg * 4:18 + pg * 4], 'little')
+        off = int.from_bytes(d[18 + pg * 4:20 + pg * 4], 'big')
+        for j in range(n):
+            r = d[off + j * 32: off + j * 32 + 32]
+            if len(r) < 32:
+                break
+            if int.from_bytes(r[0:2], 'big') == 0x5A11:
+                vp = int.from_bytes(r[6:8], 'big')
+                longest[vp] = max(longest.get(vp, 0), (int.from_bytes(r[22:24], 'big') + 1) // 2)
+    starts = sorted(longest)
+    for a, b in zip(starts, starts[1:]):
+        if a + longest[a] > b:
+            err(f"VP 0x{a:04X} (text length {longest[a] * 2}) runs into VP 0x{b:04X}")
+
+
+def check_release(rel):
+    """[10] A release package must hold exactly the repository's display files (the .icl libraries are built per release: check_icl.py;
+    the two About pictures carry the release name)."""
+    ds = rel / "DWIN_SET"
+    if not ds.is_dir():
+        err(f"{ds} not found")
+        return
+    for f in sorted(ds.iterdir()):
+        if f.suffix.lower() == '.icl':
+            continue
+        src = DWIN_SET / f.name
+        if not src.exists():
+            warn(f"release file {f.name} is not in DWIN_SET")
+        elif f.read_bytes() != src.read_bytes():
+            err(f"release {f.name} differs from DWIN_SET/{f.name}")
+    art = rel / "ICL_SOURCE_BMPS"
+    if art.is_dir():
+        for f in sorted(art.glob('*.bmp')):
+            if f.name in ('013.bmp', '133.bmp'):
+                continue
+            src = DWIN_SET / f.name
+            if src.exists() and f.read_bytes() != src.read_bytes():
+                err(f"release ICL_SOURCE_BMPS/{f.name} differs from DWIN_SET/{f.name}")
 
 
 def _eval_addr(expr):
@@ -334,6 +403,10 @@ def main():
 
     check_vp_addresses()
     check_press_effect(page_map)
+    check_touch_file()
+    check_vp_overlap()
+    if '--release' in sys.argv:
+        check_release(Path(sys.argv[sys.argv.index('--release') + 1]))
 
     print(f"cross_check_display: {len(page_map)} screens, {len(handlers)} handlers parsed")
     for w in warnings:

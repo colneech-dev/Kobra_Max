@@ -55,9 +55,15 @@ would end up that much too low. For the same reason the manual Z page and the wi
     lowers to 0.50 mm above the centre-calibrated level. Lower it with the - buttons until the paper just drags and press STORE THIS POINT.
     The number at paper contact is the mesh error there (0.00 = right; -0.15 = the mesh was 0.15 mm too high). Do the corners that need it
     (at least the ones whose squares fail); the corner label shows what is stored. The four values become a smooth correction over the whole
-    mesh (a tilt, a twist and a bowl; zero at the centre; at most 0.5 mm). SAVE keeps it with the settings, BACK throws the unsaved corrections
-    away. Run the squares again to check; repeat the corner that is still off (the reading starts from the corrected mesh).
+    mesh (a tilt, a twist and a bowl; zero at the centre; at most 0.3 mm; outside the corner squares it keeps the value at their edge).
+    SAVE keeps it with the settings, BACK throws the unsaved corrections away (so does leaving the page any other way). The first corner
+    of a visit first probes the bed centre and compares it with the mesh: if the bed is more than 0.3 mm away from where the mesh says
+    (a plate was added or removed) the page says "Bed moved: redo the mesh" and does not lower the nozzle. The Z offset page and the
+    first layer test do the same check. Run the squares again to check; repeat the corner that is still off (the reading starts from the corrected mesh).
     Redo this page after every new mesh and whenever the bed surface changes.
+
+Without a bed mesh Z0 is NOT at the bed (the mesh holds the bed height, the offset only the gap above it): after a home the firmware
+prints "Warning: no bed mesh" on the serial port (OctoPrint / USB prints have no screen warning). Make the mesh before any print.
 
 ## First print
 
