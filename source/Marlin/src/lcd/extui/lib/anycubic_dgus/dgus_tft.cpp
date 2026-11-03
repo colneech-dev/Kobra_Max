@@ -224,9 +224,11 @@ static bool z_is_hot() {
 // STALE MESH CHECK. The mesh holds absolute heights, so after the bed surface changes (a glass plate on or off, a different sheet) the
 // stored mesh is wrong by the thickness and the Z pages would lower the nozzle onto the bed (owner, 2026-11-02, glass plate). Before the
 // nozzle is lowered the bed centre is probed (G30; its reply "Bed X: .. Y: .. Z: v" is in the same units as the mesh) and compared with
-// the mesh value at that node. More than 0.3 mm apart: refuse. Used by the Z offset page, the 5-point page and the first layer test.
+// the mesh value at that node. More than 0.5 mm apart (a plate is 3 to 4 mm; probe noise is 0.06 mm): refuse.
+// IMPORTANT: G30 switches the bed mesh OFF and leaves it off. Whoever calls stale_gate() must send M420 S1 Z0 before the next move
+// (the first version did not: the first layer test stopped with "mesh is off", and the Z pages would have lowered the nozzle without the mesh). Used by the Z offset page, the 5-point page and the first layer test.
 static bool    sc_listen = false, sc_got = false;   // the serial hook is looking for the G30 reply
-static float   sc_value = 0;
+static float   sc_value = 0, sc_diff = 0;   // the probed height and how far it was from the mesh
 static uint8_t sc_state = 0;                        // 0 idle, 1 probing, 2 done
 static void stale_reset() { sc_state = 0; sc_listen = false; }
 static int stale_gate() {   // 0 = still working, 1 = the mesh matches the bed, -1 = the bed is not where the mesh says
@@ -248,7 +250,8 @@ static int stale_gate() {   // 0 = still working, 1 = the mesh matches the bed, 
   if (!sc_got) return 1;   // no reading came back: do not block the user
   xy_uint8_t p;
   p.x = cx; p.y = cy;
-  return fabsf(sc_value - getMeshPoint(p)) > 0.3f ? -1 : 1;
+  sc_diff = fabsf(sc_value - getMeshPoint(p));
+  return sc_diff > 0.5f ? -1 : 1;
 }
 
 // Bed mesh viewer (page 208): the values are sent a few times when the page opens, not continuously (see page208_handle).
@@ -3270,10 +3273,10 @@ void DgusTFT::page17_handle(void)
             stale_reset();
             z_need_check = false;
             z_heat_wait = false;
-            if (g < 0) { z_stale = true; zoffset_moving = false; inject_after_P(PSTR("G1 Z10 F600")); }
+            if (g < 0) { z_stale = true; zoffset_moving = false; inject_after_P(PSTR("M420 S1 Z0\nG1 Z10 F600")); }
             else {
-              char cmd[24];
-              sprintf_P(cmd, PSTR("G1 Z%u.%u F200"), (unsigned)(z_lower_tenths / 10), (unsigned)(z_lower_tenths % 10));
+              char cmd[40];   // M420 S1 Z0: G30 left the mesh off (harmless when no check ran)
+              sprintf_P(cmd, PSTR("M420 S1 Z0\nG1 Z%u.%u F200"), (unsigned)(z_lower_tenths / 10), (unsigned)(z_lower_tenths % 10));
               injectCommands(cmd);
             }
           }
@@ -3281,7 +3284,7 @@ void DgusTFT::page17_handle(void)
       }
       else if (zoffset_moving && !commandsInQueue()) zoffset_moving = false;
       char st[28];
-      if (z_stale) strcpy_P(st, PSTR("Bed moved: redo the mesh"));
+      if (z_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(st, sizeof(st), PSTR("Mesh off by %u.%02u mm: redo"), h / 100, h % 100); }
       else if (az_stage == AZ_TEST) strcpy_P(st, PSTR("Testing probe (5x)..."));
       else if (z_heat_wait && !commandsInQueue()) {
 #if LEVELING_NOZZLE_TEMP && LEVELING_BED_TEMP
@@ -4701,6 +4704,7 @@ static int16_t fl_row = -2;        // -2 travel there, -1 lower, -3 / -4 outline
 static bool    fl_abort = false, fl_homed = false;
 static bool    fl_mesh_off = false;   // stopped because the bed mesh was not active after homing
 static bool    fl_stale = false;      // stopped because the probe found the bed somewhere else than the mesh says
+static bool    fl_gate_done = false;  // the stale mesh check has run (and the mesh is switched on again)
 
 #define FL_AHEAD     6                  // blocks the planner may hold before the next rows are queued (a STOP stays quick)
 #define FL_SQUARES_N 5
@@ -4732,6 +4736,7 @@ static void fl_start() {
   fl_homed = false;
   fl_mesh_off = false;
   fl_stale = false;
+  fl_gate_done = false;
   stale_reset();
 }
 
@@ -4779,15 +4784,18 @@ static void fl_poll() {
     case FL_PURGE:
       // The purge sequence has run, so the G28 before it is finished: the bed mesh must be on now (G28 switches it on again, and the
       // sequence sends M420 S1 Z0 as well). Without it the nozzle would be several mm off the bed: stop instead of printing in the air.
-      if (!getLevelingActive()) { fl_mesh_off = true; fl_abort = true; break; }
-      {
+      if (!fl_gate_done) {
         // Probe the bed centre and compare it with the mesh (a plate added or removed since the mesh was made): refuse to print in the air
-        // or into the bed. The probe pass takes a few seconds; the gate waits for the queue itself.
+        // or into the bed. G30 switches the mesh OFF and leaves it off, so M420 S1 follows at once (and comes before the mesh-on check).
         const int g = stale_gate();
         if (g == 0) break;
         stale_reset();
-        if (g < 0) { fl_stale = true; fl_abort = true; break; }
+        fl_gate_done = true;
+        injectCommands_P(PSTR("M420 S1 Z0"));
+        if (g < 0) { fl_stale = true; fl_abort = true; }
+        break;
       }
+      if (!getLevelingActive()) { fl_mesh_off = true; fl_abort = true; break; }
       fl_stage = FL_SQUARES;
       break;
 
@@ -4850,7 +4858,7 @@ static void fl_poll() {
 
     case FL_END:
       // lift, then park at the back centre so the last square is not hidden under the head (owner, 2026-11-02)
-      if (fl_homed) injectCommands_P(PSTR("G1 E-1 F1800\nG1 Z10 F600\nG1 X200 Y395 F6000\nM82\nM104 S0\nM140 S0"));
+      if (fl_homed) injectCommands_P(PSTR("M420 S1 Z0\nG1 E-1 F1800\nG1 Z10 F600\nG1 X200 Y395 F6000\nM82\nM104 S0\nM140 S0"));
       else          injectCommands_P(PSTR("M82\nM104 S0\nM140 S0"));
       fl_stage = FL_TAIL;
       strcpy_P(wz_msg[WZ_FIRST], PSTR("Finishing..."));
@@ -4858,7 +4866,10 @@ static void fl_poll() {
 
     case FL_TAIL:   // the finishing commands have run (the queue is empty): the test is over
       fl_stage = FL_IDLE;
-      if (fl_abort) strcpy_P(wz_msg[WZ_FIRST], fl_mesh_off ? PSTR("Stopped: bed mesh is off") : fl_stale ? PSTR("Stopped: bed moved") : PSTR("Stopped"));
+      if (fl_abort) {
+        if (fl_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), PSTR("Stopped: mesh off %u.%02u mm"), h / 100, h % 100); }
+        else strcpy_P(wz_msg[WZ_FIRST], fl_mesh_off ? PSTR("Stopped: bed mesh is off") : PSTR("Stopped"));
+      }
       else { wz_done[WZ_FIRST] = true; strcpy_P(wz_msg[WZ_FIRST], PSTR("Done: check the 5 squares")); }
       break;
 
@@ -4984,12 +4995,12 @@ void DgusTFT::page119_handle(void) {
             p5_heat_wait = false;
             if (g < 0) {
               p5_stale = true; p5_busy = false; p5_pt = -1;
-              inject_after_P(PSTR("G1 Z10 F600"));
+              inject_after_P(PSTR("M420 S1 Z0\nG1 Z10 F600"));
             }
             else {
               char cmd[64];
-              if (checked)   // the probe pass left the nozzle at the centre: back to the corner, then down
-                sprintf_P(cmd, PSTR("G1 Z5 F600\nG1 X%d Y%d F4000\nG1 Z%u.%u F200"), p5_tx, p5_ty, (unsigned)(P5_START_TENTHS / 10), (unsigned)(P5_START_TENTHS % 10));
+              if (checked)   // the probe pass left the nozzle at the centre with the mesh OFF: mesh on, back to the corner, then down
+                sprintf_P(cmd, PSTR("M420 S1 Z0\nG1 Z5 F600\nG1 X%d Y%d F4000\nG1 Z%u.%u F200"), p5_tx, p5_ty, (unsigned)(P5_START_TENTHS / 10), (unsigned)(P5_START_TENTHS % 10));
               else
                 sprintf_P(cmd, PSTR("G1 Z%u.%u F200"), (unsigned)(P5_START_TENTHS / 10), (unsigned)(P5_START_TENTHS % 10));
               injectCommands(cmd);
@@ -5083,7 +5094,7 @@ void DgusTFT::page119_handle(void) {
 
   if (p5_msg[0] && millis() - p5_msg_ms > 3000) p5_msg[0] = '\0';
   if (!getLevelingIsValid()) strcpy_P(b, PSTR("Make the bed mesh first"));
-  else if (p5_stale) strcpy_P(b, PSTR("Bed moved: redo the mesh"));
+  else if (p5_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(b, sizeof(b), PSTR("Mesh off by %u.%02u mm: redo"), h / 100, h % 100); }
   else if (p5_msg[0]) strlcpy(b, p5_msg, sizeof(b));
   else if (sc_state == 1) strcpy_P(b, PSTR("Checking mesh vs bed..."));
   else if (p5_busy && p5_heat_wait && !commandsInQueue()) {

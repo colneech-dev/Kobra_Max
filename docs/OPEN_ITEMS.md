@@ -22,3 +22,6 @@ The full history of decisions and results is in `PLAN_REVIEW_2026-10-31.md`. Thi
 - Host prints (OctoPrint / USB) are not stopped when no mesh exists.
 - The Terminal wraps long replies over two rows; it still shows only 13 rows.
 - A bed surface change needs a new mesh AND a new Z offset (the stale check catches it before the nozzle goes down, not in a print).
+
+## v51 (2026-11-03)
+- Fixed: first layer test stopped after the clearing line and parked at back centre. Cause: the stale-mesh check (G30 at the centre) leaves the bed mesh OFF (G30 never re-enables it). v51 sends M420 S1 Z0 after the check (first layer test, Z page, 5-point page, test tail). Threshold 0.3 -> 0.5 mm; message now shows the measured difference ("mesh off 0.62 mm"). Untested on hardware.
