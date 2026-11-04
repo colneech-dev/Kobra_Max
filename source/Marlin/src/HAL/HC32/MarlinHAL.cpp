@@ -169,7 +169,12 @@ void MarlinHAL::delay_ms(const int ms) {
   delay(ms);
 }
 
+#if ENABLED(FLASH_EEPROM_EMULATION)
+  void flash_eeprom_service();   // eeprom_flash_ab.cpp: writes a save that was held during a print
+#endif
+
 void MarlinHAL::idletask() {
+  TERN_(FLASH_EEPROM_EMULATION, flash_eeprom_service());
   #if ENABLED(MARLIN_DEV_MODE)
     // check & print serial RX errors
     MSerialT *serials[] = { &MSerial1, &MSerial2 };

@@ -1335,14 +1335,14 @@ void setup() {
     #endif
   #endif
 
-  #if HAS_MEDIA && ANY(SDCARD_EEPROM_EMULATION, POWER_LOSS_RECOVERY)
-    SETUP_RUN(card.mount());          // Mount media with settings before first_load
+  #if HAS_MEDIA && ANY(SDCARD_EEPROM_EMULATION, FLASH_EEPROM_EMULATION, POWER_LOSS_RECOVERY)
+    SETUP_RUN(card.mount());          // Mount media with settings before first_load (flash settings: for the one-time take-over of eeprom.dat)
   #endif
 
   SETUP_RUN(settings.first_load());   // Load data from EEPROM if available (or use defaults)
                                       // This also updates variables in the planner, elsewhere
   #if HAS_MEDIA && ENABLED(SDCARD_EEPROM_EMULATION)
-    // Anycubic: the settings live on the SD card; without one nothing is loaded and every value stays zero
+    // The settings live on the SD card; without one nothing is loaded and every value stays zero
     if (!card.isMounted()) SETUP_RUN(settings.reset());
   #endif
   TERN_(ANYCUBIC_LCD_DGUS, SETUP_RUN(ui.param_init()));

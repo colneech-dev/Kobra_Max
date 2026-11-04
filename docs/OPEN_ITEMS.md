@@ -39,3 +39,12 @@ Improvements, ranked: heat soak (timed, bed stays on between wizard steps); stal
 always; mesh outlier check after G29 (node versus neighbour mean) with automatic re-probe; DELAY_BEFORE_PROBING 200 (tare happens
 400 ms after arrival while the bed may still ring); slower final approach if lag depends on speed; 3x3 paper grid instead of 4 corners
 (9 points); UBL only if all of these fail (flash 85.6 %). 9x9 only if two meshes agree and the shape has structure under 120 mm.
+
+## Settings in flash (Phase 2, built 2026-11-04 as v52, UNTESTED on hardware)
+Mesh, Z offset and all settings are now stored in the chip flash (sectors 0x3C000 / 0x3E000, header + CRC32, newest valid copy wins,
+the other sector is written on each save). An existing eeprom.dat on the SD card is taken over once. Saves during a print are held
+until the print ends (erasing stalls the CPU). Test order: (1) M500 in the Terminal: expect "EEPROM: saved to flash"; (2) power off 15 s, on,
+M420 V1 / M503: mesh and M851 still there with the SD card REMOVED; (3) first boot after flashing with the old card in: expect
+"settings taken over from the SD card file"; (4) M500 during an SD print: expect "held until the print is over". If a flash write
+FAILS (message "flash write FAILED") the sectors may be write-protected by the bootloader: tell me, nothing is lost (previous copy kept).
+Unknown until tested: whether the bootloader protects 0x3C000-0x3FFFF; whether flash erase upsets the display link (a touch may be lost).

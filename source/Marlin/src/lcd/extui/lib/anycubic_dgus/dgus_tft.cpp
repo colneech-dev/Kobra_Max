@@ -2115,7 +2115,7 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
       if (lcd_txtbox_index > 0 && lcd_txtbox_index  < 6) {  // 1~5
 
         // No bed mesh in memory (leveling is switched on again by every G28, but only if a mesh exists; the
-        // settings live in eeprom.dat on the SD card): warn once and let the user decide.
+        // settings live in the chip flash): warn once and let the user decide.
         if (printer_state != AC_printer_resuming_from_power_outage && !getLevelingIsValid() && !nolevel_warn_ms) {
           nolevel_warn_ms = millis() | 1;
           SendTxtToTFT("NO LEVEL! PRINT AGAIN?", TXT_FILE_0 + 0x30 * (lcd_txtbox_index - 1));
@@ -4423,7 +4423,7 @@ void DgusTFT::page215_handle(void) {
       if (BlockedWhilePrinting()) break;
       term_run_P(PSTR("M502"));
       break;
-    case 7: // M500 SAVE (KEY_TERM_M500) — writes the EEPROM file to the SD card
+    case 7: // M500 SAVE (KEY_TERM_M500) — writes the settings to the chip flash
       if (BlockedWhilePrinting()) break;
       term_run_P(PSTR("M500"));
       break;

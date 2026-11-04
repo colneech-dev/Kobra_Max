@@ -34,8 +34,9 @@
 
 //
 // EEPROM
-// HC32 HAL has no flash EEPROM backend; use SD card emulation (SDSUPPORT is enabled).
-#define SDCARD_EEPROM_EMULATION
+// Kobra Max: settings live in the chip's own flash (two 8 KB sectors, src/HAL/HC32/eeprom/eeprom_flash_ab.cpp); an old eeprom.dat on the
+// SD card is taken over once.
+#define FLASH_EEPROM_EMULATION
 
 //
 // Limit Switches
