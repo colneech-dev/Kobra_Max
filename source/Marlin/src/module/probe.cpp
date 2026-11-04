@@ -26,6 +26,10 @@
 
 #include "../inc/MarlinConfig.h"
 
+#if ENABLED(ANYCUBIC_LCD_DGUS)
+  uint32_t ac_bed_hot_ms();   // dgus_tft.cpp: how long the bed has been at temperature
+#endif
+
 #if HAS_BED_PROBE
 
 #include "probe.h"
@@ -486,6 +490,24 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
     if (!early) {
       TERN_(WAIT_FOR_NOZZLE_HEAT, if (hotend_temp > thermalManager.wholeDegHotend(0) + (TEMP_WINDOW)) thermalManager.wait_for_hotend(0));
       TERN_(WAIT_FOR_BED_HEAT,    if (bed_temp    > thermalManager.wholeDegBed() + (TEMP_BED_WINDOW)) thermalManager.wait_for_bed_heating());
+      #if BOTH(ANYCUBIC_LCD_DGUS, WAIT_FOR_BED_HEAT) && defined(LEVELING_SOAK_SECONDS)
+        // Anycubic: heat soak. ac_bed_hot_ms() (dgus_tft.cpp) is how long the bed has been at temperature without a break.
+        if (LEVELING_SOAK_SECONDS && bed_temp) {
+          const millis_t need = SEC_TO_MS(LEVELING_SOAK_SECONDS);
+          millis_t next_msg = 0;
+          wait_for_heatup = true;   // M108 ends the wait
+          for (;;) {
+            const millis_t hot = ac_bed_hot_ms(), ms = millis();
+            if (hot >= need || !wait_for_heatup) break;
+            if (ELAPSED(ms, next_msg)) {
+              SERIAL_ECHO_MSG("Heat soak: ", (need - hot) / 1000, " s left (M108 to skip)");
+              next_msg = ms + 30000UL;
+            }
+            idle();
+          }
+          wait_for_heatup = false;
+        }
+      #endif
       #if ENABLED(PREHEAT_BEFORE_LEVELING)
         ui.probe_preheating_stop();
       #endif
@@ -903,6 +925,10 @@ float Probe::probe_at_point(const_float_t rx, const_float_t ry, const ProbePtRai
 
   // Move the probe to the starting XYZ
   do_blocking_move_to(npos, feedRate_t(XY_PROBE_FEEDRATE_MM_S));
+
+  #ifdef PROBE_SETTLE_MS
+    safe_delay(PROBE_SETTLE_MS);   // let the bed and gantry stop ringing before the strain gauge is tared
+  #endif
 
   #if ENABLED(BD_SENSOR)
     return current_position.z - bdl.read(); // Difference between Z-home-relative Z and sensor reading

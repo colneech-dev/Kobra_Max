@@ -48,3 +48,18 @@ M420 V1 / M503: mesh and M851 still there with the SD card REMOVED; (3) first bo
 "settings taken over from the SD card file"; (4) M500 during an SD print: expect "held until the print is over". If a flash write
 FAILS (message "flash write FAILED") the sectors may be write-protected by the bootloader: tell me, nothing is lost (previous copy kept).
 Unknown until tested: whether the bootloader protects 0x3C000-0x3FFFF; whether flash erase upsets the display link (a touch may be lost).
+
+## v53 (2026-11-05, UNTESTED on hardware): levelling batch from the 2026-11-04 review
+- Heat soak: LEVELING_SOAK_SECONDS 600 (Configuration.h). G29 waits inside its preheat (probe.cpp; Terminal shows "Heat soak: n s left", M108 skips; the
+  display shows the Preheating page and has no cancel button); the Z-offset page, the 5-point page and the first layer test wait with a countdown in
+  their status line (BACK leaves / STOP). A bed that has been hot 10 min without a break does not wait again. The bed stays on for 25 min between
+  steps of one job (bed_warm), so the wizard soaks once; the idle timeout / window expiry switches it off.
+- Stale check now probes the front-left node (first one G29 probes) AND the centre, prints "Mesh check: front-left x mm, centre y mm" in the Terminal
+  every time, and the first layer test shows "Mesh drift f0.12 c0.03" while it starts. Still refuses above 0.5 mm.
+- Outlier check after G29: nodes more than 0.25 mm from the mean of their neighbours (worst 4) are probed again; a node that differs by more than
+  0.08 mm from its first reading is replaced, otherwise kept (real bump). Wizard says "Mesh saved, n re-probed". Adds ~25 s per odd node.
+- PROBE_SETTLE_MS 250: pause after the XY move before the probe is tared (DELAY_BEFORE_PROBING does nothing here: it needs quiet probing).
+- About page: the SUPPORT line alternates build id / "Cfg flash #N A" (save counter and sector), "Cfg FLASH SAVE FAILED", "Cfg held until print".
+- First layer test: FL_AHEAD 6 -> 12 planner blocks (BLOCK_BUFFER_SIZE 16).
+Watch: the soak adds 10 min to the first G29 of a cold bed; false outlier hits on a real glass-edge bump (check the Terminal lines); the Z/5-point pages
+refusing nothing but now waiting before lowering.

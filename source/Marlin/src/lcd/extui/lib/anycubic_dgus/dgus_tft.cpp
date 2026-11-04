@@ -48,6 +48,13 @@
 #include "../../../../module/stepper.h"
 #include "../../../../module/planner.h"   // movesplanned() for the first-layer test
 
+#if ENABLED(FLASH_EEPROM_EMULATION)
+  uint32_t flash_eeprom_seq();      // eeprom_flash_ab.cpp (global functions, declared outside the namespace)
+  char     flash_eeprom_sector();
+  bool     flash_eeprom_failed();
+  bool     flash_eeprom_pending();
+#endif
+
 namespace Anycubic {
 
 // Number formatting helpers that Anycubic added to numtostr.cpp: "-12.34" (no printf("%f") on this toolchain) and
@@ -194,6 +201,26 @@ static void pad_right(char * const buf, const size_t size, const size_t width) {
 // the - / + buttons are ignored meanwhile (babystepping during a homing move would be wrong).
 static bool zoffset_moving = false;
 
+// HEAT SOAK. The glass plate on the aluminium bed keeps moving for minutes after the sensor reads 60 C, and the mesh (front row first,
+// ~18 minutes) was made on a bed that had soaked while the first layer test used to start a few minutes after switching on. soak_track() (IdleLoop)
+// measures how long the bed has been at its target without a break; G29 (probe.cpp) and the Z pages wait for LEVELING_SOAK_SECONDS of it, and
+// a bed that is hot already (the setup wizard keeps it on between steps: bed_warm()) does not wait again.
+static millis_t soak_since = 0;
+static void soak_track() {
+#if LEVELING_BED_TEMP
+  const float tgt = getTargetTemp_celsius(BED);
+  const bool hot = tgt >= LEVELING_BED_TEMP - 2 && getActualTemp_celsius(BED) >= tgt - 4;   // (PID swings of a degree or two do not restart the soak)
+  if (hot) { if (!soak_since) soak_since = millis() | 1; }
+  else soak_since = 0;
+#endif
+}
+static uint32_t ac_bed_hot_ms() { return soak_since ? (uint32_t)(millis() - soak_since) : 0; }   // (probe.cpp reaches it through the global wrapper after the namespace)
+// The bed stays on between the steps of one job (mesh, Z offset, 5-point, first layer test), so the soak is not lost; switched off by the idle
+// timeout or heaters_off_when_idle() once the window has run out.
+static millis_t bed_warm_until = 0;
+static void bed_warm_extend() { bed_warm_until = (millis() + AC_BED_WARM_MS) | 1; }
+static bool bed_warm() { return bed_warm_until && PENDING(millis(), bed_warm_until); }
+
 // Paper test HOT. The bed mesh is probed at the leveling temperatures, so the Z offset is set at the same ones (a cold
 // paper test is off by whatever the bed centre moves between cold and 60 C). Every way into the Z offset page parks the
 // nozzle at Z5 and sets z_heat_wait; page17_handle then waits for the temperatures and only then lowers to the start
@@ -203,6 +230,7 @@ static uint8_t z_lower_tenths = 10;   // start height (0.1 mm) to lower to once 
 static bool    z_need_check = false;  // check the mesh against the bed (stale_gate) before lowering
 static bool    z_stale = false;       // the check failed: the page refuses to lower the nozzle
 static void z_set_hot() {
+  bed_warm_extend();
 #if LEVELING_NOZZLE_TEMP
   setTargetTemp_celsius(LEVELING_NOZZLE_TEMP, E0);
 #endif
@@ -210,7 +238,7 @@ static void z_set_hot() {
   setTargetTemp_celsius(LEVELING_BED_TEMP, BED);
 #endif
 }
-static bool z_is_hot() {
+static bool temps_hot() {   // nozzle and bed at the leveling temperatures
   bool hot = true;
 #if LEVELING_NOZZLE_TEMP
   hot = hot && getActualTemp_celsius(E0) >= LEVELING_NOZZLE_TEMP - 3;
@@ -220,6 +248,20 @@ static bool z_is_hot() {
 #endif
   return hot;
 }
+static bool z_is_hot() { return temps_hot() && ac_bed_hot_ms() >= AC_SOAK_MS; }   // ... and the bed soaked
+// Status text while waiting: the temperatures, then the soak countdown.
+static void heat_status(char * const out, const size_t size) {
+#if LEVELING_NOZZLE_TEMP && LEVELING_BED_TEMP
+  if (temps_hot()) {
+    const uint32_t left = (AC_SOAK_MS - _MIN((uint32_t)AC_SOAK_MS, ac_bed_hot_ms())) / 1000UL;
+    snprintf_P(out, size, PSTR("Soak %u:%02u left"), (unsigned)(left / 60), (unsigned)(left % 60));
+  }
+  else snprintf_P(out, size, PSTR("Heat %u/%u  bed %u/%u"), (unsigned)getActualTemp_celsius(E0), (unsigned)LEVELING_NOZZLE_TEMP,
+                  (unsigned)getActualTemp_celsius(BED), (unsigned)LEVELING_BED_TEMP);
+#else
+  strlcpy_P(out, PSTR("Heating..."), size);
+#endif
+}
 
 // STALE MESH CHECK. The mesh holds absolute heights, so after the bed surface changes (a glass plate on or off, a different sheet) the
 // stored mesh is wrong by the thickness and the Z pages would lower the nozzle onto the bed (owner, 2026-11-02, glass plate). Before the
@@ -228,16 +270,22 @@ static bool z_is_hot() {
 // IMPORTANT: G30 switches the bed mesh OFF and leaves it off. Whoever calls stale_gate() must send M420 S1 Z0 before the next move
 // (the first version did not: the first layer test stopped with "mesh is off", and the Z pages would have lowered the nozzle without the mesh). Used by the Z offset page, the 5-point page and the first layer test.
 static bool    sc_listen = false, sc_got = false;   // the serial hook is looking for the G30 reply
-static float   sc_value = 0, sc_diff = 0;   // the probed height and how far it was from the mesh
+static float   sc_value = 0, sc_diff = 0;   // the probed height and how far it was from the mesh (the larger of the two nodes)
+static float   sc_vals[2] = { 0, 0 }, sc_df = 0, sc_dc = 0;   // the two replies (front-left node, centre) and their differences
+static uint8_t sc_n = 0;                            // replies received
 static uint8_t sc_state = 0;                        // 0 idle, 1 probing, 2 done
 static void stale_reset() { sc_state = 0; sc_listen = false; }
+// The front-left node is the FIRST one G29 probes (the bed had soaked least then), the centre is in the middle of the run: together they show
+// plate changes and thermal drift. Both differences are printed every time (Terminal) and shown by the first layer test.
 static int stale_gate() {   // 0 = still working, 1 = the mesh matches the bed, -1 = the bed is not where the mesh says
   const uint8_t cx = GRID_MAX_POINTS_X / 2, cy = GRID_MAX_POINTS_Y / 2;
   if (sc_state == 0) {
     sc_got = false;
+    sc_n = 0;
     sc_listen = true;
-    char cmd[32];
-    sprintf_P(cmd, PSTR("G30 X%d Y%d"), (int)lroundf(bedlevel.get_mesh_x(cx)), (int)lroundf(bedlevel.get_mesh_y(cy)));
+    char cmd[44];
+    sprintf_P(cmd, PSTR("G30 X%d Y%d\nG30 X%d Y%d"), (int)lroundf(bedlevel.get_mesh_x(0)), (int)lroundf(bedlevel.get_mesh_y(0)),
+              (int)lroundf(bedlevel.get_mesh_x(cx)), (int)lroundf(bedlevel.get_mesh_y(cy)));
     injectCommands(cmd);
     sc_state = 1;
     return 0;
@@ -247,11 +295,92 @@ static int stale_gate() {   // 0 = still working, 1 = the mesh matches the bed, 
     sc_state = 2;
     sc_listen = false;
   }
-  if (!sc_got) return 1;   // no reading came back: do not block the user
-  xy_uint8_t p;
-  p.x = cx; p.y = cy;
-  sc_diff = fabsf(sc_value - getMeshPoint(p));
+  if (sc_n < 2) { SERIAL_ECHO_MSG("Mesh check: no reading, skipped"); return 1; }   // a reply was lost: do not block the user
+  xy_uint8_t p0, pc;
+  p0.x = 0; p0.y = 0;
+  pc.x = cx; pc.y = cy;
+  sc_df = fabsf(sc_vals[0] - getMeshPoint(p0));
+  sc_dc = fabsf(sc_vals[1] - getMeshPoint(pc));
+  sc_diff = _MAX(sc_df, sc_dc);
+  SERIAL_ECHO_MSG("Mesh check: front-left ", sc_df, " mm, centre ", sc_dc, " mm");
   return sc_diff > 0.5f ? -1 : 1;
+}
+
+// MESH OUTLIER CHECK. One bad probe (a false trigger of the strain gauge, a speck on the plate) goes into the mesh as a spike, and the smoothing
+// between the nodes then bends the surface around it. When G29 is done, every node is compared with the mean of its neighbours (a smooth bed
+// differs by 0.1 mm at most; the limit is OL_LIMIT). The worst few are probed again (G30): when the new reading differs from the stored one
+// by more than OL_SAME the node is replaced (it was a bad probe), otherwise the bump is real and stays. Then the mesh is saved as before.
+#define OL_MAX   4
+#define OL_LIMIT 0.25f
+#define OL_SAME  0.08f
+static xy_uint8_t ol_nodes[OL_MAX];
+static uint8_t    ol_n = 0, ol_i = 0, ol_state = 0, ol_fixed = 0;
+static bool       ol_run = false;
+static void heaters_off_when_idle();
+
+static void ol_scan() {
+  float worst[OL_MAX] = { 0 };
+  ol_n = 0;
+  for (uint8_t i = 0; i < GRID_MAX_POINTS_X; i++)
+    for (uint8_t j = 0; j < GRID_MAX_POINTS_Y; j++) {
+      float sum = 0;
+      uint8_t cnt = 0;
+      xy_uint8_t p;
+      if (i > 0)                       { p.x = i - 1; p.y = j; sum += getMeshPoint(p); cnt++; }
+      if (i < GRID_MAX_POINTS_X - 1)   { p.x = i + 1; p.y = j; sum += getMeshPoint(p); cnt++; }
+      if (j > 0)                       { p.x = i; p.y = j - 1; sum += getMeshPoint(p); cnt++; }
+      if (j < GRID_MAX_POINTS_Y - 1)   { p.x = i; p.y = j + 1; sum += getMeshPoint(p); cnt++; }
+      p.x = i; p.y = j;
+      const float d = fabsf(getMeshPoint(p) - sum / cnt);
+      if (d <= OL_LIMIT) continue;
+      uint8_t k = ol_n < OL_MAX ? ol_n : OL_MAX - 1;
+      if (ol_n >= OL_MAX && d <= worst[k]) continue;
+      if (ol_n < OL_MAX) ol_n++;
+      while (k > 0 && worst[k - 1] < d) { worst[k] = worst[k - 1]; ol_nodes[k] = ol_nodes[k - 1]; k--; }
+      worst[k] = d;
+      ol_nodes[k].x = i; ol_nodes[k].y = j;
+    }
+}
+
+// What follows a finished mesh: save it and tidy up (the AUTO Z OFFSET flow goes on with its probe test).
+static void mesh_finish() {
+  if (az_stage == AZ_MESH) {
+    az_start_test(true);   // AUTO Z OFFSET: the mesh now exists; save it and go on with the probe test (heaters stay on)
+    return;
+  }
+  bed_warm_extend();   // the bed stays on for the next step (the nozzle goes off): the heat soak is kept
+  injectCommands_P(PSTR("M420 S1 Z0\nM500\nM104 S0"));   // mesh on again (G30 switches it off), save the mesh and Z offset
+  heaters_off_when_idle();
+  if (wz_launch) {
+    wz_done[0] = true;
+    if (ol_fixed) snprintf_P(wz_msg[0], sizeof(wz_msg[0]), PSTR("Mesh saved, %u re-probed"), (unsigned)ol_fixed);
+    else strcpy_P(wz_msg[0], PSTR("Mesh saved"));
+  }
+  DgusTFT::ChangePageOfTFT(wz_back(PAGE_PreLEVEL));   // wait pages 34/154 have no touch zones: must leave them explicitly
+}
+
+static void ol_poll() {   // from wizard_background (IdleLoop)
+  if (!ol_run || commandsInQueue()) return;
+  if (ol_state == 1) {   // a re-probe has finished
+    ol_state = 0;
+    sc_listen = false;
+    if (sc_got) {
+      const xy_uint8_t nd = ol_nodes[ol_i];
+      const float old = getMeshPoint(nd);
+      SERIAL_ECHO_MSG("Mesh check: node ", nd.x, ",", nd.y, " probed again ", old, " -> ", sc_value);
+      if (fabsf(sc_value - old) > OL_SAME) { setMeshPoint(nd, sc_value); ol_fixed++; }
+    }
+    ol_i++;
+  }
+  if (ol_i >= ol_n) { ol_run = false; mesh_finish(); return; }
+  const xy_uint8_t nd = ol_nodes[ol_i];
+  sc_got = false;
+  sc_n = 0;
+  sc_listen = true;
+  char cmd[24];
+  sprintf_P(cmd, PSTR("G30 X%d Y%d"), (int)lroundf(bedlevel.get_mesh_x(nd.x)), (int)lroundf(bedlevel.get_mesh_y(nd.y)));
+  injectCommands(cmd);
+  ol_state = 1;
 }
 
 // Bed mesh viewer (page 208): the values are sent a few times when the page opens, not continuously (see page208_handle).
@@ -345,7 +474,7 @@ static void save_zoffset() {
 static void heaters_off_when_idle() {
   if (isPrinting()) return;
   setTargetTemp_celsius(0, E0);
-  setTargetTemp_celsius(0, BED);
+  if (!bed_warm()) setTargetTemp_celsius(0, BED);   // (a job under way keeps the bed: the heat soak)
 }
 
 // Commands that must not be lost: the "M500" saves and the "lift, heaters off" tails. injectCommands_P() keeps ONE pointer,
@@ -394,6 +523,7 @@ static void send_print_page_values() {
 }
 
 static void start_leveling_run() {
+  bed_warm_extend();
   injectCommands_P(PSTR("G28\nG29"));   // the mesh holds absolute heights (independent of the Z offset); the offset only shifts Z0 at homing
   probe_cnt = 0;
 }
@@ -556,6 +686,11 @@ static bool boot_tune_pending = false;
 
 void DgusTFT::IdleLoop()  {
   hal.watchdog_refresh(); // prevent WDT fire during DGUS packet processing
+  soak_track();
+  if (bed_warm_until && !bed_warm()) {   // the window ran out: the bed goes off now (unless a print or a queued command holds it: the idle timeout catches that)
+    bed_warm_until = 0;
+    heaters_off_when_idle();
+  }
   term_rx_drain();
   wizard_background();
   inject_after_drain();
@@ -1058,15 +1193,12 @@ void DgusTFT::StatusChange(const char * const msg)  {
           if (probe_cnt >= GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y) {   // >=: an extra message must not leave the page stuck
             probe_cnt = 0;
             printer_state = AC_printer_idle;
-            if (az_stage == AZ_MESH) {
-              az_start_test(true);   // AUTO Z OFFSET: the mesh now exists; save it and go on with the probe test (heaters stay on)
+            ol_scan();   // a node that disagrees with its neighbours is probed again before the mesh is saved (ol_poll)
+            if (ol_n) {
+              ol_i = 0; ol_state = 0; ol_fixed = 0; ol_run = true;
+              SERIAL_ECHO_MSG("Mesh check: ", ol_n, " odd node(s), probing again");
             }
-            else {
-              injectCommands_P(PSTR("M500\nM104 S0\nM140 S0"));   // save the mesh and Z offset, then heaters off
-              heaters_off_when_idle();
-              if (wz_launch) { wz_done[0] = true; strcpy_P(wz_msg[0], PSTR("Mesh saved")); }
-              ChangePageOfTFT(wz_back(PAGE_PreLEVEL));   // wait pages 34/154 have no touch zones: must leave them explicitly
-            }
+            else { ol_fixed = 0; mesh_finish(); }
             msg_matched = true;
           }
         }
@@ -2435,7 +2567,7 @@ static void term_rx_hook(void *, uint8_t c) {
       if (sc_listen) {
         const char * const b = strstr(az_line, "Bed X:");
         const char * const z = b ? strstr(b, " Z: ") : nullptr;
-        if (z) { sc_value = atof(z + 4); sc_got = true; }
+        if (z) { sc_value = atof(z + 4); sc_got = true; if (sc_n < 2) sc_vals[sc_n++] = sc_value; }
       }
     }
     else if (az_len < sizeof(az_line) - 1) az_line[az_len++] = (char)c;
@@ -2961,6 +3093,8 @@ void DgusTFT::page12_handle(void)
 
 void DgusTFT::page13_handle(void)
 {
+  static millis_t about_ms = 0;
+  static bool about_alt = false;
   switch (key_value)
   {
     case 0:
@@ -2970,6 +3104,21 @@ void DgusTFT::page13_handle(void)
       GoSystemPage();
       break;
   }
+#if ENABLED(FLASH_EEPROM_EMULATION)
+  // The field under SUPPORT alternates between the build id and where the settings are kept (flash copy number and sector), so a save can be
+  // seen without the Terminal. 21 characters fit.
+  if (millis() - about_ms > 3000) {
+    about_ms = millis();
+    about_alt = !about_alt;
+    char b[24];
+    if (!about_alt) strlcpy(b, about_build_id(), sizeof(b));
+    else if (flash_eeprom_failed()) strcpy_P(b, PSTR("Cfg FLASH SAVE FAILED"));
+    else if (flash_eeprom_pending()) strcpy_P(b, PSTR("Cfg held until print"));
+    else if (!flash_eeprom_seq()) strcpy_P(b, PSTR("Cfg: no flash copy"));
+    else snprintf_P(b, sizeof(b), PSTR("Cfg flash #%lu %c"), (unsigned long)flash_eeprom_seq(), flash_eeprom_sector());
+    SendTxtToTFT(b, TXT_ABOUT_TECH_SUPPORT);
+  }
+#endif
 }
 
 void DgusTFT::page14_handle(void)
@@ -3286,14 +3435,7 @@ void DgusTFT::page17_handle(void)
       char st[28];
       if (z_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(st, sizeof(st), PSTR("Mesh off by %u.%02u mm: redo"), h / 100, h % 100); }
       else if (az_stage == AZ_TEST) strcpy_P(st, PSTR("Testing probe (5x)..."));
-      else if (z_heat_wait && !commandsInQueue()) {
-#if LEVELING_NOZZLE_TEMP && LEVELING_BED_TEMP
-        snprintf_P(st, sizeof(st), PSTR("Heat %u/%u  bed %u/%u"), (unsigned)getActualTemp_celsius(E0), (unsigned)LEVELING_NOZZLE_TEMP,
-                   (unsigned)getActualTemp_celsius(BED), (unsigned)LEVELING_BED_TEMP);
-#else
-        strcpy_P(st, PSTR("Heating..."));
-#endif
-      }
+      else if (z_heat_wait && !commandsInQueue()) heat_status(st, sizeof(st));
       else if (sc_state == 1) strcpy_P(st, PSTR("Checking mesh vs bed..."));
       else if (zoffset_moving) strcpy_P(st, PSTR("Homing and moving..."));
       else if (az_stage == AZ_PARKED && ((millis() / 3000) & 1)) strlcpy(st, az_msg, sizeof(st));   // alternates with the prompt
@@ -3337,7 +3479,7 @@ void DgusTFT::page17_handle(void)
       z_stale = false;
       z_need_check = false;
       stale_reset();
-      if (!isPrinting()) inject_after_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift off the bed, heaters off (never into a host print)
+      if (!isPrinting()) inject_after_P(bed_warm() ? PSTR("G1 Z10 F600\nM104 S0") : PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift off the bed, heaters off (the bed stays on while a job is under way; never into a host print)
       heaters_off_when_idle();
       ChangePageOfTFT(wz_back(PAGE_PreLEVEL));
       break;
@@ -3380,10 +3522,10 @@ void DgusTFT::page17_handle(void)
         z_change = false;
         setZOffset_mm(getZOffset_mm() + z_manual_start);   // the paper spot becomes Z0
         if (wz_launch) { wz_done[1] = true; strcpy_P(wz_msg[1], PSTR("Offset saved")); }
-        inject_after_P(PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0"));
+        inject_after_P(bed_warm() ? PSTR("M500\nG1 Z10 F600\nM104 S0") : PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0"));
       }
       else
-        inject_after_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));
+        inject_after_P(bed_warm() ? PSTR("G1 Z10 F600\nM104 S0") : PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));
       heaters_off_when_idle();
       ChangePageOfTFT(wz_back(PAGE_PREPARE));
       break;
@@ -4706,7 +4848,7 @@ static bool    fl_mesh_off = false;   // stopped because the bed mesh was not ac
 static bool    fl_stale = false;      // stopped because the probe found the bed somewhere else than the mesh says
 static bool    fl_gate_done = false;  // the stale mesh check has run (and the mesh is switched on again)
 
-#define FL_AHEAD     6                  // blocks the planner may hold before the next rows are queued (a STOP stays quick)
+#define FL_AHEAD     12                 // blocks the planner may hold before the next rows are queued (a STOP stays quick: ~2 s). 6 left only about one row (5 segments of 5 mm each) in the planner
 #define FL_SQUARES_N 5
 #define FL_SIZE      24                 // mm, side of a square
 #define FL_INSET     0.45f              // mm, the rows start this far inside the outline
@@ -4752,9 +4894,15 @@ static void fl_poll() {
   }
 
   if (fl_stage == FL_HEAT) {
+    const bool fl_hot = getActualTemp_celsius(E0) >= AC_FL_NOZZLE_TEMP - 3 && getActualTemp_celsius(BED) >= AC_FL_BED_TEMP - 2;
+    if (fl_hot && ac_bed_hot_ms() < AC_SOAK_MS) {   // heat soak: the glass needs minutes after the sensor reads the target
+      const uint32_t left = (AC_SOAK_MS - ac_bed_hot_ms()) / 1000UL;
+      snprintf_P(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), PSTR("Soak %u:%02u left"), (unsigned)(left / 60), (unsigned)(left % 60));
+      return;
+    }
     snprintf(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), "Heat %u/%u  bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_FL_NOZZLE_TEMP,
              (unsigned)getActualTemp_celsius(BED), (unsigned)AC_FL_BED_TEMP);
-    if (getActualTemp_celsius(E0) >= AC_FL_NOZZLE_TEMP - 3 && getActualTemp_celsius(BED) >= AC_FL_BED_TEMP - 2) {
+    if (fl_hot) {
       injectCommands_P(PSTR("G28"));
       fl_stage = FL_HOME;
       strcpy_P(wz_msg[WZ_FIRST], PSTR("Homing..."));
@@ -4793,6 +4941,8 @@ static void fl_poll() {
         fl_gate_done = true;
         injectCommands_P(PSTR("M420 S1 Z0"));
         if (g < 0) { fl_stale = true; fl_abort = true; }
+        else if (sc_n >= 2) snprintf_P(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), PSTR("Mesh drift f%u.%02u c%u.%02u"),
+                                       (unsigned)(sc_df), (unsigned)lroundf(sc_df * 100) % 100, (unsigned)(sc_dc), (unsigned)lroundf(sc_dc * 100) % 100);
         break;
       }
       if (!getLevelingActive()) { fl_mesh_off = true; fl_abort = true; break; }
@@ -4889,8 +5039,9 @@ static void wizard_background() {
     wz_done[WZ_PROBE] = (az_range >= 0);
     az_stage = AZ_IDLE;
     az_check_only = false;
-    injectCommands_P(PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift, heaters off
+    injectCommands_P(bed_warm() ? PSTR("G1 Z10 F600\nM104 S0") : PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift, heaters off (the bed stays on for the next step)
   }
+  ol_poll();
   fl_poll();
   es_poll();
 }
@@ -5019,7 +5170,8 @@ void DgusTFT::page119_handle(void) {
       if (p5_busy && !(p5_heat_wait && !commandsInQueue())) break;
       p5_undo();
       if (p5_dirty) { p5_restore(); p5_dirty = false; }
-      if (!isPrinting()) inject_after_P(p5_homed ? PSTR("G1 Z10 F600\nM104 S0\nM140 S0") : PSTR("M104 S0\nM140 S0"));
+      if (!isPrinting()) inject_after_P(bed_warm() ? (p5_homed ? PSTR("G1 Z10 F600\nM104 S0") : PSTR("M104 S0"))
+                                                   : (p5_homed ? PSTR("G1 Z10 F600\nM104 S0\nM140 S0") : PSTR("M104 S0\nM140 S0")));
       heaters_off_when_idle();
       ChangePageOfTFT(wz_back(PAGE_PreLEVEL));
       return;
@@ -5072,7 +5224,8 @@ void DgusTFT::page119_handle(void) {
     case 11: // SAVE: keep the corrected mesh with the settings
       if (p5_busy) break;
       p5_undo();
-      inject_after_P(p5_homed ? PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0") : PSTR("M500\nM104 S0\nM140 S0"));
+      inject_after_P(bed_warm() ? (p5_homed ? PSTR("M500\nG1 Z10 F600\nM104 S0") : PSTR("M500\nM104 S0"))
+                                : (p5_homed ? PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0") : PSTR("M500\nM104 S0\nM140 S0")));
       if (wz_launch) {
         wz_done[WZ_POINTS] = p5_dirty;
         strcpy_P(wz_msg[WZ_POINTS], p5_dirty ? PSTR("Corrections saved") : PSTR("No corrections made"));
@@ -5097,14 +5250,7 @@ void DgusTFT::page119_handle(void) {
   else if (p5_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(b, sizeof(b), PSTR("Mesh off by %u.%02u mm: redo"), h / 100, h % 100); }
   else if (p5_msg[0]) strlcpy(b, p5_msg, sizeof(b));
   else if (sc_state == 1) strcpy_P(b, PSTR("Checking mesh vs bed..."));
-  else if (p5_busy && p5_heat_wait && !commandsInQueue()) {
-#if LEVELING_NOZZLE_TEMP && LEVELING_BED_TEMP
-    snprintf_P(b, sizeof(b), PSTR("Heat %u/%u  bed %u/%u"), (unsigned)getActualTemp_celsius(E0), (unsigned)LEVELING_NOZZLE_TEMP,
-               (unsigned)getActualTemp_celsius(BED), (unsigned)LEVELING_BED_TEMP);
-#else
-    strcpy_P(b, PSTR("Heating..."));
-#endif
-  }
+  else if (p5_busy && p5_heat_wait && !commandsInQueue()) heat_status(b, sizeof(b));
   else if (p5_busy) strcpy_P(b, PSTR("Homing and moving..."));
   else if (p5_pt < 0 && p5_dirty) { char m[12]; fmt_mm(m, sizeof(m), p5_max); snprintf(b, sizeof(b), "Max change %s mm", m); }
   else if (p5_pt < 0) strcpy_P(b, PSTR("Tap a corner to go there"));
@@ -5323,5 +5469,7 @@ void DgusTFT::printerStatsToTFT(void) {// MEL_MOD printer statistics
 			//uint32_t crapy = getProgress_seconds_remaining();
 	}
 } // namespace
+
+uint32_t ac_bed_hot_ms() { return Anycubic::ac_bed_hot_ms(); }   // probe.cpp: how long the bed has been at temperature (G29 heat soak)
 
 #endif // ANYCUBIC_LCD_DGUS

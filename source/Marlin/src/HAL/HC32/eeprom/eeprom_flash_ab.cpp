@@ -45,6 +45,7 @@ static bool     from_sd        = false;   // the block came from eeprom.dat: wri
 static bool     pending_write  = false;   // a save was held back (print running)
 static uint32_t current_seq    = 0;       // sequence number of the newest valid copy (0 = none)
 static uint32_t current_sector = 0;       // its address
+static bool     last_save_failed = false;
 
 static uint32_t crc32_block(const uint8_t *p, size_t n) {
   uint32_t crc = 0xFFFFFFFFUL;
@@ -103,12 +104,20 @@ static bool flash_store() {
   const uint32_t seq = current_seq + 1;
   if (write_sector(target, seq)) {
     SERIAL_ECHO_MSG("EEPROM: flash write FAILED, the previous settings are kept");
+    last_save_failed = true;
     return true;
   }
+  last_save_failed = false;
   current_sector = target;
   current_seq = seq;
   return false;
 }
+
+// For the About page: save counter, current sector ('A' / 'B' / '-'), a failed or held save.
+uint32_t flash_eeprom_seq() { return current_seq; }
+char     flash_eeprom_sector() { return current_sector == FLASH_SECTOR_A ? 'A' : current_sector == FLASH_SECTOR_B ? 'B' : '-'; }
+bool     flash_eeprom_failed() { return last_save_failed; }
+bool     flash_eeprom_pending() { return pending_write; }
 
 // Called from the HAL idle task: a save that was held back during a print is written once the print is over.
 void flash_eeprom_service() {

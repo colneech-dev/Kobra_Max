@@ -1521,6 +1521,10 @@
 // with NOZZLE_AS_PROBE this can be negative for a wider probing area.
 #define PROBING_MARGIN 10   // Anycubic: the old firmware kept the probe 10 mm inside every bed edge (lost in the 2.1.2.9 port)
 
+// Anycubic: pause (ms) after the XY move to a probe point, before the probe is tared and lowered: the bed and gantry may still ring from the
+// 133 mm/s move, and the strain gauge is zeroed right after arrival. (DELAY_BEFORE_PROBING does not do this: it only exists with quiet probing.)
+#define PROBE_SETTLE_MS 250
+
 // X and Y axis travel speed (mm/min) between probes
 #define XY_PROBE_FEEDRATE (133*60)
 
@@ -1937,6 +1941,10 @@
 #if ENABLED(PREHEAT_BEFORE_LEVELING)
   #define LEVELING_NOZZLE_TEMP 190   // (°C) Only applies to E0 at this time
   #define LEVELING_BED_TEMP 60
+  // Anycubic: heat soak. A glass plate on the aluminium bed keeps changing shape for minutes after the sensor reads the target, and the mesh
+  // takes ~18 minutes with the front row first. G29 and the Z pages wait until the bed has been at temperature this long (seconds); a bed
+  // that has been hot for that long already (the setup wizard keeps it on between steps) does not wait again. 0 = off. M108 ends the wait.
+  #define LEVELING_SOAK_SECONDS 600
 #endif
 
 /**
