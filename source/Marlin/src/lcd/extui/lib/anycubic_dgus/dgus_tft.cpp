@@ -314,8 +314,10 @@ static int stale_gate() {   // 0 = still working, 1 = the mesh matches the bed, 
     sc_got = false;
     sc_n = 0;
     sc_listen = true;
-    char cmd[44];
-    sprintf_P(cmd, PSTR("G30 X%d Y%d\nG30 X%d Y%d"), (int)lroundf(bedlevel.get_mesh_x(0)), (int)lroundf(bedlevel.get_mesh_y(0)),
+    // G30 leaves the nozzle on the bed surface (no stow lift on this probe): lift after each probe or the XY move to the next node drags it
+    // over the bed (owner, 2026-11-05). 51 characters at most: the injection buffer holds 64.
+    char cmd[64];
+    sprintf_P(cmd, PSTR("G30 X%d Y%d\nG1 Z10 F600\nG30 X%d Y%d\nG1 Z10 F600"), (int)lroundf(bedlevel.get_mesh_x(0)), (int)lroundf(bedlevel.get_mesh_y(0)),
               (int)lroundf(bedlevel.get_mesh_x(cx)), (int)lroundf(bedlevel.get_mesh_y(cy)));
     injectCommands(cmd);
     sc_state = 1;
@@ -408,8 +410,8 @@ static void ol_poll() {   // from wizard_background (IdleLoop)
   sc_got = false;
   sc_n = 0;
   sc_listen = true;
-  char cmd[24];
-  sprintf_P(cmd, PSTR("G30 X%d Y%d"), (int)lroundf(bedlevel.get_mesh_x(nd.x)), (int)lroundf(bedlevel.get_mesh_y(nd.y)));
+  char cmd[40];   // lift first and after (G30 leaves the nozzle on the bed: the next node's XY move would drag it)
+  sprintf_P(cmd, PSTR("G1 Z10 F600\nG30 X%d Y%d\nG1 Z10 F600"), (int)lroundf(bedlevel.get_mesh_x(nd.x)), (int)lroundf(bedlevel.get_mesh_y(nd.y)));
   injectCommands(cmd);
   ol_state = 1;
 }
