@@ -365,8 +365,7 @@ def page_file_browser():
     btn(draw, MARGIN, page_y, W // 2 - 4, page_y + 40, "PREV PAGE", style='ghost', icon=0xf053)
     btn(draw, W // 2 + 4, page_y, W - MARGIN, page_y + 40, "NEXT PAGE", style='ghost', icon=0xf054)
 
-    footer_3btn(draw, ["BACK", "RESUME", "PRINT"],
-                ['ghost', 'normal', 'primary'])
+    footer_2btn(draw, "BACK", "PRINT", l_style='ghost', r_style='primary')   # (power-loss recovery has its own pop-up, pages 171 / 173)
     return img
 
 
@@ -563,10 +562,11 @@ def _temp_speed_page(title, rows, show_cool=False):
         y += 46
         separator(draw, y);  y += 10
 
+    # (no SET button: the + / - buttons apply at once, so SET was the same as BACK)
     if show_cool:
-        footer_3btn(draw, ["BACK", "COOL", "SET"], ['ghost', 'normal', 'primary'])
+        footer_2btn(draw, "BACK", "COOL", l_style='ghost', r_style='normal')
     else:
-        footer_2btn(draw, "BACK", "SET", l_style='ghost', r_style='primary')
+        footer_1btn(draw, "BACK", style='ghost')
     return img
 
 page_temp  = lambda: _temp_speed_page("TEMPERATURE",
@@ -692,20 +692,20 @@ def page_pre_level():
     img, draw = new_page()
     status_bar(draw)
     title_bar(draw, "LEVELING MENU")
-    y = 100
-    items = [("AUTO BED LEVEL  G29", 'primary', 0xf05b),
-             ("MANUAL Z ADJUST",      'normal',  0xf338),
-             ("AUTO Z OFFSET",        'normal',  0xf063),   # mesh check + probe test, then the manual page
-             ("VIEW BED MESH",        'normal',  0xf00a),   # page 208
-             ("5-POINT Z  (corners)", 'normal',  0xf0b2)]   # page 119
-    for lbl, sty, ico in items:
-        btn(draw, MARGIN, y, W - MARGIN, y + 42, lbl, style=sty, icon=ico);  y += 48
-    # saved start height of the manual Z adjust (the nozzle parks this high above the bed, not at Z0)
-    assert y <= uf.LEVEL_START_LABEL_Y, "Leveling menu buttons overlap the start-height row"
-    text_left(draw, MARGIN, uf.LEVEL_START_LABEL_Y, "MANUAL Z: START HEIGHT (mm)", F_SMALL, GRAY)
+    # Same names and order as the setup wizard: mesh, (view it), Z offset (auto or by paper), 5-point corners.
+    items = [("BED MESH  (G29)",       'primary', 0xf05b),
+             ("VIEW BED MESH",         'normal',  0xf00a),   # page 208
+             ("AUTO Z OFFSET",         'normal',  0xf063),   # mesh check + probe test, then the manual page
+             ("MANUAL Z OFFSET",       'normal',  0xf338)]
+    for (lbl, sty, ico), y in zip(items, uf.LEVEL_ITEM_Y):
+        btn(draw, MARGIN, y, W - MARGIN, y + 42, lbl, style=sty, icon=ico)
+    # saved start height of the two Z offset buttons above (the nozzle parks this high above the bed, not at Z0)
+    assert uf.LEVEL_ITEM_Y[-1] + 42 <= uf.LEVEL_START_LABEL_Y, "Leveling menu buttons overlap the start-height row"
+    text_left(draw, MARGIN, uf.LEVEL_START_LABEL_Y, "Z OFFSET: START HEIGHT (mm)", F_SMALL, GRAY)
     btn(draw, *uf.LEVEL_START_MINUS, chr(0xf068), style='normal', fnt=_FA_BTN)
     vp_area(draw, *uf.LEVEL_START_VALUE, '1.0')
     btn(draw, *uf.LEVEL_START_PLUS, chr(0xf067), style='normal', fnt=_FA_BTN)
+    btn(draw, MARGIN, uf.LEVEL_P5_Y, W - MARGIN, uf.LEVEL_P5_Y + 42, "5-POINT Z  (corners)", style='normal', icon=0xf0b2)   # page 119
     footer_1btn(draw, "BACK", style='ghost')
     return img
 
@@ -727,7 +727,7 @@ def page_level_advance():
     vp_area(draw, MARGIN, y + 2, W - MARGIN, y + 26, 'Homing...')   # live status line
     text_center(draw, (0, y + 32, W, y + 48), "Nozzle starts at the saved start height", F_TINY, GRAY)
     text_center(draw, (0, y + 50, W, y + 66), "Lower it until paper just drags, then SAVE", F_TINY, GRAY)
-    footer_2btn(draw, "BACK", "SAVE", l_style='ghost', r_style='primary')
+    footer_3btn(draw, ["BACK", "SKIP SOAK", "SAVE"], ['ghost', 'normal', 'primary'])   # SKIP SOAK: do not wait out the heat soak
     return img
 
 
@@ -735,16 +735,17 @@ def page_wizard():
     img, draw = new_page()
     status_bar(draw)
     title_bar(draw, "SETUP WIZARD")
-    steps = [("1  BED MESH  (G29)",        'primary', 0xf05b),
-             ("2  Z OFFSET  (paper test)", 'normal',  0xf338),
-             ("3  5-POINT Z  (corners)",   'normal',  0xf0b2),
-             ("4  PROBE CHECK  (5 probes)", 'normal',  0xf063),
+    # The probe is checked FIRST: every later step depends on it (a noisy probe ruins a 30 minute mesh).
+    steps = [("1  PROBE CHECK  (5 probes)", 'primary', 0xf063),
+             ("2  BED MESH  (G29)",        'normal',  0xf05b),
+             ("3  Z OFFSET  (paper test)", 'normal',  0xf338),
+             ("4  5-POINT Z  (corners)",   'normal',  0xf0b2),
              ("5  FIRST LAYER TEST",       'normal',  0xf1de)]
     assert len(steps) == uf.WZ_N
     for i, (lbl, sty, ico) in enumerate(steps):
         btn(draw, *uf.WZ_BTN(i), lbl, style=sty, icon=ico)
         vp_area(draw, *uf.WZ_STATUS(i), 'Not done yet')
-    footer_1btn(draw, "BACK", style='ghost')   # (while the first layer test runs its status line says how to stop it)
+    footer_2btn(draw, "BACK", "SKIP SOAK", l_style='ghost', r_style='normal')   # (while the first layer test runs BACK stops it; SKIP SOAK ends its heat soak)
     return img
 
 
@@ -752,7 +753,7 @@ def page_p5():
     img, draw = new_page()
     status_bar(draw)
     title_bar(draw, "5-POINT Z")
-    names = ["BACK LEFT", "BACK RIGHT", "FRONT LEFT", "FRONT RIGHT"]
+    names = ["REAR LEFT", "REAR RIGHT", "FRONT LEFT", "FRONT RIGHT"]   # (not "BACK": that is the footer button)
     for i, nm in enumerate(names):
         btn(draw, *uf.P5_BTN[i], nm, style='normal', icon=0xf192)
         vp_area(draw, *uf.P5_CORR[i], 'stored -0.15')
@@ -764,7 +765,7 @@ def page_p5():
     btn(draw, *uf.P5_PLUS2,  "+ 0.01 mm", style='primary', icon=0xf067)
     btn(draw, *uf.P5_STORE, "STORE THIS POINT", style='primary', icon=0xf0c7)
     vp_area(draw, *uf.P5_STATUS, 'Tap a corner to go there')
-    footer_2btn(draw, "BACK", "SAVE", l_style='ghost', r_style='primary')
+    footer_3btn(draw, ["BACK", "SKIP SOAK", "SAVE"], ['ghost', 'normal', 'primary'])
     return img
 
 
@@ -773,7 +774,7 @@ def page_mesh_view():
     status_bar(draw)
     title_bar(draw, "BED MESH")
     assert uf.MESH_X0 * 2 + uf.MESH_N * uf.MESH_CELL_W <= W, "the mesh grid is too wide for the screen: shrink MESH_CELL_W in ui_features.py"
-    text_center(draw, (0, 94, W, 110), "BACK of the bed", F_TINY, DGRAY)
+    text_center(draw, (0, 94, W, 110), "REAR of the bed", F_TINY, DGRAY)
     for r in range(uf.MESH_N):
         for c in range(uf.MESH_N):
             x = uf.MESH_X0 + c * uf.MESH_CELL_W
@@ -987,11 +988,12 @@ def page_wait_pause():
 def page_level_ensure():
     img, draw = new_page()
     status_bar(draw)
-    title_bar(draw, "CONFIRM LEVELING")
+    title_bar(draw, "BED MESH")
     _warning_tri(draw, W//2, CONTENT_Y1 + 18, color=TEAL)
-    text_center(draw, (0, CONTENT_Y1 + 78, W, CONTENT_Y1 + 106), "Place probe on build plate", F_BODY, WHITE)
-    text_center(draw, (0, CONTENT_Y1 + 110, W, CONTENT_Y1 + 134), "Ensure bed is clear of objects", F_SMALL, GRAY)
-    footer_2btn(draw, "BACK", "START  G29", l_style='ghost', r_style='primary')
+    text_center(draw, (0, CONTENT_Y1 + 78, W, CONTENT_Y1 + 106), "Takes up to 30 minutes", F_BODY, WHITE)
+    text_center(draw, (0, CONTENT_Y1 + 110, W, CONTENT_Y1 + 134), "(10 min heat soak + probing)", F_SMALL, GRAY)
+    text_center(draw, (0, CONTENT_Y1 + 140, W, CONTENT_Y1 + 164), "Clear the bed of objects", F_SMALL, GRAY)
+    footer_2btn(draw, "BACK", "START  MESH", l_style='ghost', r_style='primary')
     return img
 
 
@@ -1061,6 +1063,7 @@ def page_probe_preheating():
     text_center(draw, (0, CONTENT_Y1+176, W, CONTENT_Y1+198),
                 f"{uf.LEVELING_NOZZLE_TEMP} C  /  {uf.LEVELING_BED_TEMP} C", F_SMALL, ORANGE)
     wait_status_box(draw, 'Hotend 120/190  Bed 40/60')
+    footer_1btn(draw, "SKIP HEAT SOAK", style='normal')   # ends the soak wait (the heating itself still finishes)
     return img
 
 
@@ -1170,7 +1173,7 @@ def page_terminal():
     bw = (W - MARGIN * 2 - 8) // 3  # 82
     _TERM_ICONS = {'G28 HOME': 0xf015, 'G29 LEVEL': 0xf05b, 'M105 TEMPS': 0xf2c7}
     for row in ([("G28 HOME", 'normal'), ("G29 LEVEL", 'normal'), ("M105 TEMPS", 'teal')],
-                [("M502 RESET", 'warning'), ("M500 SAVE", 'success'), ("KEYBOARD", 'teal')]):
+                [("M503 SHOW", 'normal'), ("M500 SAVE", 'success'), ("KEYBOARD", 'teal')]):
         for i, (lbl, sty) in enumerate(row):
             x1 = MARGIN + i * (bw + 4)
             x2 = (W - MARGIN) if i == 2 else (x1 + bw)

@@ -75,9 +75,8 @@ _ZONES = [
     ([2, 122],   0, 308, 271, 360, 11), # File row 5
     ([2, 122],   8, 366, 132, 406, 2),  # PREV PAGE
     ([2, 122], 140, 366, 264, 406, 3),  # NEXT PAGE
-    ([2, 122],   8, 429,  90, 473, 1),  # BACK   (footer btn 0)
-    ([2, 122],  94, 429, 176, 473, 5),  # RESUME (footer btn 1)
-    ([2, 122], 180, 429, 262, 473, 6),  # PRINT  (footer btn 2)
+    ([2, 122],   8, 429, 132, 473, 1),  # BACK
+    ([2, 122], 140, 429, 264, 473, 6),  # PRINT  (no RESUME button: power-loss recovery has its own pop-up, pages 171 / 173)
 
     # ── PAGE 3 / 123  Paused, PAGE 4 / 124  Printing ─────────────────────────────────────────
     # footer_2btn: STOP left, RESUME / PAUSE right (the old BACK button did nothing during a print)
@@ -110,13 +109,13 @@ _ZONES = [
     ([8, 128], 180, 114, 264, 144, 11), # Step 10
     ([8, 128],  34, 156, 110, 198,  2), # X−
     ([8, 128], 116, 156, 158, 198,  5), # HOME X
-    ([8, 128], 164, 156, 264, 198,  4), # X+
+    ([8, 128], 164, 156, 240, 198,  4), # X+
     ([8, 128],  34, 210, 110, 252,  8), # Y−
     ([8, 128], 116, 210, 158, 252,  9), # HOME Y
-    ([8, 128], 164, 210, 264, 252,  6), # Y+
+    ([8, 128], 164, 210, 240, 252,  6), # Y+
     ([8, 128],  34, 264, 110, 306, 10), # Z−
     ([8, 128], 116, 264, 158, 306, 13), # HOME Z
-    ([8, 128], 164, 264, 264, 306, 12), # Z+
+    ([8, 128], 164, 264, 240, 306, 12), # Z+
     ([8, 128],   8, 318, 264, 358, 17), # HOME ALL
     ([8, 128],   8, 429, 264, 473,  1), # BACK
 
@@ -124,20 +123,18 @@ _ZONES = [
     # Button y-coords: HOTEND row DEC/INC at y=184; BED row at y=320
     # (from _temp_speed_page: y=CONTENT_Y1+12, each row = 22+14+44+46+10 = 136px)
     ([9, 129],   8, 184,  64, 218, 2), # HOTEND −5°C
-    ([9, 129], 200, 184, 264, 218, 3), # HOTEND +5°C
+    ([9, 129], 208, 184, 264, 218, 3), # HOTEND +5°C
     ([9, 129],   8, 320,  64, 354, 4), # BED    −5°C
-    ([9, 129], 200, 320, 264, 354, 5), # BED    +5°C
-    ([9, 129],   8, 429,  90, 473, 1), # BACK
-    ([9, 129],  94, 429, 176, 473, 6), # COOL (zero both heaters)
-    ([9, 129], 180, 429, 262, 473, 7), # SET (read VP and apply)
+    ([9, 129], 208, 320, 264, 354, 5), # BED    +5°C
+    ([9, 129],   8, 429, 132, 473, 1), # BACK
+    ([9, 129], 140, 429, 264, 473, 6), # COOL (zero both heaters); no SET: the + / - buttons apply at once
 
     # ── PAGE 10 / 130  Speed & Fan ────────────────────────────────────────────
     ([10, 130],   8, 184,  64, 218, 2), # FAN   −5%
-    ([10, 130], 200, 184, 264, 218, 3), # FAN   +5%
+    ([10, 130], 208, 184, 264, 218, 3), # FAN   +5%
     ([10, 130],   8, 320,  64, 354, 4), # SPEED −5%
-    ([10, 130], 200, 320, 264, 354, 5), # SPEED +5%
-    ([10, 130],   8, 429, 132, 473, 1), # BACK
-    ([10, 130], 140, 429, 264, 473, 6), # SET (read VP and apply)
+    ([10, 130], 208, 320, 264, 354, 5), # SPEED +5%
+    ([10, 130],   8, 429, 264, 473, 1), # BACK (no SET: the + / - buttons apply at once)
 
     # ── PAGE 11 / 131  System (audio ON)  +
     #    PAGE 117 / 170  System (audio OFF — same layout) ─────────────────────
@@ -163,13 +160,13 @@ _ZONES = [
     ([15, 135],   8, 429, 264, 473, 1), # BACK
 
     # ── PAGE 16 / 136  Pre-Level menu ────────────────────────────────────────
-    ([16, 136],   8, 100, 264, 142, 2), # AUTO BED LEVEL G29
-    ([16, 136],   8, 148, 264, 190, 3), # MANUAL Z ADJUST
-    ([16, 136], *uf.LEVEL_START_MINUS, 6),  # manual start height - 0.1 mm
-    ([16, 136], *uf.LEVEL_START_PLUS,  7),  # manual start height + 0.1 mm
-    ([16, 136],   8, 196, 264, 238, 4), # AUTO Z OFFSET (mesh check, M48 probe test, manual page)
-    ([16, 136],   8, 244, 264, 286, 8), # VIEW BED MESH (page 208)
-    ([16, 136],   8, 292, 264, 334, 9), # 5-POINT Z (page 119)
+    ([16, 136], 8, uf.LEVEL_ITEM_Y[0], 264, uf.LEVEL_ITEM_Y[0] + 42, 2), # BED MESH G29
+    ([16, 136], 8, uf.LEVEL_ITEM_Y[1], 264, uf.LEVEL_ITEM_Y[1] + 42, 8), # VIEW BED MESH (page 208)
+    ([16, 136], 8, uf.LEVEL_ITEM_Y[2], 264, uf.LEVEL_ITEM_Y[2] + 42, 4), # AUTO Z OFFSET (mesh check, M48 probe test, manual page)
+    ([16, 136], 8, uf.LEVEL_ITEM_Y[3], 264, uf.LEVEL_ITEM_Y[3] + 42, 3), # MANUAL Z OFFSET
+    ([16, 136], *uf.LEVEL_START_MINUS, 6),  # start height of the two Z offset ways - 0.1 mm
+    ([16, 136], *uf.LEVEL_START_PLUS,  7),  # start height + 0.1 mm
+    ([16, 136], 8, uf.LEVEL_P5_Y, 264, uf.LEVEL_P5_Y + 42, 9), # 5-POINT Z (page 119)
     ([16, 136],   8, 429, 264, 473, 1), # BACK
 
     # ── PAGE 17 / 137  Z-Offset Adjust ───────────────────────────────────────
@@ -177,8 +174,9 @@ _ZONES = [
     ([17, 137], 140, 196, 264, 236, 6), # +0.1 mm
     ([17, 137],   8, 244, 132, 284, 2), # -0.01 mm
     ([17, 137], 140, 244, 264, 284, 3), # +0.01 mm
-    ([17, 137],   8, 429, 132, 473, 1), # BACK
-    ([17, 137], 140, 429, 264, 473, 4), # SAVE
+    ([17, 137],   8, 429,  90, 473, 1), # BACK
+    ([17, 137],  94, 429, 176, 473, 7), # SKIP SOAK (ends the heat soak wait)
+    ([17, 137], 180, 429, 262, 473, 4), # SAVE
 
     # ── PAGE 18 / 138  Preheat ────────────────────────────────────────────────
     ([18, 138],   8, 290, 132, 336, 2), # preheat 1 (label/temps from Configuration.h)
@@ -206,7 +204,7 @@ _ZONES = [
     ([29, 149], 8, 429, 264, 473, 1),   # No SD – OK
     ([30, 150], 8, 429, 264, 473, 1),   # Filament Heat – OK START HEATING
     # 32/152 wait_pause: no interactive buttons
-    # 33/153 Level Ensure: BACK=left(key2), START G29=right(key1)
+    # 33/153 Bed mesh confirm: BACK=left(key2), START MESH=right(key1). Every way into a mesh run asks here first (~30 min)
     ([33, 153],   8, 429, 132, 473, 2), # BACK
     ([33, 153], 140, 429, 264, 473, 1), # START G29
     # 34/154 leveling: no interactive buttons
@@ -220,7 +218,8 @@ _ZONES = [
     ([171, 173], 140, 429, 264, 473, 1), # RESUME
 
     # ── PAGES 175 / 176  Probe Preheating ────────────────────────────────────
-    # Pure wait/spinner page — no interactive buttons.
+    # Wait/spinner page; one button ends the heat soak (G29 then goes on at once).
+    ([175, 176], 8, 429, 264, 473, 1), # SKIP HEAT SOAK
 
     # ── PAGES 177-198  Error / Status pages ──────────────────────────────────
     # 177-186 / 189-198 are homing and fatal-fault pages: no button (homing cannot be
@@ -247,7 +246,7 @@ _ZONES = [
     ([215],   8, 306,  90, 350, 3), # G28 HOME  (KEY_TERM_G28  = 3)
     ([215],  94, 306, 176, 350, 4), # G29 LEVEL (KEY_TERM_G29  = 4)
     ([215], 180, 306, 262, 350, 5), # M105 TEMPS(KEY_TERM_M105 = 5)
-    ([215],   8, 358,  90, 402, 6), # M502 RESET(KEY_TERM_M502 = 6)  (306+52=358)
+    ([215],   8, 358,  90, 402, 6), # M503 SHOW (key 6; M502 RESET was removed: one tap wiped the mesh, M500 SAVE sits next to it)
     ([215],  94, 358, 176, 402, 7), # M500 SAVE (KEY_TERM_M500 = 7)
     ([215], 180, 358, 262, 402, 8), # KEYBOARD  (opens page 6)
     ([215],   8, 429, 264, 473, 1), # BACK      (KEY_TERM_BACK = 1)
@@ -260,12 +259,13 @@ _ZONES = [
     ([216],   8, 429, 264, 473, 1), # BACK                 (KEY_TUNE_BACK  = 1)
 
     # ── PAGE 172  Setup wizard ────────────────────────────────────────────────
-    ([172], *uf.WZ_BTN(0), 2),  # 1 BED MESH (G29, returns here)
-    ([172], *uf.WZ_BTN(1), 3),  # 2 Z OFFSET (manual Z page, needs the mesh, returns here)
-    ([172], *uf.WZ_BTN(2), 4),  # 3 5-POINT Z (page 119, returns here)
-    ([172], *uf.WZ_BTN(3), 5),  # 4 PROBE CHECK (M48 x5, stays here)
+    ([172], *uf.WZ_BTN(0), 2),  # 1 PROBE CHECK (M48 x5, stays here)
+    ([172], *uf.WZ_BTN(1), 3),  # 2 BED MESH (G29, returns here)
+    ([172], *uf.WZ_BTN(2), 4),  # 3 Z OFFSET (manual Z page, needs the mesh, returns here)
+    ([172], *uf.WZ_BTN(3), 5),  # 4 5-POINT Z (page 119, returns here)
     ([172], *uf.WZ_BTN(4), 6),  # 5 FIRST LAYER TEST (tap again or BACK to stop)
-    ([172],   8, 429, 264, 473, 1), # BACK
+    ([172],   8, 429, 132, 473, 1), # BACK
+    ([172], 140, 429, 264, 473, 7), # SKIP SOAK (first layer test heat soak)
 
     # ── PAGE 119  5-point Z (corner paper tests -> mesh correction) ────────────────────────────────────
     ([119], *uf.P5_BTN[0], 2),  # back left
@@ -277,8 +277,9 @@ _ZONES = [
     ([119], *uf.P5_MINUS2, 8),  # -0.01 mm
     ([119], *uf.P5_PLUS2,  9),  # +0.01 mm
     ([119], *uf.P5_STORE, 10),  # STORE THIS POINT
-    ([119],   8, 429, 132, 473, 1), # BACK
-    ([119], 140, 429, 264, 473, 11), # SAVE
+    ([119],   8, 429,  90, 473, 1), # BACK
+    ([119],  94, 429, 176, 473, 12), # SKIP SOAK
+    ([119], 180, 429, 262, 473, 11), # SAVE
 
     # ── PAGE 208  Bed mesh viewer ─────────────────────────────────────────────
     ([208],   8, 429, 264, 473, 1), # BACK

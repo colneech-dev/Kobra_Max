@@ -63,3 +63,25 @@ Unknown until tested: whether the bootloader protects 0x3C000-0x3FFFF; whether f
 - First layer test: FL_AHEAD 6 -> 12 planner blocks (BLOCK_BUFFER_SIZE 16).
 Watch: the soak adds 10 min to the first G29 of a cold bed; false outlier hits on a real glass-edge bump (check the Terminal lines); the Z/5-point pages
 refusing nothing but now waiting before lowering.
+
+## v54 (2026-11-05, UNTESTED on hardware): button review + SKIP SOAK
+Negative review of every page's buttons (touch zone vs drawn button vs handler: all matched except the overhangs below). All findings fixed:
+- SKIP SOAK: a button on the G29 Preheating page (175/176, "SKIP HEAT SOAK"), the Z offset page and the 5-point page (footer middle) and the wizard
+  (footer right, ends the first layer test's soak). It sets the start of the soak back (soak_skip(): every waiter reads ac_bed_hot_ms()), also when tapped
+  while the bed is still heating (it counts once hot). Heating itself is never skipped. Status line says "Soak skipped" / "Soak is over" / "Bed is off: no soak".
+- Every way into a mesh run (BED MESH, MANUAL / AUTO Z OFFSET with no mesh) now asks first on page 33/153 ("Takes up to 30 minutes", BACK / START MESH);
+  that page was unreachable before (FIX_MOUNTED_PROBE only).
+- Filament STOP ends a running sequence: queue and injected lines dropped, an extruder-only move is quick-stopped (never a move of X/Y/Z), M82 / G92 E0 / M84
+  afterwards. Status text said 10 mm for the 30 mm EXTRUDE.
+- Pages 9 / 10: SET removed (it was BACK). Print Settings: row label "Z-OFFSET (mm)  SAVE keeps" (BACK only undoes the Z offset; temperatures, speed, fan are live).
+- Terminal: M502 RESET replaced by M503 SHOW (M502 wiped the mesh in RAM, next to M500 SAVE, no confirm). M502 can still be typed on the keyboard.
+- Wizard order: 1 PROBE CHECK, 2 BED MESH, 3 Z OFFSET, 4 5-POINT, 5 FIRST LAYER. Touch key of a step = 2 + its number; WZ_ constants renumbered (literals fixed).
+- Leveling menu: BED MESH, VIEW BED MESH, AUTO Z OFFSET, MANUAL Z OFFSET, start height row (belongs to the two above), 5-POINT Z. Same names as the wizard.
+- Cancel / failure of a mesh run that started in the wizard goes back to the wizard (pages 201, 203, 187/188/199/200 via wz_back()).
+- 5-point corners are REAR LEFT / REAR RIGHT / FRONT ..., the mesh viewer says "REAR of the bed" (BACK is only the footer button).
+- File browser: RESUME button removed (power loss has its own pop-up 171/173), PRINT with no file tapped says "SELECT A FILE FIRST".
+- MOTORS OFF (Tools, both variants) refuses during a print. Page 214 (thumbnail, unreachable) hidden. Move Axes / temp / speed + zones now as wide as their buttons.
+- tools/DWIN_CONTROLS_README.md regenerated (was stale).
+Not changed: the wizard does not force the Z offset before the 5-point step (the 5-point maths assumes the centre reads 0.00 after the normal offset: do step 3 first).
+Test: Preheating page SKIP HEAT SOAK on a cold bed (the Terminal should stop printing "Heat soak"); the same on the Z page; BED MESH from the menu shows the confirm page;
+Filament LOAD then STOP mid-feed (the extruder should stop within a second); wizard order and that each step's status line sits under its own button.

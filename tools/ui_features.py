@@ -116,7 +116,7 @@ def in_library(i):
 # the - and + buttons (handled by DgusTFT::page211_212_handle). The value box between the buttons is
 # (68, y)-(204, y+36); - is (8, y)-(60, y+36), + is (212, y)-(264, y+36).
 PRINT_SETTINGS_ROWS = (
-    ("Z-OFFSET (mm)",     114, "+0.050", 2, 3),
+    ("Z-OFFSET (mm)  SAVE keeps", 114, "+0.050", 2, 3),
     ("HOTEND TARGET (C)", 176, "220",    8, 9),
     ("BED TARGET (C)",    238, "60",    10, 11),
     ("PRINT SPEED (%)",   300, "100",   12, 13),
@@ -164,6 +164,8 @@ _cfg_text = _read(_CFG)
 #  - 20 / 140 "done" and 30 / 150 "filament heating": PAGE_DONE / PAGE_FILAMENT_HEAT are never navigated to
 #  - 185 / 186 and 197 / 198: left / right Z endstop faults (single Z motor, the pages are never raised)
 HIDDEN_PAGES |= {20, 140, 30, 150, 185, 186, 197, 198}
+#  - 214 thumbnail / print preview: nothing navigates to it and its PRINT button did nothing (review 2026-11-05)
+HIDDEN_PAGES |= {214}
 # Tools (7 / 127) and Print Settings (5 / 125) without a case-light button: with CASE_LIGHT_ENABLE the firmware shows
 # 207 / 209 and 211 / 212 instead (GoToolsPage, GoPrintSettingsPage)
 if re.search(r'^\s*#define\s+CASE_LIGHT_ENABLE', _read(_CFG.parent / 'Configuration_adv.h'), re.M):
@@ -224,10 +226,13 @@ LEVELING_BED_TEMP    = _define(_cfg_text, "LEVELING_BED_TEMP", 60)
 
 # Terminal log (page 215): rows of 6x12 text. Shared by generate_screens.py (art) and patch_14showfile.py (text fields).
 # Leveling menu (page 16): the manual Z-offset start-height row (label above, then - / value / +). Keys 6 and 7.
-LEVEL_START_LABEL_Y = 340
-LEVEL_START_MINUS = (8, 358, 60, 394)
-LEVEL_START_VALUE = (68, 358, 204, 394)
-LEVEL_START_PLUS  = (212, 358, 264, 394)
+# Order of the menu (review 2026-11-05): mesh, view it, the two Z offset ways, their start height right under them, then the 5-point correction.
+LEVEL_ITEM_Y = (100, 148, 196, 244)      # BED MESH, VIEW BED MESH, AUTO Z OFFSET, MANUAL Z OFFSET (42 px high each)
+LEVEL_START_LABEL_Y = 294
+LEVEL_START_MINUS = (8, 312, 60, 348)
+LEVEL_START_VALUE = (68, 312, 204, 348)
+LEVEL_START_PLUS  = (212, 312, 264, 348)
+LEVEL_P5_Y = 356                          # 5-POINT Z button (42 px high)
 
 # New single-language pages (IDs below 215 that no stock page uses; their "button held" pictures are the free IDs 155-157,
 # see press_effect.SPECIAL_ID). dgus_tft.h has the same numbers (PAGE_MESH_VIEW, PAGE_ESTEPS, PAGE_LIN_ADVANCE).

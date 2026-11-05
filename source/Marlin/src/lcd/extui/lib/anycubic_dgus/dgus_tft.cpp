@@ -151,10 +151,11 @@ static void az_start_test(const bool save_first);   // defined with the Z-offset
 // SETUP WIZARD (page 172): the steps reuse the existing flows. wz_launch says a step was started from the wizard, so that
 // the flow returns to the wizard page when it ends (the Leveling menu and the Prepare page clear it: the user went elsewhere).
 static bool wz_launch = false;
-#define WZ_MESH   0   // the five steps (their status lines under the buttons, in this order)
-#define WZ_OFFSET 1
-#define WZ_POINTS 2
-#define WZ_PROBE  3
+static bool lv_ensure_az = false;   // the bed mesh confirm page (33 / 153) was opened by a Z offset button: the Z flow goes on after the mesh
+#define WZ_PROBE  0   // the five steps (their status lines under the buttons, in this order; the touch key of a step is 2 + its number)
+#define WZ_MESH   1   // (the probe is checked first: every later step depends on it)
+#define WZ_OFFSET 2
+#define WZ_POINTS 3
 #define WZ_FIRST  4
 #define WZ_N      5
 static bool wz_done[WZ_N] = { false, false, false, false, false };
@@ -206,15 +207,45 @@ static bool zoffset_moving = false;
 // measures how long the bed has been at its target without a break; G29 (probe.cpp) and the Z pages wait for LEVELING_SOAK_SECONDS of it, and
 // a bed that is hot already (the setup wizard keeps it on between steps: bed_warm()) does not wait again.
 static millis_t soak_since = 0;
+static bool soak_skip_pending = false;   // SKIP SOAK was tapped while the bed was still heating: the soak counts as done once it is hot
 static void soak_track() {
 #if LEVELING_BED_TEMP
   const float tgt = getTargetTemp_celsius(BED);
   const bool hot = tgt >= LEVELING_BED_TEMP - 2 && getActualTemp_celsius(BED) >= tgt - 4;   // (PID swings of a degree or two do not restart the soak)
-  if (hot) { if (!soak_since) soak_since = millis() | 1; }
-  else soak_since = 0;
+  if (hot) {
+    if (!soak_since) {
+      soak_since = millis() | 1;
+      if (soak_skip_pending) { soak_since = ((millis() - AC_SOAK_MS) - 2) | 1; soak_skip_pending = false; }
+    }
+  }
+  else {
+    soak_since = 0;
+    if (tgt < LEVELING_BED_TEMP - 2) soak_skip_pending = false;   // the bed was switched off meanwhile
+  }
 #endif
 }
 static uint32_t ac_bed_hot_ms() { return soak_since ? (uint32_t)(millis() - soak_since) : 0; }   // (probe.cpp reaches it through the global wrapper after the namespace)
+// SKIP SOAK (a button on the G29 preheat page, the Z offset page, the 5-point page and the wizard): the bed counts as soaked from now on, so
+// leveling can be done quicker when the glass is warm enough. Every waiter (probe.cpp's G29 wait, z_is_hot(), the first layer test) reads
+// ac_bed_hot_ms(), so setting the start of the soak back is all it takes. The heating itself is never skipped.
+static char     soak_note[22] = "";
+static millis_t soak_note_ms = 0;
+static void soak_say(PGM_P const m) { strlcpy_P(soak_note, m, sizeof(soak_note)); soak_note_ms = millis(); }
+static bool soak_note_active() { return soak_note[0] && millis() - soak_note_ms < 2500; }
+static void soak_skip() {
+#if LEVELING_BED_TEMP
+  if (!AC_SOAK_MS) { soak_say(PSTR("No heat soak is set")); return; }
+  if (soak_since) {
+    if (ac_bed_hot_ms() >= AC_SOAK_MS) { soak_say(PSTR("Soak is over")); return; }
+    soak_since = ((millis() - AC_SOAK_MS) - 2) | 1;
+    soak_say(PSTR("Soak skipped"));
+  }
+  else if (getTargetTemp_celsius(BED) > 0) { soak_skip_pending = true; soak_say(PSTR("Soak skipped")); }
+  else soak_say(PSTR("Bed is off: no soak"));
+#else
+  soak_say(PSTR("No heat soak is set"));
+#endif
+}
 // The bed stays on between the steps of one job (mesh, Z offset, 5-point, first layer test), so the soak is not lost; switched off by the idle
 // timeout or heaters_off_when_idle() once the window has run out.
 static millis_t bed_warm_until = 0;
@@ -352,9 +383,9 @@ static void mesh_finish() {
   injectCommands_P(PSTR("M420 S1 Z0\nM500\nM104 S0"));   // mesh on again (G30 switches it off), save the mesh and Z offset
   heaters_off_when_idle();
   if (wz_launch) {
-    wz_done[0] = true;
-    if (ol_fixed) snprintf_P(wz_msg[0], sizeof(wz_msg[0]), PSTR("Mesh saved, %u re-probed"), (unsigned)ol_fixed);
-    else strcpy_P(wz_msg[0], PSTR("Mesh saved"));
+    wz_done[WZ_MESH] = true;
+    if (ol_fixed) snprintf_P(wz_msg[WZ_MESH], sizeof(wz_msg[WZ_MESH]), PSTR("Mesh saved, %u re-probed"), (unsigned)ol_fixed);
+    else strcpy_P(wz_msg[WZ_MESH], PSTR("Mesh saved"));
   }
   DgusTFT::ChangePageOfTFT(wz_back(PAGE_PreLEVEL));   // wait pages 34/154 have no touch zones: must leave them explicitly
 }
@@ -1732,9 +1763,13 @@ void DgusTFT::WaitStatus() {
     sprintf(sfx, " %u/%u", (unsigned)probe_cnt, total);
     send_progress_bar(TXT_WAIT_BAR, constrain(probe_cnt * 100U / total, 0U, 100U), 24, sfx);   // Leveling page: [####....] 44/49
   }
-  else if (preheat)
-    sprintf(buf, "Hotend %u/%u Bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)getTargetTemp_celsius(E0),
-            (unsigned)getActualTemp_celsius(BED), (unsigned)getTargetTemp_celsius(BED));   // <= 24 chars at 10 px = fits the 256 px box
+  else if (preheat) {
+    if (soak_note_active()) strlcpy(buf, soak_note, sizeof(buf));
+    else if (AC_SOAK_MS && temps_hot() && ac_bed_hot_ms() < AC_SOAK_MS) heat_status(buf, sizeof(buf));   // "Soak 7:31 left"
+    else
+      sprintf(buf, "Hotend %u/%u Bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)getTargetTemp_celsius(E0),
+              (unsigned)getActualTemp_celsius(BED), (unsigned)getTargetTemp_celsius(BED));   // <= 24 chars at 10 px = fits the 256 px box
+  }
   else if (pausing)
     sprintf(buf, "Pausing%s", dots[phase]);
   else
@@ -2244,6 +2279,11 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
       break;
 
     case 6:   // start print
+      if (lcd_txtbox_index == 0) {   // nothing tapped yet: say so in the first row (it is put back by the next tap or after 10 s)
+        nolevel_warn_ms = millis() | 1;
+        SendTxtToTFT("SELECT A FILE FIRST", TXT_FILE_0);
+        break;
+      }
       if (lcd_txtbox_index > 0 && lcd_txtbox_index  < 6) {  // 1~5
 
         // No bed mesh in memory (leveling is switched on again by every G28, but only if a mesh exists; the
@@ -2759,7 +2799,7 @@ void DgusTFT::page7_handle(void) // tools
       break;
 
     case 5:   // turn off the xyz motor
-      if (!isMoving()) {
+      if (!isMoving() && !BlockedWhilePrinting()) {
         stepper.disable_all_steppers();
         set_all_unhomed();
       }
@@ -2939,11 +2979,6 @@ void DgusTFT::page9_handle(void)
 
       break;
 
-    case 7: // send target temp
-      // +/- already applied the targets immediately; nothing to read back.
-      GoToolsPage();
-
-      break;
   }
 
   if (key_value) flash_time = 0;   // a press redraws the page and blanks the text: re-send at once, not up to 1.5 s later
@@ -2994,11 +3029,6 @@ void DgusTFT::page10_handle(void)
       SendValueToTFT((uint16_t)getFeedrate_percent(), TXT_PRINT_SPEED_TARGET);
       break;
 
-    case 6:   // ok
-      // +/- already applied fan and speed immediately; nothing to read back.
-      GoToolsPage();
-
-      break;
   }
 
   if (key_value) flash_time = 0;   // a press redraws the page and blanks the text: re-send at once, not up to 1.5 s later
@@ -3304,15 +3334,11 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
       ChangePageOfTFT(PAGE_PREPARE);
       break;
 
-    case 2:
+    case 2:   // BED MESH: asks first (it takes up to 30 minutes), then the probe pre-check and G29
       if (!isPrinting())
       {
-        //                      setAxisPosition_mm(10.0, Z, 5);
-#ifdef NOZZLE_AS_PROBE
-        ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);
-#else   // FIX_MOUNTED_PROBE
+        lv_ensure_az = false;
         ChangePageOfTFT(PAGE_LEVEL_ENSURE);
-#endif
       }
       break;
 
@@ -3321,8 +3347,8 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
       if (!getLevelingIsValid()) {
         // The offset is only the gap above the bed while the mesh is active; set before the mesh it would be counted twice.
         // So without a mesh this is the AUTO Z OFFSET flow: level first, then the probe test, then this page.
-        az_stage = AZ_MESH;
-        ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);
+        lv_ensure_az = true;   // MANUAL Z OFFSET with no mesh: a mesh run first, so it asks (page33_handle starts it)
+        ChangePageOfTFT(PAGE_LEVEL_ENSURE);
         break;
       }
       {
@@ -3355,8 +3381,8 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
       if (BlockedWhilePrinting()) break;
       if (getLevelingIsValid()) az_start_test(false);
       else {
-        az_stage = AZ_MESH;   // no bed mesh yet: level first (same path as AUTO BED LEVEL), then the probe test
-        ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);
+        lv_ensure_az = true;   // no bed mesh yet: level first (it asks, then the same path as BED MESH), then the probe test
+        ChangePageOfTFT(PAGE_LEVEL_ENSURE);
       }
       break;
 
@@ -3433,7 +3459,8 @@ void DgusTFT::page17_handle(void)
       }
       else if (zoffset_moving && !commandsInQueue()) zoffset_moving = false;
       char st[28];
-      if (z_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(st, sizeof(st), PSTR("Mesh off by %u.%02u mm: redo"), h / 100, h % 100); }
+      if (soak_note_active()) strlcpy(st, soak_note, sizeof(st));
+      else if (z_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(st, sizeof(st), PSTR("Mesh off by %u.%02u mm: redo"), h / 100, h % 100); }
       else if (az_stage == AZ_TEST) strcpy_P(st, PSTR("Testing probe (5x)..."));
       else if (z_heat_wait && !commandsInQueue()) heat_status(st, sizeof(st));
       else if (sc_state == 1) strcpy_P(st, PSTR("Checking mesh vs bed..."));
@@ -3458,12 +3485,16 @@ void DgusTFT::page17_handle(void)
     }
   }
   // every key waits: a new command would overwrite the sequence still running (BACK is allowed while only heating: the queue is empty then)
-  if (zoffset_moving && key_value && !(z_heat_wait && key_value == 1 && !commandsInQueue())) return;
+  if (zoffset_moving && key_value && !(z_heat_wait && (key_value == 1 || key_value == 7) && !commandsInQueue())) return;
   if (z_stale && key_value != 1) return;   // the mesh is stale: only BACK
 
   switch (key_value)
   {
     case 0:
+      break;
+
+    case 7:   // SKIP SOAK (while the heat wait runs; the other busy states were turned away above)
+      soak_skip();
       break;
 
     case 1://return — without saving: undo the live Z changes (a later M500 must not store them)
@@ -3521,7 +3552,7 @@ void DgusTFT::page17_handle(void)
       else if (z_change) {
         z_change = false;
         setZOffset_mm(getZOffset_mm() + z_manual_start);   // the paper spot becomes Z0
-        if (wz_launch) { wz_done[1] = true; strcpy_P(wz_msg[1], PSTR("Offset saved")); }
+        if (wz_launch) { wz_done[WZ_OFFSET] = true; strcpy_P(wz_msg[WZ_OFFSET], PSTR("Offset saved")); }
         inject_after_P(bed_warm() ? PSTR("M500\nG1 Z10 F600\nM104 S0") : PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0"));
       }
       else
@@ -3603,7 +3634,18 @@ void DgusTFT::page19_handle(void)   // Filament
       flash_time = 0;   // refresh the status line now
       break;
 
-    case 4:   // stop: cancel a pending start and stop heating (a running print keeps its heat)
+    case 4:   // stop: cancel a pending start, end a running sequence and stop heating (a running print keeps its heat)
+      if (filament_running != FILA_NO_ACT) {
+        // The commands that have not started are dropped. An extruder-only move in progress (the long load / unload feed, the purge) is
+        // stopped at once; a move of X, Y or Z (homing, the lift) is left to finish: it must not be cut short.
+        queue.clear();
+        queue.injected_commands_P = nullptr;
+        queue.injected_commands[0] = '\0';
+        if (stepper.axis_is_moving(E_AXIS) && !stepper.axis_is_moving(X_AXIS) && !stepper.axis_is_moving(Y_AXIS) && !stepper.axis_is_moving(Z_AXIS))
+          planner.quick_stop();
+        filament_running = FILA_NO_ACT;
+        injectCommands_P(PSTR("M82\nG92 E0\nM84"));   // absolute extruder again (EXTRUDE leaves it relative), no motor holding current
+      }
       if (!isPrinting()) setTargetTemp_celsius(0, E0);
       filament_cmd = FILA_NO_ACT;
       flash_time = 0;
@@ -3632,7 +3674,7 @@ void DgusTFT::page19_handle(void)   // Filament
   if (filament_cmd != FILA_NO_ACT)           sprintf_P(str_buf, PSTR("Heating to %u C..."), FILAMENT_TEMP);
   else if (filament_running == FILA_IN)      strcpy_P(str_buf, PSTR("Loading filament..."));
   else if (filament_running == FILA_OUT)     strcpy_P(str_buf, PSTR("Unloading filament..."));
-  else if (filament_running == FILA_EXTRUDE) strcpy_P(str_buf, PSTR("Extruding 10 mm..."));
+  else if (filament_running == FILA_EXTRUDE) strcpy_P(str_buf, PSTR("Extruding 30 mm..."));
   else                                       strcpy_P(str_buf, PSTR("Ready"));
   SendTxtToTFT(str_buf, TXT_FILAMENT_STATUS);
 }
@@ -3974,24 +4016,17 @@ void DgusTFT::page33_handle(void)
     case 0:
       break;
 
-    case 1:   // auto leveling start
+    case 1:   // START MESH: the probe pre-check (press the nozzle onto the plate), which then runs G29 (page202_handle)
       {
-#if PROBING_NOZZLE_TEMP || LEVELING_NOZZLE_TEMP
-        setTargetTemp_celsius(LEVELING_NOZZLE_TEMP, E0);
-#endif
-
-#if PROBING_BED_TEMP || LEVELING_BED_TEMP
-        setTargetTemp_celsius(LEVELING_BED_TEMP, BED);
-#endif
-
-        start_leveling_run();
-        printer_state = AC_printer_probing;
-        ChangePageOfTFT(PAGE_LEVELING);
+        if (lv_ensure_az) az_stage = AZ_MESH;   // started from a Z offset button: the Z flow goes on after the mesh
+        lv_ensure_az = false;
+        ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);
       }
       break;
 
-    case 2:
+    case 2:   // BACK
       {
+        lv_ensure_az = false;
         ChangePageOfTFT(PAGE_PreLEVEL);
       }
       break;
@@ -4121,6 +4156,11 @@ void DgusTFT::page175_handle(void)     // CHS probe preheating handler
   static millis_t flash_time = 0;
   //        char str_buf[16];
 
+  switch (key_value) {
+    case 1: soak_skip(); break;   // SKIP HEAT SOAK
+    default: break;
+  }
+
   if (millis() < (flash_time + 1500) ) {
     return;
   }
@@ -4131,6 +4171,11 @@ void DgusTFT::page176_handle(void)     // ENG probe preheating handler
 {
   static millis_t flash_time = 0;
   //        char str_buf[16];
+
+  switch (key_value) {
+    case 1: soak_skip(); break;   // SKIP HEAT SOAK
+    default: break;
+  }
 
   if (millis() < (flash_time + 1500) ) {
     return;
@@ -4231,7 +4276,7 @@ void DgusTFT::page199_to_200_handle(void)
       SERIAL_ECHOLNPGM("page_index_last: ", page_index_last);
       SERIAL_ECHOLNPGM("page_index_last_2: ", page_index_last_2);
 #endif
-      ChangePageOfTFT(PAGE_PreLEVEL);
+      ChangePageOfTFT(wz_back(PAGE_PreLEVEL));
 
       break;
 
@@ -4269,7 +4314,7 @@ void DgusTFT::page201_handle(void)  // probe precheck
 
       probe_check_counter = 0;
       probe_tare_flag = 0;
-      ChangePageOfTFT(PAGE_PreLEVEL);
+      ChangePageOfTFT(wz_back(PAGE_PreLEVEL));   // the wizard if the run started there
       break;
 
     default:
@@ -4330,14 +4375,14 @@ void DgusTFT::page203_handle(void)    // probe precheck failed (203 CHS / 206 EN
     case 0:
       break;
     case 1:   // BACK
-      ChangePageOfTFT(PAGE_PreLEVEL);
+      ChangePageOfTFT(wz_back(PAGE_PreLEVEL));
       return;
   }
 
   // The page used to have no way out at all. If the BACK button isn't in the display's loaded art
   // (older 16_68_.icl), still leave on our own after 10 s.
   if (millis() - probe_failed_ms > 10000) {
-    ChangePageOfTFT(PAGE_PreLEVEL);
+    ChangePageOfTFT(wz_back(PAGE_PreLEVEL));
   }
 }
 
@@ -4379,7 +4424,7 @@ void DgusTFT::page207_209_handle(void)
       break;
 
     case 5:   // turn off the xyz motor
-      if (!isMoving()) {
+      if (!isMoving() && !BlockedWhilePrinting()) {
         stepper.disable_all_steppers();
         set_all_unhomed();   // page7_handle does this; without it Marlin still believed the axes were homed
       }
@@ -4560,10 +4605,9 @@ void DgusTFT::page215_handle(void) {
     case 5: // M105 TEMPS (KEY_TERM_M105) — harmless, allowed during a print
       term_run_P(PSTR("M105"));
       break;
-    case 6: // M502 RESET (KEY_TERM_M502) — reset to defaults, does NOT save; this is the
-            // quick/expert path, distinct from page 217's confirm-then-save Factory Reset
-      if (BlockedWhilePrinting()) break;
-      term_run_P(PSTR("M502"));
+    case 6: // M503 SHOW (KEY_TERM_M502 slot) — read only. M502 RESET sat here, one tap from wiping the mesh and next to M500 SAVE;
+            // the Factory Reset in System (page 217) asks first, and M502 can still be typed on the keyboard.
+      term_run_P(PSTR("M503"));
       break;
     case 7: // M500 SAVE (KEY_TERM_M500) — writes the settings to the chip flash
       if (BlockedWhilePrinting()) break;
@@ -5221,6 +5265,10 @@ void DgusTFT::page119_handle(void) {
       p5_say(PSTR("Stored: tap a corner"));
       break;
 
+    case 12: // SKIP SOAK
+      soak_skip();
+      break;
+
     case 11: // SAVE: keep the corrected mesh with the settings
       if (p5_busy) break;
       p5_undo();
@@ -5246,7 +5294,8 @@ void DgusTFT::page119_handle(void) {
   SendTxtToTFT(b, TXT_P5_VALUE);
 
   if (p5_msg[0] && millis() - p5_msg_ms > 3000) p5_msg[0] = '\0';
-  if (!getLevelingIsValid()) strcpy_P(b, PSTR("Make the bed mesh first"));
+  if (soak_note_active()) strlcpy(b, soak_note, sizeof(b));
+  else if (!getLevelingIsValid()) strcpy_P(b, PSTR("Make the bed mesh first"));
   else if (p5_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(b, sizeof(b), PSTR("Mesh off by %u.%02u mm: redo"), h / 100, h % 100); }
   else if (p5_msg[0]) strlcpy(b, p5_msg, sizeof(b));
   else if (sc_state == 1) strcpy_P(b, PSTR("Checking mesh vs bed..."));
@@ -5272,6 +5321,7 @@ void DgusTFT::page172_handle(void) {
   static millis_t flash_time = 0;
 
   static millis_t busy_ms = 0;
+  static bool wz_note_first = false;   // wz_msg[WZ_FIRST] holds a SKIP SOAK note (not a result): it goes away by itself
   const bool busy = (fl_stage != FL_IDLE) || (az_check_only && az_stage == AZ_TEST);
   wz_launch = false;   // nothing started from the wizard is waiting on another page now
 
@@ -5295,7 +5345,7 @@ void DgusTFT::page172_handle(void) {
       GoSystemPage();
       return;
 
-    case 2: // 1 BED MESH: the probe pre-check, then G29; the mesh page comes back here
+    case 3: // 2 BED MESH: the probe pre-check, then G29; the mesh page comes back here
       if (busy || BlockedWhilePrinting()) break;
       wz_done[WZ_MESH] = false;
       wz_msg[WZ_MESH][0] = '\0';
@@ -5303,7 +5353,7 @@ void DgusTFT::page172_handle(void) {
       ChangePageOfTFT(PAGE_CHS_PROBE_PRECHECK);
       break;
 
-    case 3: { // 2 Z OFFSET: the manual Z page (it needs the mesh: the offset is the gap above the bed WITH the mesh on), SAVE comes back here
+    case 4: { // 3 Z OFFSET: the manual Z page (it needs the mesh: the offset is the gap above the bed WITH the mesh on), SAVE comes back here
       if (busy || BlockedWhilePrinting()) break;
       if (!getLevelingIsValid()) { strcpy_P(wz_msg[WZ_OFFSET], PSTR("Make the bed mesh first")); break; }
       wz_done[WZ_OFFSET] = false;
@@ -5325,7 +5375,7 @@ void DgusTFT::page172_handle(void) {
       zoffset_moving = true;
     } break;
 
-    case 4: // 3 5-POINT Z: paper tests at the four corners, a smooth mesh correction; SAVE or BACK comes back here
+    case 5: // 4 5-POINT Z: paper tests at the four corners, a smooth mesh correction; SAVE or BACK comes back here
       if (busy || BlockedWhilePrinting()) break;
       if (!getLevelingIsValid()) { strcpy_P(wz_msg[WZ_POINTS], PSTR("Make the bed mesh first")); break; }
       wz_done[WZ_POINTS] = false;
@@ -5335,12 +5385,17 @@ void DgusTFT::page172_handle(void) {
       ChangePageOfTFT(PAGE_P5);
       break;
 
-    case 5: // 4 PROBE CHECK: M48 here, the result appears under the button
+    case 2: // 1 PROBE CHECK: M48 here, the result appears under the button
       if (busy || BlockedWhilePrinting()) break;
       wz_done[WZ_PROBE] = false;
       strcpy_P(wz_msg[WZ_PROBE], PSTR("Testing probe (5x)..."));
       az_check_only = true;
       az_start_test(false);
+      break;
+
+    case 7: // SKIP SOAK: the first layer test's heat soak (the other steps have the button on their own pages)
+      soak_skip();
+      if (fl_stage == FL_IDLE) { strlcpy(wz_msg[WZ_FIRST], soak_note, sizeof(wz_msg[WZ_FIRST])); wz_note_first = true; busy_ms = millis(); }
       break;
 
     case 6: // 5 FIRST LAYER TEST (tapping it again while it runs stops it)
@@ -5356,6 +5411,7 @@ void DgusTFT::page172_handle(void) {
   if (busy_ms && millis() - busy_ms > 3000) {   // the "busy" notes go away by themselves
     busy_ms = 0;
     for (uint8_t i = 0; i < WZ_N; i++) if (strcmp_P(wz_msg[i], PSTR("Busy, wait a moment")) == 0) wz_msg[i][0] = '\0';
+    if (wz_note_first) { wz_note_first = false; if (fl_stage == FL_IDLE) wz_msg[WZ_FIRST][0] = '\0'; }
   }
   for (uint8_t i = 0; i < WZ_N; i++) {
     // while the first-layer test runs, its line alternates with the way to stop it (the buttons keep their pictures)
