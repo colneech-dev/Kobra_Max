@@ -256,7 +256,12 @@ P5_STORE  = (8, 352, 264, 384)
 P5_STATUS = (8, 390, 264, 410)
 # Bed mesh viewer: MESH_N x MESH_N text cells (one text field each, 0.01 mm relative to the mesh average).
 MESH_N = int(GRID_POINTS ** 0.5)
-MESH_X0, MESH_Y0, MESH_CELL_W, MESH_CELL_H = 10, 112, 36, 36
+# (up to 7 x 7 the cells are 36 px with 4 characters; a 9 x 9 grid needs 28 px cells with 3 characters: values go to +-0.99 mm)
+MESH_CELL_W = MESH_CELL_H = 36 if MESH_N <= 7 else 28
+MESH_CHARS = 4 if MESH_N <= 7 else 3
+MESH_Y0 = 112
+MESH_X0 = (272 - MESH_N * MESH_CELL_W) // 2
+assert MESH_Y0 + MESH_N * MESH_CELL_H <= 366, "the mesh grid is too tall for the page"
 # Extruder pages: label / value row geometry shared by art and show file
 ESTEPS_CUR    = (8, 118, 264, 146)     # current E steps/mm
 ESTEPS_ACTUAL = (68, 224, 204, 260)    # measured length (between the - / + buttons)

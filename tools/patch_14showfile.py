@@ -289,7 +289,7 @@ TXT_TERM_INPUT = 0x2A10
 TXT_TERM_LOG = 0x2C00
 TXT_LEVEL_START = 0x2DC0   # Leveling menu (16): manual Z-offset start height; dgus_tft.h
 # Bed mesh viewer (208), E-steps (210), linear advance (174); dgus_tft.h has the same addresses
-TXT_MESH_BASE   = 0x2E00   # MESH_N * MESH_N cells, 8 words apart
+TXT_MESH_BASE   = 0x3400   # MESH_N * MESH_N cells, 8 words apart (moved from 0x2E00 in v56: 81 cells no longer fit before 0x2F90)
 TXT_MESH_INFO1  = 0x2F90
 TXT_MESH_INFO2  = 0x2FA0
 TXT_ES_CUR      = 0x2FC0
@@ -562,7 +562,7 @@ def _tr(vp, box, chars, **kw):
 PAGE208 = STATUS_BAR + [
     make_text_record(TXT_MESH_BASE + (r * uf.MESH_N + c) * 8,
                      uf.MESH_X0 + c * uf.MESH_CELL_W, uf.MESH_Y0 + r * uf.MESH_CELL_H,
-                     uf.MESH_CELL_W - 2, uf.MESH_CELL_H - 2, chars=4, font=8)
+                     uf.MESH_CELL_W - 2, uf.MESH_CELL_H - 2, chars=uf.MESH_CHARS, font=8)
     for r in range(uf.MESH_N) for c in range(uf.MESH_N)
 ] + [
     _tr(TXT_MESH_INFO1, uf.MESH_INFO1, 25),

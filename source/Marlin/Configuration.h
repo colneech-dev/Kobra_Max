@@ -1532,7 +1532,7 @@
 #define Z_PROBE_FEEDRATE_FAST (4*60)
 
 // Feedrate (mm/min) for the "accurate" probe of each point
-#define Z_PROBE_FEEDRATE_SLOW (Z_PROBE_FEEDRATE_FAST / 2)
+#define Z_PROBE_FEEDRATE_SLOW 90   // (was 120) a slower last approach: the strain gauge overshoots less, so the trigger height is steadier (v56)
 
 /**
  * Probe Activation Switch
@@ -1600,7 +1600,7 @@
  */
 #define Z_CLEARANCE_DEPLOY_PROBE   10 // (mm) Z Clearance for Deploy/Stow
 #define Z_CLEARANCE_BETWEEN_PROBES  5 // (mm) Z Clearance between probe points
-#define Z_CLEARANCE_MULTI_PROBE     5 // (mm) Z Clearance between multiple probes
+#define Z_CLEARANCE_MULTI_PROBE     3 // (mm) Z Clearance between multiple probes (was 5: the slower slow probe would cost more time on it)
 //#define Z_AFTER_PROBING           5 // (mm) Z position after probing is done
 
 #define Z_PROBE_LOW_POINT -10 // (mm) Farthest distance below the Z endstop plane the probe may go. Keep -10 until the real bed gap is known (see M420 V1 after a G29): -4 fails probing when the bed is more than 4 mm below the endstop
@@ -2006,7 +2006,7 @@
 #if EITHER(AUTO_BED_LEVELING_LINEAR, AUTO_BED_LEVELING_BILINEAR)
 
   // Set the number of grid points per dimension.
-  #define GRID_MAX_POINTS_X 7
+  #define GRID_MAX_POINTS_X 9   // was 7 (v56): a dip between nodes at the front edge stayed hidden by the interpolation. 81 probes: the run takes about 60% longer
   #define GRID_MAX_POINTS_Y GRID_MAX_POINTS_X
 
   // Probe along the Y axis, advancing X after each column

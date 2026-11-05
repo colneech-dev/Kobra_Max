@@ -444,7 +444,7 @@ a USB serial connection:
   M303 E-1 S60 C8 U1   ; PID bed autotune (~8 min), same menu
 
   G28           ; home all axes
-  G29           ; bilinear bed levelling (7x7 mesh)
+  G29           ; bilinear bed levelling (9x9 mesh)
   M500          ; save mesh
 
   ; Verify extruder steps:

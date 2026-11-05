@@ -735,7 +735,7 @@ def page_wizard():
     img, draw = new_page()
     status_bar(draw)
     title_bar(draw, "SETUP WIZARD")
-    # The probe is checked FIRST: every later step depends on it (a noisy probe ruins a 30 minute mesh).
+    # The probe is checked FIRST: every later step depends on it (a noisy probe ruins an hour-long mesh).
     steps = [("1  PROBE CHECK  (5 probes)", 'primary', 0xf063),
              ("2  BED MESH  (G29)",        'normal',  0xf05b),
              ("3  Z OFFSET  (paper test)", 'normal',  0xf338),
@@ -990,8 +990,8 @@ def page_level_ensure():
     status_bar(draw)
     title_bar(draw, "BED MESH")
     _warning_tri(draw, W//2, CONTENT_Y1 + 18, color=TEAL)
-    text_center(draw, (0, CONTENT_Y1 + 78, W, CONTENT_Y1 + 106), "Takes up to 30 minutes", F_BODY, WHITE)
-    text_center(draw, (0, CONTENT_Y1 + 110, W, CONTENT_Y1 + 134), "(10 min heat soak + probing)", F_SMALL, GRAY)
+    text_center(draw, (0, CONTENT_Y1 + 78, W, CONTENT_Y1 + 106), "Takes up to 60 minutes", F_BODY, WHITE)
+    text_center(draw, (0, CONTENT_Y1 + 110, W, CONTENT_Y1 + 134), "(10 min heat soak + 81 probes)", F_SMALL, GRAY)
     text_center(draw, (0, CONTENT_Y1 + 140, W, CONTENT_Y1 + 164), "Clear the bed of objects", F_SMALL, GRAY)
     footer_2btn(draw, "BACK", "START  MESH", l_style='ghost', r_style='primary')
     return img

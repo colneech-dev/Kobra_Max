@@ -311,7 +311,7 @@
 #define TXT_TUNE_STATUS 0x2DA0  // Thermal Tuning page (216): progress / result line
 #define TXT_LEVEL_START 0x2DC0  // Leveling menu (16): manual Z-offset start height
 // tools/patch_14showfile.py has the same addresses
-#define TXT_MESH_BASE   0x2E00  // Bed mesh page (208): one cell per VP, 8 words apart (row * N + column)
+#define TXT_MESH_BASE   0x3400  // Bed mesh page (208): one cell per VP, 8 words apart (row * N + column)
 #define TXT_MESH_INFO1  0x2F90  //   "Range 0.321 mm"
 #define TXT_MESH_INFO2  0x2FA0  //   "Low -0.17  High +0.15 mm"
 #define TXT_ES_CUR      0x2FC0  // E-steps page (210): current steps/mm

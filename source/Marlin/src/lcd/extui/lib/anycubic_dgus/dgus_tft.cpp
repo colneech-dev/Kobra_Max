@@ -3336,7 +3336,7 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
       ChangePageOfTFT(PAGE_PREPARE);
       break;
 
-    case 2:   // BED MESH: asks first (it takes up to 30 minutes), then the probe pre-check and G29
+    case 2:   // BED MESH: asks first (it takes up to 60 minutes), then the probe pre-check and G29
       if (!isPrinting())
       {
         lv_ensure_az = false;
@@ -4752,7 +4752,8 @@ void DgusTFT::page208_handle(void) {
       for (uint8_t c = 0; c < n; c++) {
         const float val = v[c][n - 1 - r];
         if (isnan(val)) { SendTxtToTFT("--", TXT_MESH_BASE + (r * n + c) * 8); continue; }
-        const int d = constrain((int)lroundf((val - mean) * 100.0f), -999, 999);
+        const int lim = n > 7 ? 99 : 999;   // 3 characters per cell on a 9 x 9 grid
+        const int d = constrain((int)lroundf((val - mean) * 100.0f), -lim, lim);
         snprintf(b, sizeof(b), "%+d", d);
         SendTxtToTFT(b, TXT_MESH_BASE + (r * n + c) * 8);
       }
