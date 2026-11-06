@@ -3211,6 +3211,11 @@ static es_stage_t es_stage = ES_IDLE;
 static char es_msg[28] = "";
 static float la_k = 0.0f;
 static char la_msg[26] = "";
+static bool fl_k = false;          // the job in fl_poll() is the K pattern (page 174), not the squares of the setup wizard
+static char kt_msg[26] = "";       // its status line (page 174)
+static void kt_start();            // defined with the first layer test (it uses the same heat / home / purge / mesh check steps)
+static void kt_toggle();
+static bool kt_busy();             // the K pattern is being printed
 
 void DgusTFT::page15_handle(void)
 {
@@ -4872,7 +4877,8 @@ static void la_show() {
   const long k = lroundf(la_k * 1000.0f);
   snprintf(b, sizeof(b), "%ld.%03ld", k / 1000, k % 1000);
   DgusTFT::SendTxtToTFT(b, TXT_LA_K);
-  DgusTFT::SendTxtToTFT(la_msg[0] ? la_msg : " ", TXT_LA_STATUS);
+  const char * const m = (fl_k && kt_msg[0]) ? kt_msg : la_msg;
+  DgusTFT::SendTxtToTFT(m[0] ? m : " ", TXT_LA_STATUS);
 }
 
 void DgusTFT::page174_handle(void) {
@@ -4886,7 +4892,15 @@ void DgusTFT::page174_handle(void) {
         const float step = (key_value <= 3) ? 0.1f : 0.01f;
         la_k = constrain(roundf((la_k + ((key_value & 1) ? step : -step)) * 1000.0f) / 1000.0f, 0.0f, 10.0f);
         la_msg[0] = '\0';
+        if (!kt_busy()) kt_msg[0] = '\0';
       } break;
+      case 7:   // K TEST: print the pattern (tap again to stop)
+        kt_toggle();
+        break;
+      case 8:   // SKIP SOAK: the pattern waits for the heat soak like the squares do
+        soak_skip();
+        strlcpy(la_msg, soak_note, sizeof(la_msg));
+        break;
       case 6:   // SAVE
         if (BlockedWhilePrinting()) break;
         setLinearAdvance_mm_mm_s(la_k, E0);
@@ -4920,7 +4934,8 @@ static bool    fl_gate_done = false;  // the stale mesh check has run (and the m
 #define FL_SQUARES_N 5
 #define FL_SIZE      24                 // mm, side of a square
 #define FL_INSET     0.45f              // mm, the rows start this far inside the outline
-#define FL_ROWS      52                 // rows per square, 0.45 mm apart inside the outline: a solid layer
+#define FL_ROW_INSET 0.9f               // mm, the rows start this far inside the outline (two wall lines of 0.45 mm)
+#define FL_ROWS      50                 // rows per square, 0.45 mm apart inside the two walls: a solid layer
 #define FL_E_PER_MM  0.0374f            // mm of 1.75 mm filament per mm of line: 0.45 wide x 0.2 high
 // Square centres in % of the bed, in print order: centre, back-right, back-left, front-right, front-left. The front-left used to come
 // first and was the only poor one (2026-11-02): printing it last tells a bad position (still poor) from a bad first square (the new
@@ -4947,11 +4962,93 @@ static void fl_start() {
   fl_mesh_off = false;
   fl_stale = false;
   fl_gate_done = false;
+  fl_k = false;
   stale_reset();
+}
+
+// K PATTERN (page 174). Lines of slow - fast - slow strokes at rising K, front to back, 5 mm apart: where the pressure is right the line is even
+// and its ends are clean; too low a K gives a bulge where the fast stroke starts and a gap where it ends, too high a K the reverse. It runs
+// through the same stages as the squares (heat, soak, home, purge, mesh check, then the lines in FL_SQUARES). With K at 0 the lines go from
+// 0.0 to 1.0 in steps of 0.1; with a K entered they go from K-0.10 to K+0.10 in steps of 0.02. The K the user had is put back at the end.
+#define KT_LINES 11
+#define KT_PHASES 5   // per line: 0 travel, 1 first slow stroke (M900 here), 2 fast + slow stroke, 3 / 4 mark to the left of every 5th line
+static float kt_k0 = 0, kt_dk = 0.1f, kt_saved = 0;
+
+static void kt_start() {
+  if (fl_stage != FL_IDLE || DgusTFT::BlockedWhilePrinting()) return;
+  kt_msg[0] = '\0';
+  if (!getLevelingIsValid()) { strcpy_P(kt_msg, PSTR("Make the bed mesh first")); fl_k = true; return; }
+#if ENABLED(LIN_ADVANCE)
+  kt_saved = getLinearAdvance_mm_mm_s(E0);
+  kt_dk = la_k > 0.001f ? 0.02f : 0.1f;
+  kt_k0 = la_k > 0.001f ? _MAX(0.0f, la_k - 0.1f) : 0.0f;
+  nozzle_late(AC_FL_NOZZLE_TEMP);
+  setTargetTemp_celsius(AC_FL_BED_TEMP, BED);
+  fl_stage = FL_HEAT;
+  fl_sq = 0;
+  fl_row = 0;
+  fl_abort = false;
+  fl_homed = false;
+  fl_mesh_off = false;
+  fl_stale = false;
+  fl_gate_done = false;
+  fl_k = true;
+  stale_reset();
+#else
+  strcpy_P(kt_msg, PSTR("Not in this firmware"));
+  fl_k = true;
+#endif
+}
+
+static bool kt_busy() { return fl_k && fl_stage != FL_IDLE; }
+
+static void kt_toggle() {
+  if (fl_stage != FL_IDLE) {
+    if (fl_k) { if (!fl_abort) { fl_abort = true; strcpy_P(kt_msg, PSTR("Stopping...")); } }
+    else strcpy_P(la_msg, PSTR("Wizard test is running"));
+    return;
+  }
+  kt_start();
+}
+
+// One step of the pattern: queue what the next phase needs (fl_row = line * KT_PHASES + phase).
+static void kt_step(char * const c, const size_t cs, char (&fm)[26]) {
+  const uint8_t line = fl_row / KT_PHASES, ph = fl_row % KT_PHASES;
+  if (line >= KT_LINES) { fl_stage = FL_END; return; }
+  const int xs = (int)(X_BED_SIZE / 2) - 40, y = (int)(Y_BED_SIZE / 2) - 25 + line * 5;
+  const float k = kt_k0 + line * kt_dk;
+  char e1[12], e2[12], ks[12];
+  switch (ph) {
+    case 0:   // retract, lift, travel to the start of the line
+      snprintf(c, cs, "%sG1 Z0.6 F900\nG1 X%d Y%d F5000", line ? "G1 E-1 F1800\n" : "", xs, y);
+      break;
+    case 1:   // lower, put the retracted filament back, set K, first slow stroke (20 mm at 20 mm/s)
+      fmt_dec(ks, sizeof(ks), k, 2);
+      fmt_dec(e1, sizeof(e1), 20 * FL_E_PER_MM, 4);
+      snprintf(c, cs, "M900 K%s\nG1 Z0.2 F600\nG1 E1 F1800\nG1 X%d E%s F1200", ks, xs + 20, e1);
+      snprintf(fm, sizeof(fm), "Line %d/%d  K %s", line + 1, KT_LINES, ks);
+      break;
+    case 2:   // the fast stroke (40 mm at 80 mm/s), then the second slow one
+      fmt_dec(e1, sizeof(e1), 40 * FL_E_PER_MM, 4);
+      fmt_dec(e2, sizeof(e2), 20 * FL_E_PER_MM, 4);
+      snprintf(c, cs, "G1 X%d E%s F4800\nG1 X%d E%s F1200", xs + 60, e1, xs + 80, e2);
+      if (line % 5) fl_row += 2;   // no mark: the next line
+      break;
+    case 3:   // a mark to the left of lines 1, 6 and 11 (the first, middle and last): retract, travel
+      snprintf(c, cs, "G1 E-1 F1800\nG1 Z0.6 F900\nG1 X%d Y%d F5000", xs - 8, y);
+      break;
+    default:  // the mark itself
+      fmt_dec(e1, sizeof(e1), 4 * FL_E_PER_MM, 4);
+      snprintf(c, cs, "G1 Z0.2 F600\nG1 E1 F1800\nG1 X%d E%s F1200", xs - 4, e1);
+      break;
+  }
+  injectCommands(c);
+  fl_row++;
 }
 
 static void fl_poll() {
   if (fl_stage == FL_IDLE) return;
+  char (&fm)[26] = fl_k ? kt_msg : wz_msg[WZ_FIRST];   // the wizard step 5 line, or the K test's own status line
   if (fl_abort && fl_stage != FL_END && fl_stage != FL_TAIL) {
     // STOP: forget the purge / square lines that have not started yet. Only the PROGMEM pointer is cleared (every line is copied
     // before it runs, so that is safe at any time); the SRAM buffer is left alone because its line is parsed in place and may be
@@ -4965,15 +5062,15 @@ static void fl_poll() {
     const bool fl_hot = getActualTemp_celsius(E0) >= AC_FL_NOZZLE_TEMP - 3 && getActualTemp_celsius(BED) >= AC_FL_BED_TEMP - 2;
     if (getActualTemp_celsius(BED) >= AC_FL_BED_TEMP - 2 && soak_since && ac_bed_hot_ms() < AC_SOAK_MS) {   // (the nozzle heats for the end of it)   // heat soak: the glass needs minutes after the sensor reads the target
       const uint32_t left = (AC_SOAK_MS - ac_bed_hot_ms()) / 1000UL;
-      snprintf_P(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), PSTR("Soak %u:%02u left"), (unsigned)(left / 60), (unsigned)(left % 60));
+      snprintf_P(fm, sizeof(fm), PSTR("Soak %u:%02u left"), (unsigned)(left / 60), (unsigned)(left % 60));
       return;
     }
-    snprintf(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), "Heat %u/%u  bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_FL_NOZZLE_TEMP,
+    snprintf(fm, sizeof(fm), "Heat %u/%u  bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_FL_NOZZLE_TEMP,
              (unsigned)getActualTemp_celsius(BED), (unsigned)AC_FL_BED_TEMP);
     if (fl_hot) {
       injectCommands_P(PSTR("G28"));
       fl_stage = FL_HOME;
-      strcpy_P(wz_msg[WZ_FIRST], PSTR("Homing..."));
+      strcpy_P(fm, PSTR("Homing..."));
     }
     return;
   }
@@ -4994,7 +5091,7 @@ static void fl_poll() {
       // 0.2 mm line needs) that also show whether the flow is established. About 30 seconds.
       injectCommands_P(PSTR("G90\nM420 S1 Z0\nM83\nG92 E0\nG1 Z5 F900\nG1 X20 Y10 F5000\nG1 Z0.3 F600\nG1 E15 F150\nG1 X180 Y10 E8 F1200\nG1 Y13 E0.5 F1200\nG1 X20 E8 F1200\nG1 E-1 F1800\nG1 Z1 F900"));
       fl_stage = FL_PURGE;
-      strcpy_P(wz_msg[WZ_FIRST], PSTR("Priming + purge line..."));
+      strcpy_P(fm, PSTR("Priming + purge line..."));
       break;
 
     case FL_PURGE:
@@ -5009,7 +5106,7 @@ static void fl_poll() {
         fl_gate_done = true;
         injectCommands_P(PSTR("M420 S1 Z0"));
         if (g < 0) { fl_stale = true; fl_abort = true; }
-        else if (sc_n >= 2) snprintf_P(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), PSTR("Mesh drift f%u.%02u c%u.%02u"),
+        else if (sc_n >= 2) snprintf_P(fm, sizeof(fm), PSTR("Mesh drift f%u.%02u c%u.%02u"),
                                        (unsigned)(sc_df), (unsigned)lroundf(sc_df * 100) % 100, (unsigned)(sc_dc), (unsigned)lroundf(sc_dc * 100) % 100);
         break;
       }
@@ -5018,6 +5115,7 @@ static void fl_poll() {
       break;
 
     case FL_SQUARES: {
+      if (fl_k) { kt_step(c, sizeof(c), fm); break; }
       const int x0 = (int)(X_BED_SIZE * fl_pct_x[fl_sq] / 100) - FL_SIZE / 2;
       const int y0 = (int)(Y_BED_SIZE * fl_pct_y[fl_sq] / 100) - FL_SIZE / 2;
       if (fl_row == -2) {
@@ -5047,25 +5145,51 @@ static void fl_poll() {
           fmt_dec(xs, sizeof(xs), x0 + FL_INSET, 2);
           fmt_dec(ys, sizeof(ys), y0 + FL_INSET, 2);
           snprintf(c, sizeof(c), "G1 X%d E%s\nG1 Y%d E%s\nG1 X%s Y%s E0.0240", x0, eb, y0, eb, xs, ys);
+          fl_row = -5;
+        }
+        injectCommands(c);
+        snprintf(fm, sizeof(fm), "Square %d/%d  outline", fl_sq + 1, FL_SQUARES_N);
+      }
+      else if (fl_row <= -5 && fl_row >= -7) {
+        // The second wall line, 0.45 mm inside the first (like a slicer's two perimeters): two injections of two sides, then the move to the
+        // first row. It ends where it started.
+        char xs[12], ys[12], ee[12];
+        fmt_dec(ee, sizeof(ee), (FL_SIZE - 2 * FL_INSET) * FL_E_PER_MM, 4);
+        if (fl_row == -5) {
+          fmt_dec(xs, sizeof(xs), x0 + FL_SIZE - FL_INSET, 2);
+          fmt_dec(ys, sizeof(ys), y0 + FL_SIZE - FL_INSET, 2);
+          snprintf(c, sizeof(c), "G1 X%s E%s\nG1 Y%s E%s", xs, ee, ys, ee);
+          fl_row = -6;
+        }
+        else if (fl_row == -6) {
+          fmt_dec(xs, sizeof(xs), x0 + FL_INSET, 2);
+          fmt_dec(ys, sizeof(ys), y0 + FL_INSET, 2);
+          snprintf(c, sizeof(c), "G1 X%s E%s\nG1 Y%s E%s", xs, ee, ys, ee);
+          fl_row = -7;
+        }
+        else {
+          fmt_dec(xs, sizeof(xs), x0 + FL_ROW_INSET, 2);
+          fmt_dec(ys, sizeof(ys), y0 + FL_ROW_INSET, 2);
+          snprintf(c, sizeof(c), "G1 X%s Y%s E0.0240", xs, ys);
           fl_row = 0;
         }
         injectCommands(c);
-        snprintf(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), "Square %d/%d  outline", fl_sq + 1, FL_SQUARES_N);
+        snprintf(fm, sizeof(fm), "Square %d/%d  outline 2", fl_sq + 1, FL_SQUARES_N);
       }
       else if (fl_row < FL_ROWS) {
         char e1[12], e2[12], ys[12], xs[12];
-        const float xa = x0 + FL_INSET, xb = x0 + FL_SIZE - FL_INSET;
+        const float xa = x0 + FL_ROW_INSET, xb = x0 + FL_SIZE - FL_ROW_INSET;
         fmt_dec(xs, sizeof(xs), (fl_row & 1) ? xa : xb, 2);
         fmt_dec(e1, sizeof(e1), (xb - xa) * FL_E_PER_MM, 4);
         if (fl_row < FL_ROWS - 1) {
           fmt_dec(e2, sizeof(e2), 0.45f * FL_E_PER_MM, 4);
-          fmt_dec(ys, sizeof(ys), y0 + FL_INSET + (fl_row + 1) * 0.45f, 2);
+          fmt_dec(ys, sizeof(ys), y0 + FL_ROW_INSET + (fl_row + 1) * 0.45f, 2);
           snprintf(c, sizeof(c), "G1 X%s E%s\nG1 Y%s E%s", xs, e1, ys, e2);
         }
         else snprintf(c, sizeof(c), "G1 X%s E%s", xs, e1);
         injectCommands(c);
         fl_row++;
-        snprintf(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), "Square %d/%d  row %d/%d", fl_sq + 1, FL_SQUARES_N, (int)fl_row, FL_ROWS);
+        snprintf(fm, sizeof(fm), "Square %d/%d  row %d/%d", fl_sq + 1, FL_SQUARES_N, (int)fl_row, FL_ROWS);
       }
       else {   // square finished: retract, next square
         injectCommands_P(PSTR("G1 E-1 F1800"));
@@ -5076,19 +5200,21 @@ static void fl_poll() {
 
     case FL_END:
       // lift, then park at the back centre so the last square is not hidden under the head (owner, 2026-11-02)
+      if (fl_k) setLinearAdvance_mm_mm_s(kt_saved, E0);   // (every line has run: the K the user had comes back)
       if (fl_homed) injectCommands_P(PSTR("M420 S1 Z0\nG1 E-1 F1800\nG1 Z10 F600\nG1 X200 Y395 F6000\nM82\nM104 S0\nM140 S0"));
       else          injectCommands_P(PSTR("M82\nM104 S0\nM140 S0"));
       fl_stage = FL_TAIL;
-      strcpy_P(wz_msg[WZ_FIRST], PSTR("Finishing..."));
+      strcpy_P(fm, PSTR("Finishing..."));
       break;
 
     case FL_TAIL:   // the finishing commands have run (the queue is empty): the test is over
       fl_stage = FL_IDLE;
       if (fl_abort) {
-        if (fl_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), PSTR("Stopped: mesh off %u.%02u mm"), h / 100, h % 100); }
-        else strcpy_P(wz_msg[WZ_FIRST], fl_mesh_off ? PSTR("Stopped: bed mesh is off") : PSTR("Stopped"));
+        if (fl_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(fm, sizeof(fm), PSTR("Stopped: mesh off %u.%02u mm"), h / 100, h % 100); }
+        else strcpy_P(fm, fl_mesh_off ? PSTR("Stopped: bed mesh is off") : PSTR("Stopped"));
       }
-      else { wz_done[WZ_FIRST] = true; strcpy_P(wz_msg[WZ_FIRST], PSTR("Done: check the 5 squares")); }
+      else if (fl_k) strcpy_P(fm, PSTR("Done: best line = its K"));
+      else { wz_done[WZ_FIRST] = true; strcpy_P(fm, PSTR("Done: check the 5 squares")); }
       break;
 
     default: break;

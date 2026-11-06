@@ -821,10 +821,12 @@ def page_linadv():
     btn(draw, MARGIN, 226, W // 2 - 4, 266, "- 0.01", style='normal', icon=0xf068)
     btn(draw, W // 2 + 4, 226, W - MARGIN, 266, "+ 0.01", style='normal', icon=0xf067)
     vp_area(draw, *uf.LINADV_STATUS, 'Saved')
-    text_center(draw, (0, 306, W, 320), "Print a K-factor test pattern, then enter", F_TINY, GRAY)
-    text_center(draw, (0, 320, W, 334), "the K of its cleanest corner line.", F_TINY, GRAY)
-    text_center(draw, (0, 340, W, 354), "Bowden tubes often need about 0.5 to 1.5.", F_TINY, GRAY)
-    text_center(draw, (0, 354, W, 368), "SAVE keeps it with the settings (M900, M500).", F_TINY, GRAY)
+    text_center(draw, (0, 304, W, 318), "K TEST prints 11 lines, front to back.", F_TINY, GRAY)
+    text_center(draw, (0, 318, W, 332), "K = 0: the lines are K 0.0 to 1.0.", F_TINY, GRAY)
+    text_center(draw, (0, 332, W, 346), "K set: K-0.10 to K+0.10, steps of 0.02.", F_TINY, GRAY)
+    text_center(draw, (0, 346, W, 360), "Best line: even width, clean ends. Enter its K.", F_TINY, GRAY)
+    btn(draw, MARGIN, 372, W // 2 - 4, 416, "K TEST", style='primary', icon=0xf201)
+    btn(draw, W // 2 + 4, 372, W - MARGIN, 416, "SKIP SOAK", style='normal')
     footer_2btn(draw, "BACK", "SAVE", l_style='ghost', r_style='primary')
     return img
 
