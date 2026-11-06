@@ -44,6 +44,7 @@
 #ifndef LEVELING_SOAK_SECONDS
   #define LEVELING_SOAK_SECONDS 0
 #endif
+#define AC_NOZZLE_LEAD_MS         (LEVELING_NOZZLE_LEAD_SECONDS * 1000UL)   // the nozzle heats for the last part of the soak only (ooze)
 #define AC_SOAK_MS                (LEVELING_SOAK_SECONDS * 1000UL)    // heat soak: the bed must have been at temperature this long
 #define AC_BED_WARM_MS            (25UL * 60UL * 1000UL)             // the bed is kept on between steps of the same job for this long
 #define AC_IDLE_HEATER_TIMEOUT_MS (30UL * 60UL * 1000UL)   // heaters on with nothing happening for this long are switched off

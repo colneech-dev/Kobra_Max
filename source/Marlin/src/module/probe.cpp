@@ -468,9 +468,15 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
 
     DEBUG_ECHOPGM("Preheating ");
 
+    // Anycubic: with a heat soak the nozzle is heated for the last LEVELING_NOZZLE_LEAD_SECONDS of it only (a nozzle held at 190 C for 10 minutes oozes)
+    #if BOTH(ANYCUBIC_LCD_DGUS, WAIT_FOR_BED_HEAT) && defined(LEVELING_SOAK_SECONDS) && defined(LEVELING_NOZZLE_LEAD_SECONDS)
+      const bool late_nozzle = LEVELING_SOAK_SECONDS && bed_temp && !early;
+    #else
+      constexpr bool late_nozzle = false;
+    #endif
     #if ENABLED(WAIT_FOR_NOZZLE_HEAT)
       const celsius_t hotendPreheat = hotend_temp > thermalManager.degTargetHotend(0) ? hotend_temp : 0;
-      if (hotendPreheat) {
+      if (hotendPreheat && !late_nozzle) {
         DEBUG_ECHOPGM("hotend (", hotendPreheat, ")");
         thermalManager.setTargetHotend(hotendPreheat, 0);
       }
@@ -488,16 +494,23 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
     DEBUG_EOL();
 
     if (!early) {
-      TERN_(WAIT_FOR_NOZZLE_HEAT, if (hotend_temp > thermalManager.wholeDegHotend(0) + (TEMP_WINDOW)) thermalManager.wait_for_hotend(0));
+      TERN_(WAIT_FOR_NOZZLE_HEAT, if (!late_nozzle && hotend_temp > thermalManager.wholeDegHotend(0) + (TEMP_WINDOW)) thermalManager.wait_for_hotend(0));
       TERN_(WAIT_FOR_BED_HEAT,    if (bed_temp    > thermalManager.wholeDegBed() + (TEMP_BED_WINDOW)) thermalManager.wait_for_bed_heating());
       #if BOTH(ANYCUBIC_LCD_DGUS, WAIT_FOR_BED_HEAT) && defined(LEVELING_SOAK_SECONDS)
         // Anycubic: heat soak. ac_bed_hot_ms() (dgus_tft.cpp) is how long the bed has been at temperature without a break.
         if (LEVELING_SOAK_SECONDS && bed_temp) {
           const millis_t need = SEC_TO_MS(LEVELING_SOAK_SECONDS);
           millis_t next_msg = 0;
+          bool nozzle_on = !late_nozzle;
           wait_for_heatup = true;   // M108 ends the wait
           for (;;) {
             const millis_t hot = ac_bed_hot_ms(), ms = millis();
+            #if ENABLED(WAIT_FOR_NOZZLE_HEAT) && defined(LEVELING_NOZZLE_LEAD_SECONDS)
+              if (!nozzle_on && hot + SEC_TO_MS(LEVELING_NOZZLE_LEAD_SECONDS) >= need) {   // the end of the soak: the nozzle heats now
+                if (hotendPreheat) thermalManager.setTargetHotend(hotendPreheat, 0);
+                nozzle_on = true;
+              }
+            #endif
             if (hot >= need || !wait_for_heatup) break;
             if (ELAPSED(ms, next_msg)) {
               SERIAL_ECHO_MSG("Heat soak: ", (need - hot) / 1000, " s left (M108 to skip)");
@@ -506,6 +519,12 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
             idle();
           }
           wait_for_heatup = false;
+          #if ENABLED(WAIT_FOR_NOZZLE_HEAT)
+            if (late_nozzle) {   // soak over (or skipped): the nozzle gets its target if it has none yet, and is waited for
+              if (!nozzle_on && hotendPreheat) thermalManager.setTargetHotend(hotendPreheat, 0);
+              if (hotend_temp > thermalManager.wholeDegHotend(0) + (TEMP_WINDOW)) thermalManager.wait_for_hotend(0);
+            }
+          #endif
         }
       #endif
       #if ENABLED(PREHEAT_BEFORE_LEVELING)

@@ -1945,6 +1945,9 @@
   // takes ~18 minutes with the front row first. G29 and the Z pages wait until the bed has been at temperature this long (seconds); a bed
   // that has been hot for that long already (the setup wizard keeps it on between steps) does not wait again. 0 = off. M108 ends the wait.
   #define LEVELING_SOAK_SECONDS 600
+  // Anycubic: the nozzle is only heated for the last part of the soak (it oozed for the whole 10 minutes): its target is set when this many seconds
+  // of the soak are left (a cold nozzle takes about 2-3 minutes to reach LEVELING_NOZZLE_TEMP), or at once when the soak is skipped. 0 = heat it from the start.
+  #define LEVELING_NOZZLE_LEAD_SECONDS 240
 #endif
 
 /**

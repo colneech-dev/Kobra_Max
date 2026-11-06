@@ -207,6 +207,8 @@ static bool zoffset_moving = false;
 // measures how long the bed has been at its target without a break; G29 (probe.cpp) and the Z pages wait for LEVELING_SOAK_SECONDS of it, and
 // a bed that is hot already (the setup wizard keeps it on between steps: bed_warm()) does not wait again.
 static millis_t soak_since = 0;
+static uint16_t nozzle_late_temp = 0;   // nozzle target waiting for the end of the soak (0 = none)
+static millis_t nozzle_late_ms = 0;
 static bool soak_skip_pending = false;   // SKIP SOAK was tapped while the bed was still heating: the soak counts as done once it is hot
 static void soak_track() {
 #if LEVELING_BED_TEMP
@@ -222,6 +224,24 @@ static void soak_track() {
     soak_since = 0;
     if (tgt < LEVELING_BED_TEMP - 2) soak_skip_pending = false;   // the bed was switched off meanwhile
   }
+  // LATE NOZZLE HEAT: a nozzle that sits at 190 C for the whole soak oozes. nozzle_late() leaves the nozzle cold and this sets its target when
+  // AC_NOZZLE_LEAD_MS of the soak are left (at once when it is skipped). Dropped when the bed goes off or the request is old.
+  if (nozzle_late_temp) {
+    if (tgt <= 0 || millis() - nozzle_late_ms > AC_SOAK_MS + 900000UL) nozzle_late_temp = 0;
+    else if (soak_since && (uint32_t)(millis() - soak_since) + AC_NOZZLE_LEAD_MS >= AC_SOAK_MS) {
+      setTargetTemp_celsius(nozzle_late_temp, E0);
+      nozzle_late_temp = 0;
+    }
+  }
+#endif
+}
+static void nozzle_late(const uint16_t t) {   // set the nozzle target now when the soak is (nearly) over, otherwise when it is
+#if LEVELING_BED_TEMP
+  if (getTargetTemp_celsius(E0) >= t) return;
+  if (!AC_SOAK_MS || (soak_since && (uint32_t)(millis() - soak_since) + AC_NOZZLE_LEAD_MS >= AC_SOAK_MS)) { setTargetTemp_celsius(t, E0); nozzle_late_temp = 0; }
+  else { nozzle_late_temp = t; nozzle_late_ms = millis(); }
+#else
+  setTargetTemp_celsius(t, E0);
 #endif
 }
 static uint32_t ac_bed_hot_ms() { return soak_since ? (uint32_t)(millis() - soak_since) : 0; }   // (probe.cpp reaches it through the global wrapper after the namespace)
@@ -263,7 +283,7 @@ static bool    z_stale = false;       // the check failed: the page refuses to l
 static void z_set_hot() {
   bed_warm_extend();
 #if LEVELING_NOZZLE_TEMP
-  setTargetTemp_celsius(LEVELING_NOZZLE_TEMP, E0);
+  nozzle_late(LEVELING_NOZZLE_TEMP);   // (heated for the end of the soak only)
 #endif
 #if LEVELING_BED_TEMP
   setTargetTemp_celsius(LEVELING_BED_TEMP, BED);
@@ -283,7 +303,7 @@ static bool z_is_hot() { return temps_hot() && ac_bed_hot_ms() >= AC_SOAK_MS; } 
 // Status text while waiting: the temperatures, then the soak countdown.
 static void heat_status(char * const out, const size_t size) {
 #if LEVELING_NOZZLE_TEMP && LEVELING_BED_TEMP
-  if (temps_hot()) {
+  if (soak_since && ac_bed_hot_ms() < AC_SOAK_MS) {   // (the nozzle only heats for the end of it)
     const uint32_t left = (AC_SOAK_MS - _MIN((uint32_t)AC_SOAK_MS, ac_bed_hot_ms())) / 1000UL;
     snprintf_P(out, size, PSTR("Soak %u:%02u left"), (unsigned)(left / 60), (unsigned)(left % 60));
   }
@@ -506,6 +526,7 @@ static void save_zoffset() {
 // Called when leveling ends and when the Z-offset page is left; a running print keeps its heat.
 static void heaters_off_when_idle() {
   if (isPrinting()) return;
+  nozzle_late_temp = 0;
   setTargetTemp_celsius(0, E0);
   if (!bed_warm()) setTargetTemp_celsius(0, BED);   // (a job under way keeps the bed: the heat soak)
 }
@@ -1767,7 +1788,7 @@ void DgusTFT::WaitStatus() {
   }
   else if (preheat) {
     if (soak_note_active()) strlcpy(buf, soak_note, sizeof(buf));
-    else if (AC_SOAK_MS && temps_hot() && ac_bed_hot_ms() < AC_SOAK_MS) heat_status(buf, sizeof(buf));   // "Soak 7:31 left"
+    else if (AC_SOAK_MS && soak_since && ac_bed_hot_ms() < AC_SOAK_MS) heat_status(buf, sizeof(buf));   // "Soak 7:31 left"
     else
       sprintf(buf, "Hotend %u/%u Bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)getTargetTemp_celsius(E0),
               (unsigned)getActualTemp_celsius(BED), (unsigned)getTargetTemp_celsius(BED));   // <= 24 chars at 10 px = fits the 256 px box
@@ -4357,7 +4378,7 @@ void DgusTFT::page202_handle(void)  // probe precheck ok
   //        char str_buf[16];
 
 #if PROBING_NOZZLE_TEMP || LEVELING_NOZZLE_TEMP
-  setTargetTemp_celsius(LEVELING_NOZZLE_TEMP, E0);
+  nozzle_late(LEVELING_NOZZLE_TEMP);   // G29 (probe.cpp) heats it for the end of the soak
 #endif
 
 #if PROBING_BED_TEMP || LEVELING_BED_TEMP
@@ -4916,7 +4937,7 @@ static void fl_start() {
   wz_done[WZ_FIRST] = false;
   wz_msg[WZ_FIRST][0] = '\0';
   if (!getLevelingIsValid()) { strcpy_P(wz_msg[WZ_FIRST], PSTR("Make the bed mesh first")); return; }
-  setTargetTemp_celsius(AC_FL_NOZZLE_TEMP, E0);
+  nozzle_late(AC_FL_NOZZLE_TEMP);   // (heated for the end of the soak only)
   setTargetTemp_celsius(AC_FL_BED_TEMP, BED);
   fl_stage = FL_HEAT;
   fl_sq = 0;
@@ -4942,7 +4963,7 @@ static void fl_poll() {
 
   if (fl_stage == FL_HEAT) {
     const bool fl_hot = getActualTemp_celsius(E0) >= AC_FL_NOZZLE_TEMP - 3 && getActualTemp_celsius(BED) >= AC_FL_BED_TEMP - 2;
-    if (fl_hot && ac_bed_hot_ms() < AC_SOAK_MS) {   // heat soak: the glass needs minutes after the sensor reads the target
+    if (getActualTemp_celsius(BED) >= AC_FL_BED_TEMP - 2 && soak_since && ac_bed_hot_ms() < AC_SOAK_MS) {   // (the nozzle heats for the end of it)   // heat soak: the glass needs minutes after the sensor reads the target
       const uint32_t left = (AC_SOAK_MS - ac_bed_hot_ms()) / 1000UL;
       snprintf_P(wz_msg[WZ_FIRST], sizeof(wz_msg[WZ_FIRST]), PSTR("Soak %u:%02u left"), (unsigned)(left / 60), (unsigned)(left % 60));
       return;
