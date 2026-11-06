@@ -5230,6 +5230,10 @@ void DgusTFT::page119_handle(void) {
       if (!getLevelingIsValid()) { p5_say(PSTR("Make the bed mesh first")); break; }
       if (p5_stale) { p5_say(PSTR("Bed moved: redo the mesh")); break; }
       p5_undo();   // the previous corner's babysteps must not carry over
+      // Every reading is taken against the mesh as it was when the page opened: the corrections stored so far are taken out while a corner is
+      // measured, and STORE replaces that corner's value (it used to add the new reading to the old one, so a second visit stacked on the
+      // first, 2026-11-06). The stored corrections go back in at STORE, SAVE and when the page is left.
+      if (p5_dirty) p5_restore();
       p5_pt = p;
       p5_h = 0;
       char cmd[64];
@@ -5257,7 +5261,7 @@ void DgusTFT::page119_handle(void) {
 
     case 10: // STORE THIS POINT: the reading is the mesh error at this corner
       if (p5_busy || p5_pt < 0) break;
-      p5_total[p5_pt] += p5_h;
+      p5_total[p5_pt] = p5_h;   // the reading is against the original mesh: it replaces the earlier value of this corner
       p5_set[p5_pt] = true;
       p5_dirty = true;
       p5_undo();
@@ -5275,6 +5279,7 @@ void DgusTFT::page119_handle(void) {
     case 11: // SAVE: keep the corrected mesh with the settings
       if (p5_busy) break;
       p5_undo();
+      if (p5_dirty) p5_apply();   // (a corner may have been opened after the last STORE: its measuring took the corrections out)
       inject_after_P(bed_warm() ? (p5_homed ? PSTR("M500\nG1 Z10 F600\nM104 S0") : PSTR("M500\nM104 S0"))
                                 : (p5_homed ? PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0") : PSTR("M500\nM104 S0\nM140 S0")));
       if (wz_launch) {
