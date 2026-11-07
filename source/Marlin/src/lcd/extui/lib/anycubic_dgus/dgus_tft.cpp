@@ -347,8 +347,10 @@ static uint8_t sc_state = 0;                        // 0 idle, 1 probing, 2 done
 static void stale_reset() { sc_state = 0; sc_listen = false; }
 // The front-left node is the FIRST one G29 probes (the bed had soaked least then), the centre is in the middle of the run: together they show
 // plate changes and thermal drift. Both differences are printed every time (Terminal) and shown by the first layer test.
-static int stale_gate() {   // 0 = still working, 1 = the mesh matches the bed, -1 = the bed is not where the mesh says
-  const uint8_t cx = GRID_MAX_POINTS_X / 2, cy = GRID_MAX_POINTS_Y / 2;
+// beside_centre: probe the node in front of the centre instead (the first layer test prints its first square at the centre, and a hot nozzle that
+// touches the bed there leaves a blob of ooze under it: the torn centre square, 2026-11-07).
+static int stale_gate(const bool beside_centre = false) {   // 0 = still working, 1 = the mesh matches the bed, -1 = the bed is not where the mesh says
+  const uint8_t cx = GRID_MAX_POINTS_X / 2, cy = GRID_MAX_POINTS_Y / 2 - (beside_centre ? 1 : 0);
   if (sc_state == 0) {
     sc_got = false;
     sc_n = 0;
@@ -4958,6 +4960,9 @@ static bool    fl_gate_done = false;  // the stale mesh check has run (and the m
 #define FL_ROW_INSET 0.9f               // mm, the rows start this far inside the outline (two wall lines of 0.45 mm)
 #define FL_ROWS      50                 // rows per square, 0.45 mm apart inside the two walls: a solid layer
 #define FL_E_PER_MM  0.0374f            // mm of 1.75 mm filament per mm of line: 0.45 wide x 0.2 high
+#define FL_SQ_E_PER_MM (FL_E_PER_MM * 1.05f)   // the squares and walls: 5 % more than the plain line volume (the rows showed gaps between them, 2026-11-07)
+#define FL_RETRACT   2.0f               // mm retracted at the end of a square (1 mm left strings between the squares) and put back on its first side
+#define FL_WIPE      3                  // mm the nozzle wipes back over the last row while it retracts
 // Square centres in % of the bed, in print order: centre, back-right, back-left, front-right, front-left. The front-left used to come
 // first and was the only poor one (2026-11-02): printing it last tells a bad position (still poor) from a bad first square (the new
 // first square is poor instead).
@@ -5110,7 +5115,7 @@ static void fl_poll() {
       // Bowden tube before it flows again: a 5 mm prime left the first square under-extruded (hardware test 2026-11-01). So: 15 mm
       // pushed out in place (slowly), then two thick passes (X20 to X180 and back, 8 mm each for 160 mm, about 30 % more than a
       // 0.2 mm line needs) that also show whether the flow is established. About 30 seconds.
-      injectCommands_P(PSTR("G90\nM420 S1 Z0\nM83\nG92 E0\nG1 Z5 F900\nG1 X20 Y10 F5000\nG1 Z0.3 F600\nG1 E15 F150\nG1 X180 Y10 E8 F1200\nG1 Y13 E0.5 F1200\nG1 X20 E8 F1200\nG1 E-1 F1800\nG1 Z1 F900"));
+      injectCommands_P(PSTR("G90\nM420 S1 Z0\nM83\nG92 E0\nG1 Z5 F900\nG1 X20 Y10 F5000\nG1 Z0.3 F600\nG1 E15 F150\nG1 X180 Y10 E8 F1200\nG1 Y13 E0.5 F1200\nG1 X20 E8 F1200\nG1 E-2 F1800\nG1 Z1 F900"));
       fl_stage = FL_PURGE;
       strcpy_P(fm, PSTR("Priming + purge line..."));
       break;
@@ -5121,7 +5126,7 @@ static void fl_poll() {
       if (!fl_gate_done) {
         // Probe the bed centre and compare it with the mesh (a plate added or removed since the mesh was made): refuse to print in the air
         // or into the bed. G30 switches the mesh OFF and leaves it off, so M420 S1 follows at once (and comes before the mesh-on check).
-        const int g = stale_gate();
+        const int g = stale_gate(true);
         if (g == 0) break;
         stale_reset();
         fl_gate_done = true;
@@ -5147,7 +5152,7 @@ static void fl_poll() {
       else if (fl_row == -1) {
         // No stationary prime here: 1 mm pushed out while the nozzle sat at the start corner made a lump that tore the first rows
         // (hardware photos 2026-11-01). The retracted 1 mm is put back during the first row instead (see below).
-        injectCommands_P(PSTR("G1 Z0.2 F600\nG1 F1500"));
+        injectCommands_P(PSTR("G1 Z0.18 F600\nG1 F1500"));   // (0.02 mm under the 0.2 mm the line volume is sized for: the rows showed gaps)
         fl_row = -3;
       }
       else if (fl_row == -3 || fl_row == -4) {
@@ -5155,8 +5160,8 @@ static void fl_poll() {
         // line width and flow, and starts the flow on a short path; the 1 mm retracted at the end of the previous square comes back on
         // the first side. The second injection ends with the move to the first row.
         char ea[12], eb[12];
-        fmt_dec(ea, sizeof(ea), FL_SIZE * FL_E_PER_MM + (fl_row == -3 ? 1.0f : 0.0f), 4);
-        fmt_dec(eb, sizeof(eb), FL_SIZE * FL_E_PER_MM, 4);
+        fmt_dec(ea, sizeof(ea), FL_SIZE * FL_SQ_E_PER_MM + (fl_row == -3 ? FL_RETRACT : 0.0f), 4);
+        fmt_dec(eb, sizeof(eb), FL_SIZE * FL_SQ_E_PER_MM, 4);
         if (fl_row == -3) {
           snprintf(c, sizeof(c), "G1 X%d E%s\nG1 Y%d E%s", x0 + FL_SIZE, ea, y0 + FL_SIZE, eb);
           fl_row = -4;
@@ -5165,7 +5170,7 @@ static void fl_poll() {
           char xs[12], ys[12];
           fmt_dec(xs, sizeof(xs), x0 + FL_INSET, 2);
           fmt_dec(ys, sizeof(ys), y0 + FL_INSET, 2);
-          snprintf(c, sizeof(c), "G1 X%d E%s\nG1 Y%d E%s\nG1 X%s Y%s E0.0240", x0, eb, y0, eb, xs, ys);
+          snprintf(c, sizeof(c), "G1 X%d E%s\nG1 Y%d E%s\nG1 X%s Y%s E0.0252", x0, eb, y0, eb, xs, ys);
           fl_row = -5;
         }
         injectCommands(c);
@@ -5175,7 +5180,7 @@ static void fl_poll() {
         // The second wall line, 0.45 mm inside the first (like a slicer's two perimeters): two injections of two sides, then the move to the
         // first row. It ends where it started.
         char xs[12], ys[12], ee[12];
-        fmt_dec(ee, sizeof(ee), (FL_SIZE - 2 * FL_INSET) * FL_E_PER_MM, 4);
+        fmt_dec(ee, sizeof(ee), (FL_SIZE - 2 * FL_INSET) * FL_SQ_E_PER_MM, 4);
         if (fl_row == -5) {
           fmt_dec(xs, sizeof(xs), x0 + FL_SIZE - FL_INSET, 2);
           fmt_dec(ys, sizeof(ys), y0 + FL_SIZE - FL_INSET, 2);
@@ -5191,7 +5196,7 @@ static void fl_poll() {
         else {
           fmt_dec(xs, sizeof(xs), x0 + FL_ROW_INSET, 2);
           fmt_dec(ys, sizeof(ys), y0 + FL_ROW_INSET, 2);
-          snprintf(c, sizeof(c), "G1 X%s Y%s E0.0240", xs, ys);
+          snprintf(c, sizeof(c), "G1 X%s Y%s E0.0252", xs, ys);
           fl_row = 0;
         }
         injectCommands(c);
@@ -5201,9 +5206,9 @@ static void fl_poll() {
         char e1[12], e2[12], ys[12], xs[12];
         const float xa = x0 + FL_ROW_INSET, xb = x0 + FL_SIZE - FL_ROW_INSET;
         fmt_dec(xs, sizeof(xs), (fl_row & 1) ? xa : xb, 2);
-        fmt_dec(e1, sizeof(e1), (xb - xa) * FL_E_PER_MM, 4);
+        fmt_dec(e1, sizeof(e1), (xb - xa) * FL_SQ_E_PER_MM, 4);
         if (fl_row < FL_ROWS - 1) {
-          fmt_dec(e2, sizeof(e2), 0.45f * FL_E_PER_MM, 4);
+          fmt_dec(e2, sizeof(e2), 0.45f * FL_SQ_E_PER_MM, 4);
           fmt_dec(ys, sizeof(ys), y0 + FL_ROW_INSET + (fl_row + 1) * 0.45f, 2);
           snprintf(c, sizeof(c), "G1 X%s E%s\nG1 Y%s E%s", xs, e1, ys, e2);
         }
@@ -5212,8 +5217,14 @@ static void fl_poll() {
         fl_row++;
         snprintf(fm, sizeof(fm), "Square %d/%d  row %d/%d", fl_sq + 1, FL_SQUARES_N, (int)fl_row, FL_ROWS);
       }
-      else {   // square finished: retract, next square
-        injectCommands_P(PSTR("G1 E-1 F1800"));
+      else {   // square finished: wipe back over the last row while retracting (the oozing tip left strings between the squares), next square
+        const float xa = x0 + FL_ROW_INSET, xb = x0 + FL_SIZE - FL_ROW_INSET;
+        const bool ends_left = ((FL_ROWS - 1) & 1) != 0;   // (the last row ends at xa when its index is odd)
+        char xs[12], ee[12];
+        fmt_dec(xs, sizeof(xs), ends_left ? xa + FL_WIPE : xb - FL_WIPE, 2);
+        fmt_dec(ee, sizeof(ee), FL_RETRACT, 2);
+        snprintf(c, sizeof(c), "G1 X%s E-%s F1800", xs, ee);
+        injectCommands(c);
         fl_row = -2;
         if (++fl_sq >= FL_SQUARES_N) fl_stage = FL_END;
       }
