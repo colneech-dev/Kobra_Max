@@ -35,7 +35,13 @@ def main():
         img = Image.new("RGB", (w, h), gs.BG_DARK)
         gs.btn(ImageDraw.Draw(img), 0, 0, w - 1, h - 1, step_label(mm), style="primary")
         img.save(os.path.join(OUT, f"{i:03d}.bmp"))
-    print(f"{len(uf.STEP_SIZES)} select icons written to {OUT}/")
+    for i, (lbl, _ico) in enumerate(gs.WZ_STEPS):   # the setup wizard's step buttons (icons 3..7), lit orange for the first step not done
+        x1, y1, x2, y2 = uf.WZ_BTN(i)
+        w, h = x2 - x1 + 1, y2 - y1 + 1
+        img = Image.new("RGB", (w, h), gs.BG_DARK)
+        gs.btn(ImageDraw.Draw(img), 0, 0, w - 1, h - 1, lbl, style="primary", icon=_ico)
+        img.save(os.path.join(OUT, f"{uf.WZ_ICON_FIRST + i:03d}.bmp"))
+    print(f"{len(uf.STEP_SIZES)} step + {len(gs.WZ_STEPS)} wizard select icons written to {OUT}/")
 
 
 if __name__ == "__main__":

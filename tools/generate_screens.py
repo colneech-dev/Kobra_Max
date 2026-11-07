@@ -731,19 +731,21 @@ def page_level_advance():
     return img
 
 
+WZ_STEPS = [("1  PROBE CHECK  (5 probes)", 0xf063),
+            ("2  BED MESH  (G29)",        0xf05b),
+            ("3  Z OFFSET  (paper test)", 0xf338),
+            ("4  5-POINT Z  (corners)",   0xf0b2),
+            ("5  FIRST LAYER TEST",       0xf1de)]
+assert len(WZ_STEPS) == uf.WZ_N
+
+
 def page_wizard():
     img, draw = new_page()
     status_bar(draw)
     title_bar(draw, "SETUP WIZARD")
     # The probe is checked FIRST: every later step depends on it (a noisy probe ruins an hour-long mesh).
-    steps = [("1  PROBE CHECK  (5 probes)", 'primary', 0xf063),
-             ("2  BED MESH  (G29)",        'normal',  0xf05b),
-             ("3  Z OFFSET  (paper test)", 'normal',  0xf338),
-             ("4  5-POINT Z  (corners)",   'normal',  0xf0b2),
-             ("5  FIRST LAYER TEST",       'normal',  0xf1de)]
-    assert len(steps) == uf.WZ_N
-    for i, (lbl, sty, ico) in enumerate(steps):
-        btn(draw, *uf.WZ_BTN(i), lbl, style=sty, icon=ico)
+    for i, (lbl, ico) in enumerate(WZ_STEPS):
+        btn(draw, *uf.WZ_BTN(i), lbl, style='normal', icon=ico)   # (the first step not done is lit orange by a Variable Icon: generate_select_icons.py)
         vp_area(draw, *uf.WZ_STATUS(i), 'Not done yet')
     footer_2btn(draw, "BACK", "SKIP SOAK", l_style='ghost', r_style='normal')   # (while the first layer test runs BACK stops it; SKIP SOAK ends its heat soak)
     return img
@@ -763,7 +765,8 @@ def page_p5():
     btn(draw, *uf.P5_PLUS1,  "+ 0.1 mm",  style='primary', icon=0xf067)
     btn(draw, *uf.P5_MINUS2, "- 0.01 mm", style='normal',  icon=0xf068)
     btn(draw, *uf.P5_PLUS2,  "+ 0.01 mm", style='primary', icon=0xf067)
-    btn(draw, *uf.P5_STORE, "STORE THIS POINT", style='primary', icon=0xf0c7)
+    btn(draw, *uf.P5_STORE, "STORE POINT", style='primary', icon=0xf0c7)
+    btn(draw, *uf.P5_RESET, "RESET", style='normal')   # all saved corrections out of the mesh
     vp_area(draw, *uf.P5_STATUS, 'Tap a corner to go there')
     footer_3btn(draw, ["BACK", "SKIP SOAK", "SAVE"], ['ghost', 'normal', 'primary'])
     return img

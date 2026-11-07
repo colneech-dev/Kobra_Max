@@ -299,6 +299,7 @@ TXT_ES_STATUS   = 0x2FF0
 TXT_LA_K        = 0x3100
 TXT_LA_STATUS   = 0x3110
 TXT_WZ_STATUS0  = 0x3120   # setup wizard (172): status line under each of the 5 steps, 0x10 apart (0x3120 .. 0x3160)
+TXT_WZ_SEL0     = 0x3200   # setup wizard (172): orange copy of each step button (Variable Icon), 0x10 apart (0x3200 .. 0x3240)
 TXT_P5_VALUE    = 0x3180   # 5-point Z (119): height above Z0
 TXT_P5_STATUS   = 0x3190
 TXT_P5_CORR0    = 0x31A0   # stored correction under each corner button, 0x10 apart (back left, back right, front left, front right)
@@ -574,7 +575,9 @@ PAGE210 = STATUS_BAR + [
     _tr(TXT_ES_NEW, uf.ESTEPS_NEW, 10),
     _tr(TXT_ES_STATUS, uf.ESTEPS_STATUS, 25),
 ]
-PAGE172 = STATUS_BAR + [_tr(TXT_WZ_STATUS0 + i * 0x10, uf.WZ_STATUS(i), 25) for i in range(uf.WZ_N)]
+PAGE172 = STATUS_BAR + [_tr(TXT_WZ_STATUS0 + i * 0x10, uf.WZ_STATUS(i), 25) for i in range(uf.WZ_N)] + (
+    [make_variable_icon_record(TXT_WZ_SEL0 + i * 0x10, uf.WZ_BTN(i)[0], uf.WZ_BTN(i)[1], icon_id=uf.WZ_ICON_FIRST + i, icon_lib=uf.STEP_ICON_LIB, show_when=1)
+     for i in range(uf.WZ_N)] if uf.STEP_SELECT_ICONS else [])
 PAGE119 = STATUS_BAR + [
     _tr(TXT_P5_VALUE, uf.P5_VALUE, 8),
     _tr(TXT_P5_STATUS, uf.P5_STATUS, 25),

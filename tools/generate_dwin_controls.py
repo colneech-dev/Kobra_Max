@@ -277,6 +277,7 @@ _ZONES = [
     ([119], *uf.P5_MINUS2, 8),  # -0.01 mm
     ([119], *uf.P5_PLUS2,  9),  # +0.01 mm
     ([119], *uf.P5_STORE, 10),  # STORE THIS POINT
+    ([119], *uf.P5_RESET, 13),  # RESET (all saved corrections out of the mesh)
     ([119],   8, 429,  90, 473, 1), # BACK
     ([119],  94, 429, 176, 473, 12), # SKIP SOAK
     ([119], 180, 429, 262, 473, 11), # SAVE

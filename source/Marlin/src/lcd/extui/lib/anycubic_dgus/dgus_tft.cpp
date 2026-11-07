@@ -159,7 +159,26 @@ static bool lv_ensure_az = false;   // the bed mesh confirm page (33 / 153) was 
 #define WZ_FIRST  4
 #define WZ_N      5
 static bool wz_done[WZ_N] = { false, false, false, false, false };
+static bool wz_old[WZ_N]  = { false, false, false, false, false };   // done in an earlier session (the bits kept with the settings)
 static char wz_msg[WZ_N][26] = { "", "", "", "", "" };
+static bool wz_loaded = false, wz_save_pending = false;
+static void wz_sync() {   // the settings are loaded by the time the wizard is first used
+  if (wz_loaded) return;
+  wz_loaded = true;
+  for (uint8_t i = 0; i < WZ_N; i++) if (DgusTFT::lcd_info.wz_bits & (1 << i)) { wz_done[i] = true; wz_old[i] = true; }
+}
+// A step finished: remembered with the settings. save = false where the flow saves (M500) anyway; otherwise the idle loop does it.
+static void wz_mark(const uint8_t i, const bool save = true) {
+  wz_sync();
+  wz_done[i] = true; wz_old[i] = false;
+  if (!(DgusTFT::lcd_info.wz_bits & (1 << i))) { DgusTFT::lcd_info.wz_bits |= (1 << i); if (save) wz_save_pending = true; }
+}
+static void wz_clear(const uint8_t i) {   // a step no longer holds (a new mesh drops the 5-point corrections and the first layer test)
+  wz_sync();
+  wz_done[i] = false; wz_old[i] = false; wz_msg[i][0] = '\0';
+  DgusTFT::lcd_info.wz_bits &= ~(1 << i);
+}
+static bool wz_ok(const uint8_t i) { return wz_done[i] && (i != WZ_MESH || getLevelingIsValid()); }   // (a mesh that is gone is not done)
 static void p5_open(const bool from_wizard);   // 5-point Z page (below)
 static void p5_leave_check();                  // restores unsaved 5-point corrections when the page is left any other way (below)
 static bool az_check_only = false;    // AUTO Z OFFSET run for the wizard: measure the spread, do not park for the manual step
@@ -404,8 +423,10 @@ static void mesh_finish() {
   bed_warm_extend();   // the bed stays on for the next step (the nozzle goes off): the heat soak is kept
   injectCommands_P(PSTR("M420 S1 Z0\nM500\nM104 S0"));   // mesh on again (G30 switches it off), save the mesh and Z offset
   heaters_off_when_idle();
+  wz_mark(WZ_MESH, false);   // (the M500 above saves it)
+  wz_clear(WZ_POINTS); wz_clear(WZ_FIRST);   // the 5-point corrections and the squares belonged to the old mesh
+  for (uint8_t k = 0; k < 4; k++) DgusTFT::lcd_info.p5_cum[k] = 0;
   if (wz_launch) {
-    wz_done[WZ_MESH] = true;
     if (ol_fixed) snprintf_P(wz_msg[WZ_MESH], sizeof(wz_msg[WZ_MESH]), PSTR("Mesh saved, %u re-probed"), (unsigned)ol_fixed);
     else strcpy_P(wz_msg[WZ_MESH], PSTR("Mesh saved"));
   }
@@ -3580,7 +3601,7 @@ void DgusTFT::page17_handle(void)
       else if (z_change) {
         z_change = false;
         setZOffset_mm(getZOffset_mm() + z_manual_start);   // the paper spot becomes Z0
-        if (wz_launch) { wz_done[WZ_OFFSET] = true; strcpy_P(wz_msg[WZ_OFFSET], PSTR("Offset saved")); }
+        if (wz_launch) { wz_mark(WZ_OFFSET, false); strcpy_P(wz_msg[WZ_OFFSET], PSTR("Offset saved")); }
         inject_after_P(bed_warm() ? PSTR("M500\nG1 Z10 F600\nM104 S0") : PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0"));
       }
       else
@@ -5214,7 +5235,7 @@ static void fl_poll() {
         else strcpy_P(fm, fl_mesh_off ? PSTR("Stopped: bed mesh is off") : PSTR("Stopped"));
       }
       else if (fl_k) strcpy_P(fm, PSTR("Done: best line = its K"));
-      else { wz_done[WZ_FIRST] = true; strcpy_P(fm, PSTR("Done: check the 5 squares")); }
+      else { wz_mark(WZ_FIRST); strcpy_P(fm, PSTR("Done: check the 5 squares")); }
       break;
 
     default: break;
@@ -5230,7 +5251,7 @@ static void wizard_background() {
     az_listen = false;
     az_make_msg();
     strlcpy(wz_msg[WZ_PROBE], az_msg, sizeof(wz_msg[WZ_PROBE]));
-    wz_done[WZ_PROBE] = (az_range >= 0);
+    if (az_range >= 0) wz_mark(WZ_PROBE); else wz_done[WZ_PROBE] = false;
     az_stage = AZ_IDLE;
     az_check_only = false;
     injectCommands_P(bed_warm() ? PSTR("G1 Z10 F600\nM104 S0") : PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift, heaters off (the bed stays on for the next step)
@@ -5238,6 +5259,12 @@ static void wizard_background() {
   ol_poll();
   fl_poll();
   es_poll();
+
+  // a finished step is kept with the settings (the flows that do not save anyway leave this to the idle loop)
+  if (wz_save_pending && !isPrinting() && !isPrintingFromMedia() && fl_stage == FL_IDLE && !az_check_only && !commandsInQueue()) {
+    wz_save_pending = false;
+    inject_after_P(getLevelingIsValid() ? PSTR("M420 S1 Z0\nM500") : PSTR("M500"));   // (G30 / M48 leave the mesh switched off)
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -5281,11 +5308,11 @@ static void p5_open(const bool from_wizard) {
 }
 
 // The correction surface at bed position (x, y); u and v are -1 / +1 at the corner squares (100 and 300 mm on a 400 mm bed).
-static float p5_model(const float x, const float y) {
+static float p5_model(const float x, const float y, const float * const t) {
   // u, v are held at +-1 outside the corner squares: the bowl term would otherwise grow 7 times by the bed corners
   const float u = constrain((x - X_BED_SIZE * 0.5f) / (X_BED_SIZE * 0.25f), -1.0f, 1.0f),
               v = constrain((y - Y_BED_SIZE * 0.5f) / (Y_BED_SIZE * 0.25f), -1.0f, 1.0f);
-  const float tbl = p5_total[0], tbr = p5_total[1], tfl = p5_total[2], tfr = p5_total[3];
+  const float tbl = t[0], tbr = t[1], tfl = t[2], tfr = t[3];
   const float e = (tbl + tbr + tfl + tfr) / 8.0f,          // bowl: the same at all four corners, zero at the centre
               b = (tbr + tfr - tbl - tfl) / 4.0f,          // tilt along X
               c = (tbl + tbr - tfl - tfr) / 4.0f,          // tilt along Y
@@ -5297,7 +5324,7 @@ static void p5_apply() {   // mesh = the mesh at page open + the correction surf
   p5_max = 0;
   for (uint8_t i = 0; i < GRID_MAX_POINTS_X; i++)
     for (uint8_t j = 0; j < GRID_MAX_POINTS_Y; j++) {
-      const float cvalue = p5_model(bedlevel.get_mesh_x(i), bedlevel.get_mesh_y(j));
+      const float cvalue = p5_model(bedlevel.get_mesh_x(i), bedlevel.get_mesh_y(j), p5_total);
       bedlevel.z_values[i][j] = p5_orig[i][j] + cvalue;
       p5_max = _MAX(p5_max, fabsf(cvalue));
     }
@@ -5423,14 +5450,38 @@ void DgusTFT::page119_handle(void) {
       soak_skip();
       break;
 
+    case 13: { // RESET: take every saved 5-point correction out of the mesh again (and this visit's), and save that
+      if (p5_busy) break;
+      float cum[4];
+      bool any = p5_dirty;
+      for (uint8_t k = 0; k < 4; k++) { cum[k] = DgusTFT::lcd_info.p5_cum[k] / 100.0f; if (cum[k] != 0) any = true; }
+      for (uint8_t k = 0; k < 4; k++) if (p5_set[k]) any = true;
+      if (!any) { p5_say(PSTR("Nothing to reset")); break; }
+      p5_undo();
+      for (uint8_t i = 0; i < GRID_MAX_POINTS_X; i++)
+        for (uint8_t j = 0; j < GRID_MAX_POINTS_Y; j++) {
+          p5_orig[i][j] -= p5_model(bedlevel.get_mesh_x(i), bedlevel.get_mesh_y(j), cum);   // (the mesh as it was before the saved corrections)
+          bedlevel.z_values[i][j] = p5_orig[i][j];
+        }
+      bedlevel.refresh_bed_level();
+      for (uint8_t k = 0; k < 4; k++) { DgusTFT::lcd_info.p5_cum[k] = 0; p5_total[k] = 0; p5_set[k] = false; }
+      p5_dirty = false; p5_max = 0;
+      p5_pt = -1; p5_h = 0;
+      wz_clear(WZ_POINTS);
+      inject_after_P(p5_homed ? PSTR("M500\nG1 Z5 F600") : PSTR("M500"));
+      p5_say(PSTR("Reset and saved"));
+    } break;
+
     case 11: // SAVE: keep the corrected mesh with the settings
       if (p5_busy) break;
       p5_undo();
       if (p5_dirty) p5_apply();   // (a corner may have been opened after the last STORE: its measuring took the corrections out)
+      if (p5_dirty) for (uint8_t k = 0; k < 4; k++)   // what is in the mesh now, so that RESET can take it out
+        DgusTFT::lcd_info.p5_cum[k] = (int8_t)constrain(lroundf(DgusTFT::lcd_info.p5_cum[k] + p5_total[k] * 100.0f), -127L, 127L);
       inject_after_P(bed_warm() ? (p5_homed ? PSTR("M500\nG1 Z10 F600\nM104 S0") : PSTR("M500\nM104 S0"))
                                 : (p5_homed ? PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0") : PSTR("M500\nM104 S0\nM140 S0")));
       if (wz_launch) {
-        wz_done[WZ_POINTS] = p5_dirty;
+        if (p5_dirty) wz_mark(WZ_POINTS, false); else wz_done[WZ_POINTS] = false;
         strcpy_P(wz_msg[WZ_POINTS], p5_dirty ? PSTR("Corrections saved") : PSTR("No corrections made"));
       }
       p5_dirty = false;
@@ -5464,6 +5515,7 @@ void DgusTFT::page119_handle(void) {
   for (uint8_t k = 0; k < 4; k++) {
     char v[12];
     if (p5_set[k]) { fmt_mm(v, sizeof(v), p5_total[k], true); snprintf(b, sizeof(b), "stored %s", v); }
+    else if (DgusTFT::lcd_info.p5_cum[k]) { fmt_mm(v, sizeof(v), DgusTFT::lcd_info.p5_cum[k] / 100.0f, true); snprintf(b, sizeof(b), "saved %s", v); }
     else strcpy_P(b, PSTR("not measured"));
     SendTxtToTFT(b, TXT_P5_CORR0 + k * 0x10);
   }
@@ -5475,6 +5527,7 @@ void DgusTFT::page119_handle(void) {
 void DgusTFT::page172_handle(void) {
   static millis_t flash_time = 0;
 
+  wz_sync();
   static millis_t busy_ms = 0;
   static bool wz_note_first = false;   // wz_msg[WZ_FIRST] holds a SKIP SOAK note (not a result): it goes away by itself
   const bool busy = (fl_stage != FL_IDLE) || (az_check_only && az_stage == AZ_TEST);
@@ -5571,8 +5624,12 @@ void DgusTFT::page172_handle(void) {
   for (uint8_t i = 0; i < WZ_N; i++) {
     // while the first-layer test runs, its line alternates with the way to stop it (the buttons keep their pictures)
     if (i == WZ_FIRST && fl_stage != FL_IDLE && !fl_abort && ((millis() / 3000) & 1)) { SendTxtToTFT("Tap here or BACK to STOP", TXT_WZ_STATUS0 + i * 0x10); continue; }
-    SendTxtToTFT(wz_msg[i][0] ? wz_msg[i] : (wz_done[i] ? "Done" : "Not done yet"), TXT_WZ_STATUS0 + i * 0x10);
+    SendTxtToTFT(wz_msg[i][0] ? wz_msg[i] : (wz_ok(i) ? (wz_old[i] ? "Done (saved earlier)" : "Done") : "Not done yet"), TXT_WZ_STATUS0 + i * 0x10);
   }
+  // the first step that is not done is shown orange (an orange copy of its button, a Variable Icon, laid over it)
+  int8_t next = -1;
+  for (uint8_t i = 0; i < WZ_N && next < 0; i++) if (!wz_ok(i)) next = i;
+  for (uint8_t i = 0; i < WZ_N; i++) SendValueToTFT(i == next ? 1 : 0, TXT_WZ_SEL0 + i * 0x10);
 }
 
 void DgusTFT::page217_handle(void) {

@@ -84,6 +84,7 @@ WAIT_BADGES = {
 STEP_SELECT_ICONS = True
 STEP_ICON_LIB     = 34
 STEP_SIZES        = (1, 10, 50)        # mm; the three Move Axes step buttons, left to right
+WZ_ICON_FIRST     = 3                  # the setup wizard's five orange step buttons are icons 3..7 of the same library (the first undone step is lit)
 STEP_BUTTONS      = ((8, 114, 90, 144), (94, 114, 176, 144), (182, 114, 264, 144))   # x1, y1, x2, y2
 
 # BOOT_ANIMATION: the STOCK boot process. At power-on the display plays pictures 50..114 of the main library
@@ -252,7 +253,8 @@ P5_CORR = [(8, 131, 132, 149), (140, 131, 264, 149), (8, 188, 132, 206), (140, 1
 P5_VALUE  = (8, 228, 264, 272)             # height above Z0
 P5_MINUS1, P5_PLUS1 = (8, 278, 132, 310), (140, 278, 264, 310)     # -0.1 / +0.1 mm
 P5_MINUS2, P5_PLUS2 = (8, 314, 132, 346), (140, 314, 264, 346)     # -0.01 / +0.01 mm
-P5_STORE  = (8, 352, 264, 384)
+P5_STORE  = (8, 352, 172, 384)
+P5_RESET  = (180, 352, 264, 384)       # takes every saved 5-point correction out of the mesh
 P5_STATUS = (8, 390, 264, 410)
 # Bed mesh viewer: MESH_N x MESH_N text cells (one text field each, 0.01 mm relative to the mesh average).
 MESH_N = int(GRID_POINTS ** 0.5)

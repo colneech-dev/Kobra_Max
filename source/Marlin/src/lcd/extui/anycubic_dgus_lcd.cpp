@@ -75,6 +75,8 @@ namespace ExtUI {
     Dgus.lcd_info.language = ExtUI::ENG;
     Dgus.lcd_info.audio = ExtUI::ON;
     Dgus.lcd_info.z_start_tenths = 10;   // manual Z-offset start height 1.0 mm
+    Dgus.lcd_info.wz_bits = 0;           // nothing in the setup wizard is done any more
+    for (uint8_t k = 0; k < 4; k++) Dgus.lcd_info.p5_cum[k] = 0;
   }
 
   void onStoreSettings(char *buff) {
@@ -84,6 +86,7 @@ namespace ExtUI {
 
     // Example:
 //    static_assert(sizeof(Dgus.lcd_info) <= ExtUI::eeprom_data_size);
+    static_assert(sizeof(Dgus.lcd_info) <= ExtUI::eeprom_data_size, "lcd_info does not fit the ExtUI settings block");
     memcpy(buff, &Dgus.lcd_info, sizeof(Dgus.lcd_info));
   }
 

@@ -321,6 +321,7 @@
 #define TXT_LA_K        0x3100  // Linear advance page (174): K factor
 #define TXT_LA_STATUS   0x3110  //   result line
 #define TXT_WZ_STATUS0  0x3120  // Setup wizard page (172): status line of step 1, steps 2-5 follow 0x10 apart (0x3120 .. 0x3160)
+#define TXT_WZ_SEL0     0x3200  // Setup wizard page (172): orange copy of step 1 (a Variable Icon), steps 2-5 follow 0x10 apart (0x3200 .. 0x3240)
 #define TXT_P5_VALUE    0x3180  // 5-point Z page (119): height above Z0
 #define TXT_P5_STATUS   0x3190  //   status line
 #define TXT_P5_CORR0    0x31A0  //   stored correction under each corner button, 0x10 apart (back left, back right, front left, front right)
@@ -460,6 +461,8 @@ namespace Anycubic {
     ExtUI::language_t       language;
     ExtUI::audio_t          audio;
     uint8_t                 z_start_tenths;   // manual Z-offset start height in 0.1 mm (0 / out of range = 1.0 mm)
+    uint8_t                 wz_bits;          // setup wizard: bit n = step n was finished (kept with the settings; older saves read 0)
+    int8_t                  p5_cum[4];        // 5-point Z: corrections saved into the mesh so far, 0.01 mm, per corner (back left, back right, front left, front right)
   } lcd_info_t;
 
   class DgusTFT {
