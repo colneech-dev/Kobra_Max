@@ -1605,9 +1605,18 @@
 
 #define Z_PROBE_LOW_POINT -10 // (mm) Farthest distance below the Z endstop plane the probe may go. Keep -10 until the real bed gap is known (see M420 V1 after a G29): -4 fails probing when the bed is more than 4 mm below the endstop
 
+// Kobra Max: with a valid mesh, G30 / M48 stop this far below the LOWEST mesh node instead (probe.cpp), so a probe that does not
+// trigger presses at most this far into the bed. G29 keeps Z_PROBE_LOW_POINT: a new mesh must work after the bed was lowered.
+#define Z_PROBE_MESH_LOW_MARGIN 2.0 // (mm)
+
 // For M851 give a range for adjusting the Z probe offset
-#define Z_PROBE_OFFSET_RANGE_MIN -20
-#define Z_PROBE_OFFSET_RANGE_MAX 20
+// Kobra Max: -6..6 covers the display's Z pages: they stop at +-5 and pass through negative offsets while the nozzle is lowered to the
+// paper (the start height is added at SAVE). M851 itself takes only 0..4 (Z_PROBE_OFFSET_M851_MIN/MAX): the offset shifts Z0 at
+// every home, so a mistyped "M851 Z-3" is a ~5 mm crash into the bed. Default 1.9, measured offsets were about 1.5 to 2.5.
+#define Z_PROBE_OFFSET_RANGE_MIN -6
+#define Z_PROBE_OFFSET_RANGE_MAX 6
+#define Z_PROBE_OFFSET_M851_MIN 0
+#define Z_PROBE_OFFSET_M851_MAX 4
 
 // Enable the M48 repeatability test to test probe accuracy
 #define Z_MIN_PROBE_REPEATABILITY_TEST
@@ -1815,7 +1824,7 @@
  */
 #define FILAMENT_RUNOUT_SENSOR
 #if ENABLED(FILAMENT_RUNOUT_SENSOR)
-  #define FIL_SENSOR_OPTIONAL true   // Anycubic: ignore a "run out" reading that was already present at boot
+  #define FIL_SENSOR_OPTIONAL true   // Anycubic: polarity taken from the pin level at boot (stock logic, see run() in feature/runout.h)
   #define FIL_RUNOUT_ENABLED_DEFAULT true // Enable the sensor on startup. Override with M412 followed by M500.
   #define NUM_RUNOUT_SENSORS   1          // Number of sensors, up to one per extruder. Define a FIL_RUNOUT#_PIN for each.
 

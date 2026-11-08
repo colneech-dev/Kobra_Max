@@ -111,6 +111,10 @@ Probe probe;
 
 xyz_pos_t Probe::offset; // Initialized by settings.load
 
+#if defined(Z_PROBE_MESH_LOW_MARGIN) && HAS_MESH
+  bool Probe::mesh_low_point = true;
+#endif
+
 #if HAS_PROBE_XY_OFFSET
   const xy_pos_t &Probe::offset_xy = Probe::offset;
 #else
@@ -503,8 +507,15 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
           millis_t next_msg = 0;
           bool nozzle_on = !late_nozzle;
           wait_for_heatup = true;   // M108 ends the wait
+          const millis_t soak_start = millis();
           for (;;) {
             const millis_t hot = ac_bed_hot_ms(), ms = millis();
+            // The bed target was taken away or lowered (heaters-off timeout, M140 from a host): the soak would never end.
+            // And never wait more than twice the soak (the bed keeps leaving its window, e.g. in a draught).
+            if (thermalManager.degTargetBed() < bed_temp - 5 || ELAPSED(ms, soak_start + 2 * need)) {
+              SERIAL_ECHO_MSG("Heat soak ended early");
+              break;
+            }
             #if ENABLED(WAIT_FOR_NOZZLE_HEAT) && defined(LEVELING_NOZZLE_LEAD_SECONDS)
               if (!nozzle_on && hot + SEC_TO_MS(LEVELING_NOZZLE_LEAD_SECONDS) >= need) {   // the end of the soak: the nozzle heats now
                 if (hotendPreheat) thermalManager.setTargetHotend(hotendPreheat, 0);
@@ -781,7 +792,21 @@ float Probe::run_z_probe(const bool sanity_check/*=true*/) {
 
   // Stop the probe before it goes too low to prevent damage.
   // If Z isn't known then probe to -10mm.
-  const float z_probe_low_point = axis_is_trusted(Z_AXIS) ? -offset.z + Z_PROBE_LOW_POINT : -10.0;
+  float z_probe_low_point = axis_is_trusted(Z_AXIS) ? -offset.z + Z_PROBE_LOW_POINT : -10.0;
+
+  #if defined(Z_PROBE_MESH_LOW_MARGIN) && HAS_MESH
+    // Kobra Max: the mesh holds the bed heights relative to the Z endstop plane, the same reference as Z_PROBE_LOW_POINT.
+    // With a mesh (and not in G29, which must work on a bed that moved), stop Z_PROBE_MESH_LOW_MARGIN below its lowest node:
+    // a probe that never triggers then presses at most that far into the bed, instead of up to 6 mm.
+    if (mesh_low_point && axis_is_trusted(Z_AXIS) && leveling_is_valid()) {
+      float lowest = NAN;
+      GRID_LOOP(x, y) {
+        const float z = bedlevel.z_values[x][y];
+        if (!isnan(z) && (isnan(lowest) || z < lowest)) lowest = z;
+      }
+      if (!isnan(lowest)) NOLESS(z_probe_low_point, -offset.z + lowest - (Z_PROBE_MESH_LOW_MARGIN));
+    }
+  #endif
 
   // Double-probing does a fast probe followed by a slow probe
   #if TOTAL_PROBING == 2

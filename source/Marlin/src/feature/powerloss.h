@@ -166,7 +166,10 @@ class PrintJobRecovery {
       #if PIN_EXISTS(OUTAGECON)
         OUT_WRITE(OUTAGECON_PIN, HIGH);
       #endif
-      #if PIN_EXISTS(POWER_LOSS)
+      #if PIN_EXISTS(POWER_LOSS) && ENABLED(POWER_MONITOR_VOLTAGE) && POWER_LOSS_PIN == POWER_MONITOR_VOLTAGE_PIN
+        // Anycubic: the sense pin is read by the ADC (outage() below). A digital SET_INPUT would take it out of analog
+        // mode; adc_enable() in thermalManager.init() sets the mode.
+      #elif PIN_EXISTS(POWER_LOSS)
         #if ENABLED(POWER_LOSS_PULLUP)
           SET_INPUT_PULLUP(POWER_LOSS_PIN);
         #elif ENABLED(POWER_LOSS_PULLDOWN)
@@ -200,21 +203,10 @@ class PrintJobRecovery {
 
     #if PIN_EXISTS(POWER_LOSS)
       // Anycubic: the sense pin (PC2) sits on a 1:11 divider from the 24 V rail, about 2.2 V when healthy, so a digital
-      // read is useless. As on the original firmware: an outage is a raw ADC reading below ~19.5 V (2200 of 4095
-      // counts) that is still falling after more than 4 samples.
+      // read is useless. The ADC readings are judged in the temperature ISR (PowerMonitor::outage_check(), which also
+      // cuts the heaters); this acts on the result.
       static void outage() {
-        static constexpr uint16_t OUTAGE_ADC_BELOW = 2200;
-        static uint8_t  outage_counter = 0;
-        static uint16_t adc_last = 0;
-        if (!enabled) return;
-        const uint16_t adc = power_monitor.getVoltsRaw();
-        if (adc < OUTAGE_ADC_BELOW) {
-          if (outage_counter >= 4) _outage();
-          if (adc < adc_last) outage_counter++;
-        }
-        else
-          outage_counter = 0;
-        adc_last = adc;
+        if (enabled && power_monitor.outageDetected()) _outage();
       }
     #endif
 

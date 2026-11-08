@@ -27,6 +27,8 @@
 #include "../gcode.h"
 #include "../../feature/bedlevel/bedlevel.h"
 #include "../../module/probe.h"
+#include "../../module/motion.h"
+#include "../../module/planner.h"
 
 /**
  * M851: Set the nozzle-to-probe offsets in current units
@@ -69,18 +71,33 @@ void GcodeSuite::M851() {
     #endif
   }
 
+  #ifndef Z_PROBE_OFFSET_M851_MIN
+    #define Z_PROBE_OFFSET_M851_MIN Z_PROBE_OFFSET_RANGE_MIN
+    #define Z_PROBE_OFFSET_M851_MAX Z_PROBE_OFFSET_RANGE_MAX
+  #endif
   if (parser.seenval('Z')) {
     const float z = parser.value_float();
-    if (WITHIN(z, Z_PROBE_OFFSET_RANGE_MIN, Z_PROBE_OFFSET_RANGE_MAX))
+    if (WITHIN(z, Z_PROBE_OFFSET_M851_MIN, Z_PROBE_OFFSET_M851_MAX))
       offs.z = z;
     else {
-      SERIAL_ECHOLNPGM("?Z out of range (", Z_PROBE_OFFSET_RANGE_MIN, " to ", Z_PROBE_OFFSET_RANGE_MAX, ")");
+      SERIAL_ECHOLNPGM("?Z out of range (", Z_PROBE_OFFSET_M851_MIN, " to ", Z_PROBE_OFFSET_M851_MAX, ")");
       ok = false;
     }
   }
 
   // Save the new offsets
-  if (ok) probe.offset = offs;
+  if (ok) {
+    // Kobra Max: Z0 is shifted by the offset at homing (motion.cpp, set_axis_is_at_home). Shift the current position by the
+    // change too, so the Z frame is the one the next G28 would give: without that, a G29 before the next home stored every
+    // node off by (new - old), and moves went to the old Z0 until then. The nozzle does not move here.
+    const float dz = offs.z - probe.offset.z;
+    if (ENABLED(Z_HOME_TO_MIN) && dz && TEST(axes_homed, Z_AXIS)) {
+      planner.synchronize();
+      current_position.z -= dz;
+      sync_plan_position();
+    }
+    probe.offset = offs;
+  }
 }
 
 void GcodeSuite::M851_report(const bool forReplay/*=true*/) {

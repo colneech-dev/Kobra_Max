@@ -931,7 +931,9 @@ namespace ExtUI {
 
   #if HAS_BED_PROBE
     float getProbeOffset_mm(const axis_t axis) { return probe.offset.pos[axis]; }
-    void setProbeOffset_mm(const_float_t val, const axis_t axis) { probe.offset.pos[axis] = val; }
+    void setProbeOffset_mm(const_float_t val, const axis_t axis) {
+      probe.offset.pos[axis] = axis == Z ? constrain(val, Z_PROBE_OFFSET_RANGE_MIN, Z_PROBE_OFFSET_RANGE_MAX) : val;   // Kobra Max: as setZOffset_mm
+    }
 
     bool getProbeState() { return PROBE_TRIGGERED(); }
 

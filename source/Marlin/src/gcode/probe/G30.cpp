@@ -27,6 +27,7 @@
 #include "../gcode.h"
 #include "../../module/motion.h"
 #include "../../module/probe.h"
+#include "../../module/planner.h"
 #include "../../feature/bedlevel/bedlevel.h"
 #include "../../lcd/marlinui.h"
 
@@ -50,6 +51,9 @@
  */
 void GcodeSuite::G30() {
 
+  // Require homing first (upstream fd343a61, #28675): probing from an unknown Z drives the probe to a meaningless low limit
+  if (homing_needed_error()) return;
+
   #if HAS_MULTI_HOTEND
     const uint8_t old_tool_index = active_extruder;
     tool_change(0);
@@ -63,6 +67,9 @@ void GcodeSuite::G30() {
 
   if (probe.can_reach(pos)) {
     // Disable leveling so the planner won't mess with us
+    // Kobra Max: and switch it back on at the end if it was on (as M48 does): the mesh holds absolute heights, so moves
+    // after a G30 with the mesh left off are millimetres off. The display still sends its own M420 S1 Z0 after G30.
+    TERN_(HAS_LEVELING, const bool was_leveling = planner.leveling_active);
     TERN_(HAS_LEVELING, set_bed_leveling_enabled(false));
 
     remember_feedrate_scaling_off();
@@ -91,6 +98,8 @@ void GcodeSuite::G30() {
 
     if (raise_after == PROBE_PT_STOW)
       probe.move_z_after_probing();
+
+    TERN_(HAS_LEVELING, set_bed_leveling_enabled(was_leveling));
 
     report_current_position();
   }

@@ -1112,7 +1112,8 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
         T(parser.codenum);
       else {
         // colourCounter = number of the last T + 1 (0 = none since homing / print start)
-        if (colourCounter != 0 && colourCounter != int16_t(parser.codenum) + 1) M600();
+        // Only during a print: a T sent from the Terminal or a host while idle is no colour change.
+        if (colourCounter != 0 && colourCounter != int16_t(parser.codenum) + 1 && printingIsActive()) M600();
         colourCounter = int16_t(parser.codenum) + 1;
       }
       break;

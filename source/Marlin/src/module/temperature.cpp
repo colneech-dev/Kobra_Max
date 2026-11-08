@@ -1345,11 +1345,15 @@ void Temperature::_temp_error(const heater_id_t heater_id, FSTR_P const serial_m
   #endif
 }
 
+// Anycubic: the start-up window in which temperature faults are ignored. A flag, not a plain millis() < 5000, which would
+// open again for 5 s every 49.7 days when millis() wraps. Temperature::task() closes it.
+static bool temp_startup_window = true;
+
 void Temperature::maxtemp_error(const heater_id_t heater_id) {
   #if HAS_DWIN_E3V2_BASIC && (HAS_HOTEND || HAS_HEATED_BED)
     DWIN_Popup_Temperature(1);
   #endif
-  if (millis() < 5000) {   // Anycubic: ADC filters are still filling at boot: ignore the fault, but never leave a heater on
+  if (temp_startup_window && millis() < 5000) {   // Anycubic: ADC filters are still filling at boot: ignore the fault, but never leave a heater on
     static bool warned = false;
     if (!warned) { warned = true; SERIAL_ECHO_MSG("Warning: temperature fault ignored during start-up (heaters off)"); }
     disable_all_heaters();
@@ -1362,7 +1366,7 @@ void Temperature::mintemp_error(const heater_id_t heater_id) {
   #if HAS_DWIN_E3V2_BASIC && (HAS_HOTEND || HAS_HEATED_BED)
     DWIN_Popup_Temperature(0);
   #endif
-  if (millis() < 5000) {   // Anycubic: see maxtemp_error
+  if (temp_startup_window && millis() < 5000) {   // Anycubic: see maxtemp_error
     static bool warned = false;
     if (!warned) { warned = true; SERIAL_ECHO_MSG("Warning: temperature fault ignored during start-up (heaters off)"); }
     disable_all_heaters();
@@ -1879,8 +1883,14 @@ void Temperature::task() {
   if (marlin_state == MF_INITIALIZING) return hal.watchdog_refresh(); // If Marlin isn't started, at least reset the watchdog!
 
   static bool no_reentry = false;  // Prevent recursion
-  if (no_reentry) return;
+  if (no_reentry) {
+    // loud_kill() parks nozzle from inside task(), so keep watchdog fed until it halts (upstream 0746ec4b, #28645)
+    if (marlin_state == MF_KILLED) hal.watchdog_refresh();
+    return;
+  }
   REMEMBER(mh, no_reentry, true);
+
+  if (temp_startup_window && millis() >= 5000) temp_startup_window = false;   // Anycubic: see maxtemp_error
 
   #if ENABLED(EMERGENCY_PARSER)
     if (emergency_parser.killed_by_M112) kill(FPSTR(M112_KILL_STR), nullptr, true);
@@ -2937,9 +2947,10 @@ void Temperature::init() {
       // Inactive state waits for a target temperature to be set
       case TRInactive: break;
 
-      // When first heating, wait for the temperature to be reached then go to Stable state
+      // When first heating, wait until within hysteresis of the target then go to Stable state.
+      // The heating watchdog (WATCH_*) covers the heat-up until the same point (upstream c27424fa).
       case TRFirstHeating:
-        if (current < running_temp) break;
+        if (current < running_temp - hysteresis_degc) break;
         state = TRStable;
 
       // While the temperature is stable watch for a bad temperature
@@ -3441,9 +3452,18 @@ void Temperature::update_raw_temperatures() {
 void Temperature::readings_ready() {
 
   // Update raw values only if they're not already set.
+  static millis_t ready_ms = 0;
   if (!raw_temps_ready) {
     update_raw_temperatures();
     raw_temps_ready = true;
+    ready_ms = millis();
+  }
+  else if (ELAPSED(millis(), ready_ms + 4000UL)) {
+    // Kobra Max dead-man: the main loop has not taken a reading for 4 s, so nothing checks MAXTEMP or runaway and
+    // nothing updates the heater power. Cut the heaters from here; the main loop sets them again when it runs.
+    HOTEND_LOOP() temp_hotend[e].soft_pwm_amount = 0;
+    TERN_(HAS_HEATED_BED, temp_bed.soft_pwm_amount = 0);
+    TERN_(HAS_HEATED_CHAMBER, temp_chamber.soft_pwm_amount = 0);
   }
 
   // Filament Sensor - can be read any time since IIR filtering is used
@@ -3986,7 +4006,13 @@ void Temperature::isr() {
         break;
       case Measure_POWER_MONITOR_VOLTAGE:
         if (!hal.adc_ready()) next_sensor_state = adc_sensor_state; // Redo this state
-        else power_monitor.add_voltage_sample(hal.adc_value());
+        else if (power_monitor.add_voltage_sample(hal.adc_value())) {
+          // Anycubic: the supply is failing. Cut the heaters at once (they draw the most and the power-loss save needs what is
+          // left); PrintJobRecovery::outage() in idle() does the save. Repeated with every low reading, as the main loop may
+          // set the power again before it gets there.
+          HOTEND_LOOP() temp_hotend[e].soft_pwm_amount = 0;
+          TERN_(HAS_HEATED_BED, temp_bed.soft_pwm_amount = 0);
+        }
         break;
     #endif
 
