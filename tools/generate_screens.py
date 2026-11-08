@@ -53,31 +53,31 @@ MARGIN     = 8
 # FONTS
 # ─────────────────────────────────────────────────────────────────────────────
 
-_FONT_REG = [
-    r"C:\Windows\Fonts\segoeui.ttf",
-    r"C:\Windows\Fonts\arial.ttf",
-    r"C:\Windows\Fonts\calibri.ttf",
-]
-_FONT_BOLD = [
-    r"C:\Windows\Fonts\segoeuib.ttf",
-    r"C:\Windows\Fonts\arialbd.ttf",
-    r"C:\Windows\Fonts\calibrib.ttf",
-]
+# The art is drawn with Segoe UI (regular + bold). Any other font changes every picture, so there is NO fallback:
+# a missing font stops the run (tools/fonts/README.md). The fonts are Microsoft's and are not in the repository; they
+# are searched for in $KOBRA_FONT_DIR, tools/fonts/ and the Windows font folder, in that order.
+_FONT_FILES = {False: "segoeui.ttf", True: "segoeuib.ttf"}
+_FONT_DIRS = [d for d in (os.environ.get("KOBRA_FONT_DIR"),
+                          os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts"),
+                          os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")) if d]
 
-def _first(paths):
-    for p in paths:
+
+def _find_font(name):
+    for d in _FONT_DIRS:
+        p = os.path.join(d, name)
         if os.path.exists(p):
             return p
-    return None
+    raise SystemExit(f"generate_screens: font {name} (Segoe UI) not found in {_FONT_DIRS}.\n"
+                     "The screen art must be drawn with it: on Windows it is in C:\\Windows\\Fonts; elsewhere copy segoeui.ttf and "
+                     "segoeuib.ttf from a Windows PC into tools/fonts/ (git-ignored, do not commit them) or set KOBRA_FONT_DIR. "
+                     "See tools/fonts/README.md.")
 
-_REG_PATH  = _first(_FONT_REG)
-_BOLD_PATH = _first(_FONT_BOLD) or _REG_PATH
+
+_FONT_PATH = {bold: _find_font(name) for bold, name in _FONT_FILES.items()}
+
 
 def font(size, bold=False):
-    path = _BOLD_PATH if bold else _REG_PATH
-    if path:
-        return ImageFont.truetype(path, size)
-    return ImageFont.load_default()
+    return ImageFont.truetype(_FONT_PATH[bold], size)
 
 F_TINY  = font(11)
 F_SMALL = font(13)
@@ -87,14 +87,14 @@ F_TITLE = font(20, bold=True)
 F_BIG   = font(28, bold=True)
 F_HUGE  = font(40, bold=True)
 
-# Font Awesome 6 Free Solid — downloaded to tools/fonts/
-_FA_PATH = os.path.join(os.path.dirname(__file__), 'fonts', 'fa-solid-900.ttf')
+# Font Awesome 6 Free Solid (SIL OFL 1.1, committed in tools/fonts/). Without it every icon would silently vanish.
+_FA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fonts', 'fa-solid-900.ttf')
+if not os.path.exists(_FA_PATH):
+    raise SystemExit(f"generate_screens: {_FA_PATH} (Font Awesome 6 Free Solid) is missing; it is part of the repository - restore it with git")
 
 @functools.lru_cache(maxsize=32)
 def _fa(size):
-    if os.path.exists(_FA_PATH):
-        return ImageFont.truetype(_FA_PATH, size)
-    return None
+    return ImageFont.truetype(_FA_PATH, size)
 
 _FA_BTN = _fa(15)   # button icons (matches F_BODY)
 _FA_ROW = _fa(20)   # row label icons — slightly larger than F_LABEL for legibility
@@ -1346,7 +1346,26 @@ def generate_pressed(page_map):
     return written
 
 
+def render_only(pages, out_dir):
+    """--only 13,133 --out DIR: draw just these pages into DIR (build_release.py renders the About pages with the release
+    name there, so the tracked DWIN_SET/013.bmp / 133.bmp are never rewritten)."""
+    page_map = _build_page_map()
+    os.makedirs(out_dir, exist_ok=True)
+    for pg in pages:
+        name = f'{pg:03d}'
+        if name not in page_map:
+            raise SystemExit(f"generate_screens: no page {pg}")
+        page_map[name]().save(os.path.join(out_dir, f'{name}.bmp'))
+        print(f"  {name}.bmp -> {out_dir}")
+
+
 def main():
+    if '--only' in sys.argv:
+        out = sys.argv[sys.argv.index('--out') + 1] if '--out' in sys.argv else None
+        if not out or os.path.abspath(out) == os.path.abspath(OUT_DIR):
+            raise SystemExit("generate_screens: --only needs --out DIR (a folder other than DWIN_SET)")
+        render_only([int(p) for p in sys.argv[sys.argv.index('--only') + 1].split(',')], out)
+        return
     os.makedirs(OUT_DIR, exist_ok=True)
     page_map = _build_page_map()
 
@@ -1381,6 +1400,8 @@ def main():
         print("Errors:")
         for name, e in errors:
             print(f"  {name}: {e}")
+        print(f"FAILED: {len(errors)} page(s) could not be drawn")
+        sys.exit(1)
 
 
 if __name__ == '__main__':

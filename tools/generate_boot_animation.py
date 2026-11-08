@@ -2,10 +2,9 @@
 """
 KobraMax-HC32 boot animation frame generator.
 
-Generates a numbered JPEG frame sequence (272x480, matching the display
-resolution) for import into DWIN's Movie2ICL.exe tool
-(C:\\temp\\DGUS_V7649\\TOOL\\movie2icl\\Movie2ICL.exe), which compiles a frame
-sequence into an animated ICL that the DGUS2 kernel plays natively on power-on.
+Draws the boot animation frames (272x480) as DWIN_SET/050.bmp .. 114.bmp. They are pictures
+BOOT_FIRST..BOOT_LAST of the main picture library (16_68_.icl), played at power-on by the stock
+Image Animation record on page 50 (see ui_features.BOOT_ANIMATION).
 
 Reuses the exact colors/fonts/layout helpers from generate_screens.py so the
 animation matches the rest of the redesign.
@@ -13,8 +12,7 @@ animation matches the rest of the redesign.
 Run from the project root:
     python tools/generate_boot_animation.py
 
-Output: <scratchpad>/boot_anim/JPG/1.jpeg .. N.jpeg (numeric, no zero-padding,
-matching the naming convention Movie2ICL.exe's sample project uses).
+Output: DWIN_SET/050.bmp .. DWIN_SET/114.bmp
 """
 
 import os
@@ -29,17 +27,15 @@ from generate_screens import (   # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
 import ui_features as uf  # noqa: E402
 
-OUT_DIR = os.path.abspath(os.environ.get("BOOT_ANIM_OUT", r"C:\temp\boot_anim\JPG"))
-
-# The frames are pictures BOOT_FIRST..BOOT_LAST of the main library, played by the Image Animation record
-# patch_14showfile.py puts on page 50 (see ui_features.BOOT_*). Frame time is in units of 8 ms.
+# The frames are pictures BOOT_FIRST..BOOT_LAST of the main library, played by the stock Image Animation record
+# on page 50 (not touched by patch_14showfile.py; see ui_features.BOOT_*). Frame time is in units of 8 ms.
 N_FRAMES = uf.BOOT_LAST - uf.BOOT_FIRST + 1
 FPS = 1000.0 / (8 * uf.BOOT_FRAME_TIME)
 DURATION_S = N_FRAMES / FPS
 
 TITLE_TEXT = "KOBRA MAX"
 SUB_TEXT = "KobraMax-HC32"
-VER_TEXT = "Marlin 2.0.8  HC32F460"
+VER_TEXT = f"Marlin {uf.MARLIN_VERSION}  HC32F460"   # read from Version.h
 
 # Timeline (in frames)
 TITLE_FADE_START, TITLE_FADE_END = 0, 8
@@ -135,10 +131,8 @@ def frame(i):
     return img
 
 
-# First picture-library index for the animation frames — right after the
-# highest existing page number (217), so they sit in the same 16_68_ library
-# as every other page background. Must match the "start picture position"
-# entered for the Picture Animation control in the DGUS IDE page editor.
+# First picture-library index for the animation frames: the stock record on page 50 plays pictures 50..114
+# of 16_68_.icl, so the frames must be exactly those pictures.
 BMP_START_INDEX = uf.BOOT_FIRST
 DWIN_SET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "DWIN_SET")
 
