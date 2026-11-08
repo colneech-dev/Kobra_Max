@@ -102,10 +102,16 @@ __pycache__/
 DGUS/
 _marlin_upstream/
 
-# Generated release packages (rebuild with tools/build_release.py)
-release/
-release_anim_test/
-release_v*/
+# Generated release packages (rebuild with tools/build_release.py; it only writes folders named release*)
+/release*/
+
+# The stock Anycubic display files that tools/patch_14showfile.py and generate_dwin_controls.py start from, and the display OS.
+# They are small and needed to rebuild a display set, so they are tracked despite the *.bin rule above.
+!DWIN_SET/*.base.bin
+!DWIN_SET/DWINOS.bin
+
+# Microsoft fonts the screen art is drawn with (licence: do not commit them; see tools/fonts/README.md)
+tools/fonts/segoe*.ttf
 
 # Script-generated display artefacts (rebuild with tools/build_icl.py / generate_spinner_icons.py)
 DWIN_SET/auto_icl/

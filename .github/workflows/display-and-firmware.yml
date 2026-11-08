@@ -1,0 +1,88 @@
+# TL-20: reproducibility checks for the display set and the firmware.
+# windows-latest because the screen art is drawn with Segoe UI (C:\Windows\Fonts), which may not be redistributed.
+name: display-and-firmware
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  display:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: python -m pip install -r tools/requirements.txt
+
+      - name: Generators (must reproduce the committed files)
+        run: |
+          python tools/generate_screens.py
+          python tools/generate_dwin_controls.py
+          python tools/generate_spinner_icons.py
+          python tools/generate_select_icons.py
+          python tools/generate_boot_animation.py
+          python tools/patch_14showfile.py          # records per page, font/icon slots (exit 1 on failure)
+          git diff --exit-code -- DWIN_SET tools/DWIN_CONTROLS_README.md
+
+      - name: Generators are deterministic (second run, sha256 of the whole DWIN_SET)
+        run: |
+          find DWIN_SET -type f ! -path '*/auto_icl/*' -print0 | sort -z | xargs -0 sha256sum > /tmp/first.sha
+          python tools/generate_screens.py > /dev/null
+          python tools/generate_dwin_controls.py > /dev/null
+          python tools/generate_spinner_icons.py > /dev/null
+          python tools/generate_select_icons.py > /dev/null
+          python tools/generate_boot_animation.py > /dev/null
+          python tools/patch_14showfile.py > /dev/null
+          find DWIN_SET -type f ! -path '*/auto_icl/*' -print0 | sort -z | xargs -0 sha256sum > /tmp/second.sha
+          diff /tmp/first.sha /tmp/second.sha
+
+      - name: Cross-check art, touch zones, show file and firmware handlers
+        run: python tools/cross_check_display.py
+
+      - name: Library builder self-test
+        run: python tools/build_icl.py --selftest
+
+      - name: Build and verify the libraries, flash slots, picture-library headroom
+        run: |
+          python tools/build_icl.py --out DWIN_SET/auto_icl/16_68_.icl
+          python tools/build_icl.py --kind icons --src DWIN_SET/spinner_icons --out DWIN_SET/auto_icl/33_SPIN.icl
+          python tools/build_icl.py --kind icons --src DWIN_SET/select_icons --out DWIN_SET/auto_icl/34_SEL.icl
+          python tools/check_icl.py --icl DWIN_SET/auto_icl/16_68_.icl
+
+      - name: Release package (display part, no firmware build)
+        run: python tools/build_release.py --out release_ci_bmps --bmps-only
+
+  firmware:
+    runs-on: windows-latest
+    continue-on-error: true      # optional: the HC32 PlatformIO platform download can be slow or flaky
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: python -m pip install platformio -r tools/requirements.txt
+      - name: pio run (retried: the first attempt often fails with a SCons FortranCommon error)
+        run: pio run || pio run || pio run
+      - name: Framework package hashes (HW-3)
+        run: python tools/build_release.py --package-hashes
+      - name: Vector table check (HW-I3)
+        run: |
+          python - <<'EOF'
+          import sys
+          sys.argv = ["build_release.py"]
+          sys.path.insert(0, "tools")
+          import build_release as b
+          b.FW_BIN = ".pio/build/HC32F460E_kobra_max/firmware.bin"
+          bad = b.check_firmware_bin(b.FW_BIN, ".pio/build/HC32F460E_kobra_max/firmware.elf")
+          print(bad or "firmware.bin: vector table and stack pointer OK")
+          sys.exit(1 if bad else 0)
+          EOF

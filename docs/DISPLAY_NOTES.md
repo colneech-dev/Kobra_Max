@@ -92,16 +92,16 @@ touch. `tools/cross_check_display.py` checks the first three against each other 
 | 11 / 131 | System (sound on) | 33 / 153 | Confirm leveling |
 | 117 / 170 | System (sound off) | 34 / 154 | Leveling in progress (wait) |
 | 13 / 133 | About | 93 / 213 | Printer statistics |
-| 15 / 135 | Prepare | 115 | Auto Z offset (**hidden**, needs M1024) |
+| 15 / 135 | Prepare | 115 | Stock auto Z offset page (not used: AUTO Z OFFSET runs on the Z-offset pages) |
 | 16 / 136 | Leveling menu | 171 / 173 | Power-loss recovery |
 | 17 / 137 | Z-offset adjust | 175 / 176 | Probe preheating (ENG / CHS) |
 | 18 / 138 | Preheat | 177 / 189 | Homing (wait) |
 | 19 / 139 | Filament | 178–188 / 190–200 | Fault pages (187/188 ↔ 199/200 are recoverable) |
 | 201 / 204 | Probe test | 202 / 205 | Probe OK |
 | 203 / 206 | Probe failed | 207 / 209 | Tools, case light **off / on** |
-| 211 / 212 | Print settings, case light **off / on** | 214 | Thumbnail (**unreachable stub**) |
+| 211 / 212 | Print settings, case light **off / on** | 214 | Thumbnail (**hidden**, unreachable) |
 | 215 | Terminal | 216 | Thermal tuning |
-| 217 | Factory reset | **35–84** | *"button held" pictures — never navigated to* (see 3.5; page 16's is 84) |
+| 217 | Factory reset | **35–49, 155–159, 218–251** | *"button held" pictures — never navigated to* (see 3.5) |
 | 50 | *boot page* (stock Image Animation record, untouched) | **50–114** | *boot animation frames, pictures 50..114; "button held" pictures live at 35–49 and 218–251* (see the boot animation section) |
 
 The *boot animation* frames (pictures 50–114) ARE part of the picture library (`ui_features.BOOT_*`; see the boot animation section at the end).
@@ -120,12 +120,14 @@ Picture space is slots 16–63; fonts/icons/configs share the 4–12 MB region (
 | `30_FontSong14X14.DZK` | 30–32 | Chinese 14×14 font. *Was `24_...`.* |
 | `33_SPIN.icl` | 33 | Spinner icon library (script-built) |
 | `34_SEL.icl` | 34 | "Selected button" icons (script-built) |
-| `13TouchFile.bin`, `14ShowFile.bin`, `22_Config.bin`, `T5LCFG.CFG`, `DWINOS.bin` | (configuration area) | touch zones, display records, initial values, hardware config, OS |
+| `13TouchFile.bin`, `14ShowFile.bin` | fixed slots 13 and 14 (one slot each, at most 256 KB) | touch zones, display records |
+| `T5LCFG.CFG`, `DWINOS.bin` | (not slot-addressed) | hardware config, display OS |
+| `22_Config.bin` | fixed slot 22 = **inside the picture library**: no longer shipped (see 2.4) | initial values |
 
 **Why `23_ICO.icl` and `24_Font…` were renamed:** the stock picture library is 7 slots (16–22) so the
-icon library fits at 23. Our rebuilt library is bigger (9 slots) and runs through 23 and 24, silently
+icon library fits at 23. Our rebuilt library is bigger (13 slots, 16-28) and runs through 23 and 24, silently
 overwriting the icon library and the start of the font. `tools/ui_features.py → FLASH_RENAMES`
-moves them, and `tools/check_icl.py` reports any overlap. The CFG file (`T5LCFG.CFG`, byte 0x08) pins
+moves them, and `tools/check_icl.py` / `build_release.py` report any overlap (including the fixed `.bin` slots). The CFG file (`T5LCFG.CFG`, byte 0x08) pins
 only the *background library's* slot (0x10 = 16); nothing pins the icon library or font.
 
 Limits from the guide: a single picture inside a library must be **≤ 248 KB** on T5L1; a single icon
@@ -302,7 +304,7 @@ block as `[w][h][hdr_len][data_len] + JPEG`, inserts padding so the JPEG header 
 highest ID as the count, then computes the CRC over bytes 8.. and stores it at 6-7. It also warns "need zero
 padding" when a picture would straddle a 16 MB flash-address boundary (irrelevant at our sizes). This tool
 writes a 4096-byte header/table area; the IDE's own ICL tool (what produced our library) uses a shorter,
-exact-size table — the display accepts both. (`Movie2ICL.exe`, which made `34_BootAnim.icl`, uses a different
+exact-size table — the display accepts both. (`Movie2ICL.exe`, which made the old `34_BootAnim.icl` - now in `tools/archive/` - uses a different
 CRC variant that we did not decode.)
 
 **Writing it ourselves (experimental) [RE]:** `tools/build_icl.py` builds a library from BMPs: it takes the
@@ -313,15 +315,21 @@ build if Pillow's tables differ from the template's. Self-test: the IDE's own pi
 out 0.98-0.99x the IDE's size and decode back with 0 differing pixels. What is **not** known: the
 header CRC — now computed exactly as DWIN's tool does it, and `check_icl.py` verifies it — and, the real question,
 **whether the display's hardware decoder accepts it** (test file:
-`release_v2/EXPERIMENTAL_SCRIPT_ICL/`). If it does, the manual IDE step disappears.
+`release_v2/EXPERIMENTAL_SCRIPT_ICL/`). It did (v3-v7 and later); `--script-icl` is now the normal release path.
 
 ## 2.4 `T5LCFG.CFG`, `22_Config.bin`, `DWINOS.bin`
 
 Taken unchanged from Anycubic's official V2.8.7 package. `T5LCFG.CFG` (46 bytes) holds hardware
 settings; **byte 0x08 = 0x10** tells the display that the background library is in slot 16.
-`22_Config.bin` (131,076 bytes) is the initial-value file; the repo keeps it as `22_Config.base.bin`
-and the packager ships it under the real name. **Never generate a `22_Config.bin` from a fresh IDE
-project** — a "New Project" one stopped the display from booting (Part 4).
+`22_Config.bin` (131,076 bytes) is the initial-value file; the repo keeps it as `22_Config.base.bin`.
+**It is no longer shipped** (since the 2026-11-08 tools review, TL-4): the number in its name puts it in flash slot 22, which is
+inside our 13-slot picture library (16-28, pictures of about 110-119 sit there), and `T5LCFG.CFG` byte 0x05 = 0x1B suggests it is
+not loaded anyway. Whether the display needs it at all is **[?]**: if a release without it misbehaves, report it. **Never generate a
+`22_Config.bin` from a fresh IDE project** — a "New Project" one stopped the display from booting (Part 4; possibly the slot
+overlap rather than the file's content).
+
+`13TouchFile.base.bin`, `14ShowFile.base.bin`, `22_Config.base.bin` and `DWINOS.bin` are committed (stock Anycubic files, 173 KB);
+the build stops if one is missing.
 
 ---
 
@@ -336,8 +344,8 @@ project** — a "New Project" one stopped the display from booting (Part 4).
 3. If a button is new: add a `case` in the right `pageN_handle()` in `dgus_tft.cpp`.
 4. Run **`python tools/cross_check_display.py`** — it tells you where art, zones, records and handlers
    disagree (typically by a few pixels).
-5. Rebuild the picture library in the DGUS IDE (3.6) and run **`python tools/check_icl.py`**.
-6. `python tools/build_release.py` → flash (3.7).
+5. Commit, then `python tools/build_release.py --out release_vN --script-icl` (builds every library by script, checks
+   everything, refuses a dirty tree) → flash (3.7). The DGUS IDE route (3.6) is only a fallback.
 
 ## 3.2 Add a text or number field
 
@@ -347,12 +355,12 @@ project** — a "New Project" one stopped the display from booting (Part 4).
    you draw with `vp_area()` in `generate_screens.py` (cross-check enforces ≥ 80 % overlap).
 3. Firmware: `SendTxtToTFT("…", TXT_X)` or `SendValueToTFT(n, TXT_X)`.
 
-## 3.3 Add a progress bar **[SPEC]**
+## 3.3 Add a progress bar
 
-`make_process_bar_record(vp, x0, y0, x1, y1, border, fg, bg)` in the page's record list; draw only the
-empty track in the art; firmware writes an integer 0–100 to the VP (`SendValueToTFT(pct, TXT_..._BAR)`).
-Used for the print progress (`TXT_PRINT_BAR`) and leveling (`TXT_WAIT_BAR`). First use on hardware is
-still pending — if the display misbehaves, set `PROGRESS_BARS = False` in `ui_features.py`.
+The Process Bar control (0x5A23) never drew a fill on this display and its record builder is gone. Progress bars are drawn by the
+firmware (`send_progress_bar`): with `AC_PROGRESS_GFX 1` (dgus_tft_defs.h, the current setting) through a Basic Graphics record
+(`patch_14showfile.py`, 0x5A21), with 0 as a text bar `[####....]` in a text field. Draw only the empty track in the art.
+`PROGRESS_BARS = False` in `ui_features.py` turns them off.
 
 ## 3.4 Make an animation — the animation icon (this works) **[HW]**
 
@@ -364,8 +372,8 @@ DWIN's guide, section 7.3, and our toggle test on 2026-10-25 agree.
 Steps:
 1. **Make the frames.** One image per frame, all the same size, numbered by icon ID (`100.bmp`,
    `101.bmp`, …). IDs must be ≤ 255. For a spinner see `tools/generate_spinner_icons.py`.
-2. **Build an icon library** in the DGUS IDE from those images and save it as `<slot>_NAME.icl`
-   (we use `33_SPIN.icl`). *The slot number is the library number used in the record.* Check with
+2. **Build an icon library**: `python tools/build_icl.py --kind icons --src DIR --out <slot>_NAME.icl` (`build_release.py`
+   does this for `33_SPIN.icl` and `34_SEL.icl`; the DGUS IDE also works). *The slot number is the library number used in the record.* Check with
    `check_icl.py` that it overlaps nothing. (The stock `29_ICO.icl` can be used for a quick test: its
    toggle icons 35 → 36 animate.)
 3. **Add the record** to the page: `make_icon_animation_record(x, y, start_icon, end_icon, icon_lib,
@@ -399,37 +407,40 @@ the button's rectangle out of *another page's picture* and shows it over the but
    `generate_screens.generate_pressed()` does exactly this (`btn()` has a `_PRESSED` mode: 30 % lighter
    fill + 2 px orange rim).
 2. Give each pressed picture an ID that is not a page. `tools/press_effect.py` assigns **page + 34** for
-   pages 1–34 (as the stock UI does; page 16's would be 50, the boot page, so it uses 84) and 69–83 for the special pages; pages with identical art
-   (ENG mirrors etc., the `TWIN` table) share one picture. IDs 35–84 are reserved for this.
+   pages 1–34 (as the stock UI does) and 69–83 / 155–159 for the special pages; IDs that would fall into the boot animation's
+   range 50–114 move up by 168 (`PRESSED_SHIFT`). Pages with identical art (ENG mirrors etc., the `TWIN` table) share one
+   picture. Pressed pictures therefore live at **35–49, 155–159 and 218–251**.
 3. `generate_dwin_controls.py` writes the ID into every zone's `Pic_On`.
-4. The pictures must be **in the rebuilt picture library** — the IDE import list is the 143 BMPs in
-   `ICL_SOURCE_BMPS/`. `cross_check_display.py` fails if a zone names a picture that does not exist or
+4. The pictures must be **in the rebuilt picture library** — the library holds 201 pictures (the
+   `ICL_SOURCE_BMPS/` of a release). `cross_check_display.py` fails if a zone names a picture that does not exist or
    whose twin pages have different art.
 
 Not given an effect: file-list rows (the firmware prefixes the tapped file with `> `). The stock
 colour-change trick (`SendColorToTFT` to `TXT_DISCRIBE_n`) only works for records whose SP points at a
 RAM parameter block, which ours do not.
 
-## 3.6 Build the picture library (manual, in DWIN's IDE)
+## 3.6 Build the picture library in DWIN's IDE (fallback; `--script-icl` is the normal way)
 
 The display shows pictures **only** from `16_68_.icl`. `*.bmp` files are source material and are ignored
 by the display (its flasher counts only CFG/Code/BIN/DZK/HZK/ICL/LIB/WAE/UIC/GTF/DAT files).
 
-1. `python tools/build_release.py --allow-stale-icl --out release_vN` (or just
-   `python tools/generate_screens.py`) to make the BMPs. The packager puts exactly the images that
+1. `python tools/build_release.py --out release_vN_bmps --bmps-only` writes only the source pictures (About pages
+   tagged with that name). The packager puts exactly the images that
    belong in the library into `ICL_SOURCE_BMPS/` (pages 0–217 minus hidden pages, plus pressed pictures
    35–49 and 218–251, and the boot frames 50–114).
 2. Run the DGUS IDE (`DGUS/DGUS_V7649/DGUS_V7.649.exe`, or `DWprj.hmi` for the project), use the **ICL
    tool**, import every image in `ICL_SOURCE_BMPS/` in numeric order (the picture index must equal the
    number in the file name), generate, and save as `DWIN_SET/16_68_.icl`.
-3. `python tools/check_icl.py` → must print `ICL is current` and no `FLASH OVERLAP`. It decodes the
-   library you just built and compares every picture with its BMP (lossy JPEG ⇒ it tolerates ringing but
-   flags real differences).
-   **Alternative (experimental, no IDE):** `python tools/build_icl.py` writes
-   `DWIN_SET/auto_icl/16_68_.icl` from the same BMPs and verifies it with the independent decoder;
-   `python tools/check_icl.py --icl DWIN_SET/auto_icl/16_68_.icl` re-checks it. Flash-test it before relying on it.
+3. `python tools/check_icl.py --src release_vN_bmps/ICL_SOURCE_BMPS --stamp` → must print `ICL is current` and no
+   `FLASH OVERLAP`. It decodes the library and compares every picture with its BMP. The comparison tolerates JPEG ringing and
+   therefore CANNOT see a small text change ("0.3 mm" → "0.5 mm"); `--stamp` records the sources' hashes next to the library
+   (`16_68_.icl.sources.json`), and from then on every check compares them exactly. Libraries built by `build_icl.py` get
+   that sidecar automatically.
+   **Without the IDE:** `python tools/build_icl.py` writes `DWIN_SET/auto_icl/16_68_.icl` from the same BMPs and
+   verifies it; `python tools/check_icl.py --icl DWIN_SET/auto_icl/16_68_.icl` re-checks it. `build_release.py --script-icl` does
+   all of this inside the release.
 4. Do **not** use `TOOL\DW_ICON.exe` (wrong, headerless format) and do **not** let the IDE regenerate
-   `13/14/22` files — ours come from the scripts.
+   `13/14/22` files — ours come from the scripts (and 22 is not shipped).
 
 ## 3.7 Flash the display and the mainboard
 
@@ -440,24 +451,26 @@ by the display (its flasher counts only CFG/Code/BIN/DZK/HZK/ICL/LIB/WAE/UIC/GTF
 2. Copy the **release package's** `DWIN_SET` folder (display files only, no BMPs; `tools/build_release.py` applies the
    `FLASH_RENAMES` such as `23_ICO.icl` -> `29_ICO.icl`) to the **card root**. The repo's own `DWIN_SET/` keeps the stock
    names and must not be copied directly.
-3. Printer **off** → card into the small USB port on the **back of the display** → power on. A blue
-   screen lists what it flashed (`.CFG 1, .BIN 4, .DZK 1, .HZK 1, .ICL 2…`, all non-zero) and ends with
-   `END !`. Power off, remove the card.
-4. Mainboard: put `firmware.bin` on a card root, card into the **front** slot, power on; it flashes by itself.
-   **Use a different card for the display flash than the one that lives in the printer, and never format the
-   printer's card:** settings (bed mesh, Z offset, PID) are stored in `eeprom.dat` on it, and a formatted card means
-   no mesh and the default Z offset (prints come out too high until you level again).
+3. Printer **off, wait 15–20 s** → card into the card slot on the **back of the display** → power on. A blue
+   screen lists what it flashed (`.CFG 1, .BIN 3, .DZK 1, .HZK 1, .ICL 4`, all non-zero: the four libraries are 16, 29, 33
+   and 34) and ends with `END !`. Power off, remove the card.
+4. Mainboard: put `firmware.bin` on the printer's own card (root), card into the **front** slot, power on; it flashes by
+   itself. Once the new firmware runs it renames the file to `firmware.cur` (so the next power-up does not flash again): to
+   flash the same file again, copy `firmware.bin` again. **Use a different card for the display flash than the one that
+   lives in the printer.** Settings (bed mesh, Z offset, PID) are in the chip's flash since v52, not on the card; the first
+   start of a flash-settings firmware takes over `eeprom.dat` from the card once.
 5. **If a bad flash leaves the display blank, frozen or garbled: power it off completely, wait 15–20 seconds
    so the capacitors discharge, then reflash the last known-good set.** A plain re-flash while still
-   powered does *not* recover it. `release/` is the last known-good set.
+   powered does *not* recover it. Keep the folder of the last set that worked (`build_release.py` never overwrites a release folder).
 
 ## 3.8 Turn on / off optional features
 
-`tools/ui_features.py` is the switchboard (all default to what is safe on Marlin 2.0.8):
+`tools/ui_features.py` is the switchboard (the values match the current firmware, Marlin 2.1.2.9):
 
 | Flag | Meaning |
 |---|---|
-| `HAS_INPUT_SHAPING`, `HAS_MPC`, `HAS_M1024` | Whether the firmware really has `M593`, `M306`, `M1024`. If `False` the screens that need them are hidden (no buttons, no zones). |
+| `HAS_INPUT_SHAPING`, `HAS_MPC` | Whether the firmware has `M593` / `M306` enabled (both `False`: the screens that need them are hidden, no buttons, no zones). |
+| `HIDDEN_PAGES` | Pages the firmware never shows: not drawn, no zones, not in the library. |
 | `SPINNER_ANIMATION` | Spinner animation icons on wait screens (needs `33_SPIN.icl`). |
 | `STEP_SELECT_ICONS`, `STEP_SIZES`, `STEP_BUTTONS` | Highlighted Move Axes step button (needs `34_SEL.icl`); the three step sizes and button rectangles. |
 | `BOOT_ANIMATION`, `BOOT_FIRST/LAST/FRAME_TIME` | Custom boot animation: our frames are pictures 50-114, played by the stock page-50 Image Animation record (not modified). `False` = no boot pictures. |
@@ -495,17 +508,17 @@ selection marker, the Terminal font. (Proven on hardware since: spinner, Move Ax
   unresponsive display). A record with `ICL_LIB_ID = 1` corrupted text rendering display-wide. The
   display was recovered by a full power-down and reflash. Since then the guide told us: Image Animation
   returns to its page after playing, `Pic_Begin < Pic_End`, `ICL_LIB_ID 0` = the background library;
-  *Animation Icon* is a different, VP-driven control. The boot frames live in `34_BootAnim.icl`
-  (built from `generate_boot_animation.py` + DWIN's Movie2ICL) but are not shipped. The old 1-based table
+  *Animation Icon* is a different, VP-driven control. (Since solved differently: the boot frames are pictures 50-114
+  inside `16_68_.icl`, played by the untouched stock record; see "Boot animation" in Part 6. The old Movie2ICL
+  `34_BootAnim.icl` is in `tools/archive/`.) The old 1-based table
   bug and the library/ICO flash-slot overlap may have contributed — neither was known at the time.
-* **`22_Config.bin` regenerated from a fresh IDE project** — display would not boot. Always use the stock one.
+* **`22_Config.bin` regenerated from a fresh IDE project** — display would not boot. Probably misattributed: at that time the
+  file overlapped the picture library's slots (see 2.4). It is no longer shipped.
 * **Loose BMP files** — ignored by the display.
 
 ## Known gaps / ideas
-* Page 214 (thumbnail) is an unreachable stub — Marlin 2.0.8 has no G-code thumbnail parsing.
-* Input Shaping (`M593`) and MPC (`M306`) exist only on the `upgrade-2.1.x` branch, which never booted
-  (it links at 0xC000 instead of 0x8000 and lacks ~20 HAL fixes).
-* `M1024` (stock auto-Z-offset command) is not implemented anywhere; its screen is hidden.
+* Page 214 (thumbnail) is hidden: nothing navigates to it.
+* Input Shaping (`M593`) and MPC (`M306`) are not enabled in this build (`HAS_INPUT_SHAPING` / `HAS_MPC` False).
 * Text boxes are top-aligned; the status-bar text may sit slightly high next to its icons — unverified.
 * The script-written libraries (`16_68_.icl` with boot frames, `33_SPIN.icl`, `34_SEL.icl`) are verified by our decoder; the display has accepted `16_68_.icl` before, but a Tools-page glitch was seen once (v7) and is unexplained.
 
@@ -513,21 +526,23 @@ selection marker, the Terminal font. (Proven on hardware since: spinner, Move Ax
 
 # Part 5 — The tools (`tools/`)
 
-Run everything **from the repository root**: `python tools/<name>.py`. Needs Python 3 with **Pillow**.
+Run everything **from the repository root**: `python tools/<name>.py`. Needs Python 3 with **Pillow** at the version in
+`tools/requirements.txt` (`pip install -r tools/requirements.txt`) and the **Segoe UI** font (see `tools/fonts/README.md`:
+there is no fallback; a missing font stops the tools).
 (When running with `python -I`, the tools add their own folder to the path.)
 
 ## 5.1 How they fit together
 
 ```
  ui_features.py ──┬─> generate_screens.py ──> DWIN_SET/NNN.bmp   (pages + pressed pictures)
- press_effect.py ─┤        │                         │  (manual: DGUS IDE)
+ press_effect.py ─┤        │                         │  (build_icl.py, or the DGUS IDE)
                   │        │                         v
                   │        │                  DWIN_SET/16_68_.icl
                   ├─> generate_dwin_controls.py ──> DWIN_SET/13TouchFile.bin
                   ├─> patch_14showfile.py  ───────> DWIN_SET/14ShowFile.bin   (from 14ShowFile.base.bin)
                   ├─> generate_spinner_icons.py ──> DWIN_SET/spinner_icons/*.bmp  (-> 33_SPIN.icl)
                   ├─> generate_select_icons.py  ──> DWIN_SET/select_icons/*.bmp   (-> 34_SEL.icl)
-                  └─> generate_boot_animation.py ─> DWIN_SET/218..255.bmp + 050.bmp (boot frames)
+                  └─> generate_boot_animation.py ─> DWIN_SET/050..114.bmp (boot frames)
 
  cross_check_display.py  = art  vs  touch  vs  show file  vs  C++ handlers  vs  VP addresses
  check_icl.py            = the compiled library on the display's side  vs  the BMPs; flash-slot overlaps
@@ -540,23 +555,24 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 |---|---|---|
 | **`ui_features.py`** | Not a script — shared module. Feature flags, the Print Settings layout, wait-screen badge table, flash renames, and values read from `Configuration.h` / `Version.h` (preheat temperatures, grid size, Marlin version). Colours (`BG_DARK`, `ORANGE`…). | Edit a flag or layout here, then regenerate. |
 | **`press_effect.py`** | Shared module: which pages share a pressed picture (`TWIN`), pressed-picture IDs (`pressed_id()`), the "no effect" marker. | Edit when adding a page with buttons. |
-| **`generate_screens.py`** | Draws every page's background (`DWIN_SET/NNN.bmp`, 272×480) with Pillow + the Font Awesome font in `tools/fonts/`; also renders the 40 pressed pictures (`generate_pressed`). Page map: `_build_page_map()`. Recorded boxes (`btn()`, `vp_area()`) are what `cross_check` compares against. | `python tools/generate_screens.py` |
-| **`generate_dwin_controls.py`** | Builds `13TouchFile.bin` from the `_ZONES` list (285 zones), including the press-effect IDs. `--doc` regenerates the per-page tables in `tools/DWIN_CONTROLS_README.md`. | `python tools/generate_dwin_controls.py` and `… --doc` |
-| **`patch_14showfile.py`** | Builds `14ShowFile.bin` from the stock base file: record builders (`make_text_record`, `make_integer_record`, `make_icon_animation_record`, `make_process_bar_record`), per-page record lists, page-table rewrite (0-based!), count = 218. Idempotent. | `python tools/patch_14showfile.py` |
+| **`generate_screens.py`** | Draws every page's background (`DWIN_SET/NNN.bmp`, 272×480) with Pillow, Segoe UI (required, no fallback) and the Font Awesome font in `tools/fonts/`; also renders the 41 pressed pictures (`generate_pressed`). Page map: `_build_page_map()`. Recorded boxes (`btn()`, `vp_area()`) are what `cross_check` compares against. Exit 1 if a page fails. `--only 13,133 --out DIR` draws just those pages elsewhere (release About pages). | `python tools/generate_screens.py` |
+| **`generate_dwin_controls.py`** | Builds `13TouchFile.bin` from the `_ZONES` list (349 zones), including the press-effect IDs. `--doc` regenerates the per-page tables in `tools/DWIN_CONTROLS_README.md`. | `python tools/generate_dwin_controls.py` and `… --doc` |
+| **`patch_14showfile.py`** | Builds `14ShowFile.bin` from the stock base file: record builders (`make_text_record`, `make_integer_record`, `make_icon_animation_record`, the Basic Graphics record), per-page record lists, page-table rewrite (0-based!), count = highest patched page + 1 (218). Checks: warns above 64 records on a page (208 has 85), fails above 128, fails if a record names a font/icon library in slots 16-28; exit 1 on any failure. Idempotent. | `python tools/patch_14showfile.py` |
 | **`generate_spinner_icons.py`** | Makes the spinner frames (66 icons, 82×82) into `DWIN_SET/spinner_icons/` (library `33_SPIN.icl`). | after changing `WAIT_BADGES` or frame count |
-| **`cross_check_display.py`** | The main safety net. Re-renders every page in memory and checks: **[1]** BMP on disk is current, **[2]** every drawn button has a touch zone covering ≥ 85 % of it and every zone has a button, **[3]** every drawn text box has a show-file record (≥ 80 % overlap) and vice versa, **[4]** every zone key has a `case` in the handler IdleLoop actually dispatches (brace-matched parser), **[5]** VP addresses agree between `dgus_tft.h` and the patcher, **[6]** every press-effect picture exists, **[7]** pages that share a pressed picture have identical art. `--overlay DIR` writes each page with zones (red, key number) and records (cyan) drawn on top. Exit 1 on errors. | after every change; `--overlay` to *see* a misalignment |
-| **`check_icl.py`** | Decodes `DWIN_SET/16_68_.icl` (repairing DWIN's JPEG quirks) and compares every picture with its BMP → tells you whether **the art on the display is current**; reports pictures that should/shouldn't be in the library; reports **flash-slot overlaps** between display files (honours `FLASH_RENAMES`). `--extract DIR` writes every picture as PNG. | after building the ICL; `--extract` to see what is *really* on the display |
-| **`build_icl.py`** | **Experimental.** Builds a picture or icon library (`.icl`) from BMPs without the DGUS IDE, using an IDE-built file as the template for the JPEG header/quantisation tables; self-tests, then verifies the output with `check_icl`'s decoder. Writes to `DWIN_SET/auto_icl/` (never over your IDE library). `--kind icons --src DIR --out FILE` builds an icon library (spinner, select icons); `--selftest` runs only the checks. `build_release.py --script-icl` uses it for all three libraries. | `python tools/build_icl.py` |
-| **`build_release.py`** | One command to a flashable package: builds the firmware (`pio run`), regenerates BMPs/zones/records/spinner frames, runs `cross_check_display` (fails the build on errors) and `check_icl` (fails on a stale/overlapping library unless `--allow-stale-icl`), then copies the display files to `<out>/DWIN_SET/` (renaming the icon library and font), BMP sources to `ICL_SOURCE_BMPS/` (+README), spinner sources to `ICON_LIB_SOURCE/`, `firmware.bin`, and a README with flashing steps. `--out DIR` keeps `release/` untouched; `--script-icl` builds the picture library and both icon libraries by script (no IDE, no staleness check) and checks the flash slots. | `python tools/build_release.py --out release_vN --script-icl` |
+| **`cross_check_display.py`** | The main safety net. Re-renders every page in memory and checks: **[1]** BMP on disk is current, **[2]** every drawn button has a touch zone covering ≥ 85 % of it and every zone has a button, **[3]** every drawn text box has a show-file record (≥ 80 % overlap) and vice versa, **[4]** every zone key has a `case` in the handler IdleLoop actually dispatches (brace-matched parser), **[5]** VP addresses agree between `dgus_tft.h` and the patcher, **[6]** every press-effect picture exists, **[7]** pages that share a pressed picture have identical art, **[8]** the flashed touch file equals the generator, **[9]** no two text fields overlap in VP memory, **[11]** handler cases no zone can send (warning), **[12]** WZ_N / wizard order and keys / KEY_ADDRESS shared with the firmware, **[13]** char buffers sent to a VP fit before the next VP (warning). `--release DIR` **[10]** checks a package: exactly the expected files, copies byte-identical, libraries with valid CRC and the expected picture IDs, flash slots. `--overlay DIR` draws zones and records over each page. Exit 1 on errors. | after every change; `--overlay` to *see* a misalignment |
+| **`check_icl.py`** | Decodes a library (default `DWIN_SET/16_68_.icl`, `--icl FILE`) and compares every picture with its BMP (`--src DIR`): tolerant pixel test, plus an EXACT comparison with the source hashes in `FILE.sources.json` when that sidecar exists (written by `build_icl.py`, or by `--stamp` after a passing check); without a sidecar it warns that small text changes cannot be seen. Reports pictures that should/shouldn't be in the library, the picture-library headroom below 3,407,872 bytes, and **flash-slot overlaps** (incl. the fixed `.bin` slots; honours `FLASH_RENAMES`). `--extract DIR` writes every picture as PNG. | after building the ICL; `--extract` to see what is *really* on the display |
+| **`build_icl.py`** | Builds a picture or icon library (`.icl`) from BMPs without the DGUS IDE, using an IDE-built file as the template for the JPEG header/quantisation tables; self-tests (incl. that a one-pixel change is detected), then verifies the output with `check_icl`'s decoder and against a fresh encoding of every source, and writes the source-hash sidecar. Writes to `DWIN_SET/auto_icl/` by default (never over your IDE library). `--kind icons --src DIR --out FILE` builds an icon library (spinner, select icons); `--selftest` runs only the checks. `build_release.py` uses it for all three libraries. | `python tools/build_icl.py` |
+| **`build_release.py`** | One command to a flashable package; see its docstring. Refuses a dirty tree (`--allow-dirty`), a `--out` that is not a new `release*` folder in the repo root, missing base files/fonts, and modified framework packages (`tools/expected_package_hashes.json`). Builds the firmware (`pio run`, own build folder, firmware.bin checked against firmware.elf: SP = `__StackTop`, core vectors), regenerates and cross-checks the display files, renders the About pages with the release name into a temporary folder, builds the libraries (`--script-icl`: all three; otherwise 16_68_ from the IDE must pass `check_icl`), assembles everything in `<out>.tmp`, checks it (`check_icl`, `cross_check_display --release`, flash slots) and only then renames it to `<out>`; on failure `<out>.tmp` is deleted. `--bmps-only` writes just the IDE sources; `--package-hashes` prints the framework hashes. | `python tools/build_release.py --out release_vN --script-icl` |
 | `validate_display.py` | Removed (2026-11-03): superseded by `cross_check_display.py`; it reported false errors. |
 | `rename_firmware.py` | Removed (2026-11-03): it copied `firmware.bin` onto itself (`Firmware.bin` is the same file on Windows). |
 | **`generate_select_icons.py`** | The orange "selected" copies of the Move Axes step buttons (`DWIN_SET/select_icons/`, library `34_SEL.icl`). | after changing `STEP_SIZES` / button layout |
 | **`generate_boot_animation.py`** | Draws the boot frames (pictures `BOOT_FIRST..BOOT_LAST`: flame, title, progress bar) and picture 50 (= frame 0) into `DWIN_SET/`. | after changing the animation or `BOOT_*` |
 | **`update_dgus_excel.py`** | Legacy. Keeps `DGUS/DisplayConfig.xls` / `TouchConfig.xls` in step with the custom pages as human-readable documentation (the GUI path that would regenerate 13/14 from them is bypassed). | rarely |
-| `fix_eng_pages_and_term.py`, `fix_mpc_save.py`, `fix_null_terminators.py`, `patch_page216.py` | **One-off migration scripts, already applied** to `dgus_tft.cpp` (language-neutral pages, terminal VP overflow, MPC save, NUL escapes, page 216 support). Historical; do not re-run. | — |
+| `archive/` | One-off `dgus_tft.cpp` migration scripts (already applied, absolute paths: do not run) and the old Movie2ICL `34_BootAnim.icl`. See `tools/archive/README.md`. | — |
 | `re/il_dump.ps1` | Reverse-engineering helper: disassembles .NET methods by reflection (PowerShell 7). Used on DWIN's `Excel2ICL.dll` to learn the library CRC. | see the header of the script |
 | `DWIN_CONTROLS_README.md` | Per-page touch-zone tables, **generated** by `generate_dwin_controls.py --doc`. | read-only reference |
-| `fonts/fa-solid-900.ttf` | Font Awesome 6 Solid, the icon font used in the art and spinner. (`generate_screens.py` also uses Segoe UI from `C:\Windows\Fonts`; on a machine without it Pillow silently falls back to a default font.) | — |
+| `fonts/` | `fa-solid-900.ttf` (Font Awesome 6 Solid, committed). Segoe UI (`segoeui.ttf`, `segoeuib.ttf`) is required too but not committed (Microsoft licence): Windows has it; elsewhere copy it into `tools/fonts/` or set `KOBRA_FONT_DIR` (`tools/fonts/README.md`). | — |
+| `requirements.txt`, `expected_package_hashes.json` | Pinned Pillow; known-good hashes of the HC32 framework packages (HW-3, filled in by the owner). | — |
 
 ## 5.3 Third-party tools and files in the repo
 
@@ -621,7 +637,7 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 * `build_icl.py` count field (bytes 13-14): IDE libraries disagree - stock background lib 214 (= pictures, max ID 215),
   our IDE-built lib 256 (= max ID, 145 pictures), icon lib 69 (= pictures). The script writes max ID for backgrounds and
   picture count for icon libraries. If the display ever rejects a script-built library, try the other convention first.
-* Firmware reports `2.0.8-hc32-<git hash>[-dirty]` in M115 (`tools/build_id.py`).
+* Firmware reports `2.1.2.9-hc32-<git hash>[-dirty]` in M115 (`tools/build_id.py`); the About page's BUILD box shows the part after the first dash.
 
 ## Text sizing and alignment (2026-10-26)
 
@@ -664,8 +680,8 @@ Run everything **from the repository root**: `python tools/<name>.py`. Needs Pyt
 * **Libraries are script-built** (`build_release.py --script-icl`): the DGUS IDE cannot be scripted and has no use for the
   new icon libraries. Everything decodes back to its source images; the display has accepted `16_68_.icl` (v3-v7) but
   not yet the boot frames or the two icon libraries.
-* **Print start without a bed mesh** shows a warning in the file row (a second PRINT starts anyway): settings (mesh, Z offset) live in `eeprom.dat` on the SD
-  card, so a freshly formatted card loses them and prints come out too high. Do not format the printer's own SD card.
+* **Print start without a bed mesh** shows a warning in the file row (a second PRINT starts anyway). Settings (mesh, Z offset) live in the chip's flash
+  since v52 (`eeprom_flash_ab.cpp`); `eeprom.dat` on the SD card is only taken over once, when the flash holds no settings.
 * **Touch feedback:** a key is acted on 120 ms after the touch (`KEY_FEEDBACK_MS`) so a page-changing button is seen lit.
 
 ## Z offset: how it works in this firmware (corrected 2026-10-27 evening, by reading Marlin)
@@ -700,14 +716,19 @@ Single-language pages at IDs that no stock page uses (below 215, so the show fil
 | Linear advance K | 174 | Prepare, ADVANCE K (key 8) | 1 BACK, 2/3 -/+0.1, 4/5 -/+0.01, 6 SAVE | `TXT_LA_K`, `TXT_LA_STATUS` 0x3000/0x3010 |
 
 * Their "button held" pictures are the free IDs 155, 156, 157 (`press_effect.SPECIAL_ID`); 218-251 are all taken.
-* Mesh page: N x N small text cells (N from `GRID_MAX_POINTS_X`, 7), value = height minus the mesh average in 0.01 mm, row 0 = back of the bed.
-  `generate_screens.py` asserts that the grid fits the screen (N <= 7 at 36 px cells). 49 text records on one page are untested.
+* Mesh page: N x N small text cells (N from `GRID_MAX_POINTS_X`, now 9: 28 px cells, 3 characters), value = height minus the mesh average in 0.01 mm, row 0 = back of the bed.
+  `generate_screens.py` asserts that the grid fits the screen. The page has 85 display records, above the guide's 64 per page:
+  `patch_14showfile.py` warns (fails above 128); hardware test T7 decides whether every row draws.
 * E-steps: HEAT + EXTRUDE heats to `AC_ESTEPS_TEMP` (210 C), extrudes 100 mm at 100 mm/min, switches the heater off. The user enters the length that really moved
   (mark 120 mm above the extruder, enter 120 minus what is left); new steps/mm = old * 100 / entered. BACK is ignored while the filament moves.
 * Linear advance: needs `LIN_ADVANCE` (on, K = 0 by default); without it the page says "Not in this firmware".
 * The Leveling menu's start-height row moved down to y 340-394 to make room for the fourth button.
 
 ## Setup wizard, page 172 (2026-10-31, unbuilt, untested)
+
+**Current state (v60-v62):** five steps, in this order: 1 PROBE CHECK, 2 BED MESH, 3 Z OFFSET, 4 5-POINT Z, 5 FIRST LAYER TEST (keys 2-6 = 2 + step,
+`WZ_PROBE`..`WZ_FIRST` in dgus_tft.cpp, checked by `cross_check_display.py`); the first step not done is lit orange (icons 3..7 of `34_SEL.icl`); finished steps
+are kept with the settings (`wz_bits`). The original 2026-10-31 notes follow.
 
 Single-language page reached from the System page (key 7, "SETUP WIZARD"; BACK returns there). Four step buttons (keys 2-5, `uf.WZ_BTN(i)`) with a status text under each
 (`TXT_WZ_STATUS0` 0x3020 + 0x10 * i), BACK key 1; pressed picture 158. Steps reuse the existing flows: step 1 starts the manual Z page, step 2 the probe

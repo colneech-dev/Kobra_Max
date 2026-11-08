@@ -175,6 +175,12 @@ def encode_entropy(img, tpl):
     return data + b"\x00" * (padded - len(data))
 
 
+def _single_jpeg(img, tpl):
+    """The decodable JPEG of one picture as it sits in a library (same bytes check_icl.read_icl returns)."""
+    img = img if img.mode == "RGB" else img.convert("RGB")
+    return ci._normalise_jpeg(tpl.header_for(img.size) + encode_entropy(img, tpl))
+
+
 def make_block(img, tpl):
     if img.mode != "RGB":
         img = img.convert("RGB")
@@ -217,8 +223,9 @@ def load_sources(src, kind):
     return out
 
 
-def verify(path, images):
-    """Decode what was written with check_icl's independent decoder and compare with the sources."""
+def verify(path, images, tpl=None):
+    """Decode what was written with check_icl's independent decoder and compare with the sources (with tpl: also
+    exactly, block for block, with a fresh encoding of each source)."""
     pics = ci.read_icl(Path(path))
     problems = []
     if sorted(pics) != sorted(images):
@@ -237,6 +244,13 @@ def verify(path, images):
         worst = max(worst, n)
         if n > ci.DIFF_PIXELS_MAX:
             problems.append(f"id {i}: {n} pixels differ from the source")
+        # The tolerant test above cannot see a small text change; the encoder is deterministic, so the picture must
+        # decode EXACTLY like a fresh encoding of its source (8x8 blocks: any block that differs is reported).
+        if tpl is not None:
+            fresh = Image.open(io.BytesIO(_single_jpeg(src, tpl))).convert("RGB")
+            box = ImageChops.difference(shown, fresh).getbbox()
+            if box:
+                problems.append(f"id {i}: differs from a fresh encoding of its source in {box}")
     data = Path(path).read_bytes()
     words = struct.unpack(f">{(len(data) - 16) // 4}I", data[16:16 + 4 * ((len(data) - 16) // 4)])
     first = next(w for w in words if w)
@@ -265,7 +279,20 @@ def selftest(tpl, template_path):
     tmp = Path("DWIN_SET/auto_icl/_selftest.icl")
     tmp.parent.mkdir(parents=True, exist_ok=True)
     tmp.write_bytes(lib)
-    problems, worst = verify(tmp, sample)
+    problems, worst = verify(tmp, sample, tpl)
+    # A small text change must be caught (TL-9): through the sidecar hashes, and by the exact block comparison.
+    ci.write_sidecar(tmp, sample)
+    hashes, why = ci.read_sidecar(tmp)
+    i0 = next(iter(sample))
+    changed = sample[i0].copy()
+    changed.putpixel((5, 5), tuple(255 - c for c in changed.getpixel((5, 5))))   # one pixel
+    if hashes is None or hashes.get(i0) != ci.image_hash(sample[i0]):
+        problems.append(f"sidecar does not record the source hashes ({why})")
+    elif hashes[i0] == ci.image_hash(changed):
+        problems.append("a one-pixel change does not change the source hash")
+    if not verify(tmp, {**sample, i0: changed}, tpl)[0]:
+        problems.append("verify did not notice a one-pixel change in a source")
+    ci.sidecar_path(tmp).unlink()
     # compare compressed size with the IDE's for the same pixels (a mismatch would mean different quantisation)
     raw = Path(template_path).read_bytes()
     first = struct.unpack(">I", raw[16:20])[0]
@@ -315,15 +342,18 @@ def main():
     lib = build_library(images, tpl, kind)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(lib)
-    problems, worst = verify(out, images)
-    slots = -(-len(lib) // ci.SLOT) if hasattr(ci, "SLOT") else None
-    print(f"wrote {out}: {len(images)} pictures, {len(lib):,} bytes ({len(lib) / 262144:.2f} slots), "
+    problems, worst = verify(out, images, tpl)
+    print(f"wrote {out}: {len(images)} pictures, {len(lib):,} bytes ({len(lib) / ci.SLOT:.2f} slots), "
           f"worst differing-pixel count {worst}")
+    if kind == "background":
+        print(f"picture library headroom: {ci.picture_lib_headroom(len(lib)):,} bytes left below {ci.PICTURE_LIB_MAX:,} (slots 16-28)")
     if problems:
         print("VERIFY FAILED:")
         for p in problems:
             print("  ", p)
+        out.unlink()
         sys.exit(1)
+    ci.write_sidecar(out, images)     # check_icl.py compares the sources with these hashes exactly
     print("verified: every picture decodes back to its source image.")
     print("NOT verified: that the display itself accepts the file (see the docstring).")
 
