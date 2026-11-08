@@ -901,6 +901,11 @@ void restore_feedrate_and_scaling() {
 
     #endif
 
+    // Kobra Max: with a normalised mesh the bed is at native Z = -home_offset.z (a few mm below the Z endstop plane), logical Z0 still is the bed
+    #if ENABLED(MESH_NORMALIZE_TO_HOME_OFFSET) && HAS_HOME_OFFSET
+      if (axis == Z_AXIS && home_offset.z > 0) soft_endstop.min.z -= home_offset.z;
+    #endif
+
     if (DEBUGGING(LEVELING))
       SERIAL_ECHOLNPGM("Axis ", C(AXIS_CHAR(axis)), " min:", soft_endstop.min[axis], " max:", soft_endstop.max[axis]);
   }

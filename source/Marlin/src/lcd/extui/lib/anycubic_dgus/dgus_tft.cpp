@@ -56,6 +56,12 @@
 #endif
 
 namespace Anycubic {
+// The display's one G-code injection FIFO (defined with heaters_off_when_idle()): every injection goes through it.
+static void ui_inject_P(PGM_P const cmds);
+static void ui_inject(const char * const cmds);
+static void inject_after_P(PGM_P const cmds);
+static bool ui_busy();
+
 
 // Number formatting helpers that Anycubic added to numtostr.cpp: "-12.34" (no printf("%f") on this toolchain) and
 // "123" (left-justified, capped at 999).
@@ -69,6 +75,13 @@ static const char *utostr3(const uint16_t x) {
   static char b[8];
   snprintf(b, sizeof(b), "%u", (unsigned)(x > 999 ? 999 : x));
   return b;
+}
+// "12 H 34 M": minutes, as the print pages and the finish page show them (one place for what used to be copied five times).
+static void send_hm(const uint32_t minutes, const uint32_t vp) {
+  char b[20];
+  snprintf(b, sizeof(b), "%s H ", utostr3(minutes / 60));
+  snprintf(b + strlen(b), sizeof(b) - strlen(b), "%s M", utostr3(minutes % 60));
+  DgusTFT::SendTxtToTFT(b, vp);
 }
 
 static void term_rx_hook(void *, uint8_t c);   // Terminal reply capture, defined with the Terminal log
@@ -94,6 +107,8 @@ const char MESSAGE_cold[] = {0xB4, 0xF2 , 0xD3, 0xA1 , 0xCD, 0xB7 , 0xCE, 0xC2 ,
 
 const char *p_mesage[] = {MESSAGE_charu , MESSAGE_bachu , MESSAGE_wuka, MESSAGE_lianji , MESSAGE_tuoji , MESSAGE_zanting, MESSAGE_tingzhi , MESSAGE_wancheng , MESSAGE_hotend_heating, MESSAGE_hotend_over, MESSAGE_bed_heating, MESSAGE_bed_over, MESSAGE_ready, MESSAGE_cold};
 
+static void page_no_handler() {}   // pages 14, 31, 32: nothing on them to touch
+
 DgusTFT::p_fun fun_array[] = {
   DgusTFT::page1_handle,
   DgusTFT::page2_handle,
@@ -108,7 +123,7 @@ DgusTFT::p_fun fun_array[] = {
   DgusTFT::page11_handle,
   DgusTFT::page12_handle,
   DgusTFT::page13_handle,
-  DgusTFT::page14_handle,
+  page_no_handler,   // 14
   DgusTFT::page15_handle,
   DgusTFT::page16_handle,
   DgusTFT::page17_handle,
@@ -125,8 +140,8 @@ DgusTFT::p_fun fun_array[] = {
   DgusTFT::page28_handle,
   DgusTFT::page29_handle,
   DgusTFT::page30_handle,
-  DgusTFT::page31_handle,
-  DgusTFT::page32_handle,
+  page_no_handler,   // 31
+  page_no_handler,   // 32
   DgusTFT::page33_handle,
   DgusTFT::page34_handle
 };
@@ -246,7 +261,8 @@ static void soak_track() {
   // LATE NOZZLE HEAT: a nozzle that sits at 190 C for the whole soak oozes. nozzle_late() leaves the nozzle cold and this sets its target when
   // AC_NOZZLE_LEAD_MS of the soak are left (at once when it is skipped). Dropped when the bed goes off or the request is old.
   if (nozzle_late_temp) {
-    if (tgt <= 0 || millis() - nozzle_late_ms > AC_SOAK_MS + 900000UL) nozzle_late_temp = 0;
+    if (tgt <= 0) nozzle_late_temp = 0;
+    else if (millis() - nozzle_late_ms > AC_SOAK_MS + 900000UL) { nozzle_late_temp = 0; SERIAL_ECHO_MSG("Late nozzle heat dropped: the soak did not finish in time"); }
     else if (soak_since && (uint32_t)(millis() - soak_since) + AC_NOZZLE_LEAD_MS >= AC_SOAK_MS) {
       setTargetTemp_celsius(nozzle_late_temp, E0);
       nozzle_late_temp = 0;
@@ -355,6 +371,9 @@ static void sc_fail_text(char * const out, const size_t size, const bool stopped
   const unsigned h = (unsigned)lroundf(sc_diff * 100.0f);
   snprintf_P(out, size, stopped ? PSTR("Stopped: mesh off %u.%02u mm") : PSTR("Mesh off by %u.%02u mm: redo"), h / 100, h % 100);
 }
+// The mesh nodes are deviations from a reference height that G29 keeps in the Z home offset (MESH_NORMALIZE_TO_HOME_OFFSET); the bed is at node - home_offset.z.
+// (A mesh saved before that change has home_offset.z = 0 and absolute nodes: the same formula.)
+static float mesh_ref_z() { return TERN0(MESH_NORMALIZE_TO_HOME_OFFSET, home_offset.z); }
 // The front-left node is the FIRST one G29 probes (the bed had soaked least then), the centre is in the middle of the run: together they show
 // plate changes and thermal drift. Both differences are printed every time (Terminal) and shown by the first layer test.
 // beside_centre: probe the node in front of the centre instead (the first layer test prints its first square at the centre, and a hot nozzle that
@@ -374,12 +393,12 @@ static int stale_gate(const bool beside_centre = false) {   // 0 = still working
                              (int)lroundf(bedlevel.get_mesh_x(0)), (int)lroundf(bedlevel.get_mesh_y(0)),
                              (int)lroundf(bedlevel.get_mesh_x(cx)), (int)lroundf(bedlevel.get_mesh_y(cy)));
     if (n <= 0 || n > 63) { sc_diff = SC_NO_READING; sc_state = 2; sc_n = 0; SERIAL_ECHO_MSG("Mesh check: command too long, refused"); return -1; }
-    injectCommands(cmd);
+    ui_inject(cmd);
     sc_state = 1;
     return 0;
   }
   if (sc_state == 1) {
-    if (commandsInQueue()) return 0;
+    if (ui_busy()) return 0;
     sc_state = 2;
     sc_listen = false;
   }
@@ -395,8 +414,8 @@ static int stale_gate(const bool beside_centre = false) {   // 0 = still working
   p0.x = 0; p0.y = 0;
   pc.x = cx; pc.y = cy;
   // the probe reads the real bed; the node holds the mesh PLUS the saved 5-point corrections: compare with the mesh as it was probed
-  sc_df = fabsf(sc_vals[0] - (getMeshPoint(p0) - p5_saved_surface(bedlevel.get_mesh_x(0), bedlevel.get_mesh_y(0))));
-  sc_dc = fabsf(sc_vals[1] - (getMeshPoint(pc) - p5_saved_surface(bedlevel.get_mesh_x(cx), bedlevel.get_mesh_y(cy))));
+  sc_df = fabsf(sc_vals[0] - (getMeshPoint(p0) - mesh_ref_z() - p5_saved_surface(bedlevel.get_mesh_x(0), bedlevel.get_mesh_y(0))));
+  sc_dc = fabsf(sc_vals[1] - (getMeshPoint(pc) - mesh_ref_z() - p5_saved_surface(bedlevel.get_mesh_x(cx), bedlevel.get_mesh_y(cy))));
   sc_diff = _MAX(sc_df, sc_dc);
   SERIAL_ECHO_MSG("Mesh check: front-left ", sc_df, " mm, centre ", sc_dc, " mm");
   return sc_diff > 0.5f ? -1 : 1;
@@ -450,7 +469,7 @@ static void mesh_finish() {
     return;
   }
   bed_warm_extend();   // the bed stays on for the next step (the nozzle goes off): the heat soak is kept
-  injectCommands_P(PSTR("M420 S1 Z0\nM500\nM104 S0"));   // mesh on again (G30 switches it off), save the mesh and Z offset
+  ui_inject_P(PSTR("M420 S1 Z0\nM500\nM104 S0"));   // mesh on again (G30 switches it off), save the mesh and Z offset
   heaters_off_when_idle();
   wz_mark(WZ_MESH, false);   // (the M500 above saves it; the corrections and steps of the old mesh were dropped in LevelingDone)
   if (wz_launch) {
@@ -461,7 +480,7 @@ static void mesh_finish() {
 }
 
 static void ol_poll() {   // from wizard_background (IdleLoop)
-  if (!ol_run || commandsInQueue()) return;
+  if (!ol_run || ui_busy()) return;
   if (ol_state == 1) {   // a re-probe has finished
     ol_state = 0;
     sc_listen = false;
@@ -480,7 +499,7 @@ static void ol_poll() {   // from wizard_background (IdleLoop)
   sc_listen = true;
   char cmd[40];   // lift first and after (G30 leaves the nozzle on the bed: the next node's XY move would drag it)
   sprintf_P(cmd, PSTR("G1 Z10 F600\nG30 X%d Y%d\nG1 Z10 F600"), (int)lroundf(bedlevel.get_mesh_x(nd.x)), (int)lroundf(bedlevel.get_mesh_y(nd.y)));
-  injectCommands(cmd);
+  ui_inject(cmd);
   ol_state = 1;
 }
 
@@ -489,6 +508,9 @@ static uint8_t  mesh_sends = 0;
 static millis_t mesh_next_ms = 0;
 
 static void inject_after_P(PGM_P const cmds);   // defined with heaters_off_when_idle(): used by save_zoffset() before that
+static void ui_inject_P(PGM_P const cmds);   // the display's one injection FIFO (defined with heaters_off_when_idle())
+static void ui_inject(const char * const cmds);
+static bool ui_busy();
 
 // printf("%f") prints NOTHING on this toolchain (newlib-nano without float support), so a value formatted with
 // "%.2f" shows up blank (the Z-offset value, the print page's X/Y/Z line). Format fixed-point by hand.
@@ -560,7 +582,10 @@ static bool m600_shown = false;   // the paused page was opened for a running M6
 // the nozzle height on EVERY G28: positive = nozzle higher, negative = lower, with or without a bed mesh.
 // G29 stores run_z_probe() + offset in each mesh point (probe.cpp); that run_z_probe() value already contains
 // the same -offset, so the mesh holds the plain contact height and does not depend on the offset. At print
-// height Z0 the nozzle is therefore at: mesh (contact height) + offset. Consequences:
+// height Z0 the nozzle is therefore at: mesh (contact height) + offset.
+// MESH NORMALISED (MESH_NORMALIZE_TO_HOME_OFFSET, G29.cpp): after a G29 the mean height is taken out of the nodes and kept in the Z home offset
+// (M206 Z, saved by M500): the nodes are deviations of a few tenths of a mm and the bed is at  node - home_offset.z  (mesh_ref_z()). Z0 is then at the
+// mean bed height even with leveling off. A mesh saved earlier has home_offset.z = 0 and absolute nodes: the same formula. Consequences:
 //   * LEVEL first (the mesh corrects the big error: endstop plane versus bed), then fine-tune the offset;
 //   * changing the offset needs NO mesh change (an earlier version also shifted the mesh and so applied
 //     every change twice);
@@ -568,7 +593,7 @@ static bool m600_shown = false;   // the paused page was opened for a running M6
 static void save_zoffset() {
   inject_after_P(PSTR("M500"));
 }
-// NOTE: injectCommands_P() keeps ONE pointer, so a second call before the first has run REPLACES it. Anything
+// NOTE: ui_inject_P() keeps ONE pointer, so a second call before the first has run REPLACES it. Anything
 // that must happen together goes into one string (an M500 followed by a lift used to lose the M500, so the
 // Z offset was never saved to the SD card and came back as the old value after a reboot).
 
@@ -581,30 +606,43 @@ static void heaters_off_when_idle() {
   if (!bed_warm()) setTargetTemp_celsius(0, BED);   // (a job under way keeps the bed: the heat soak)
 }
 
-// Commands that must not be lost: the "M500" saves and the "lift, heaters off" tails. injectCommands_P() keeps ONE pointer,
-// so injecting while an earlier multi-line sequence still has lines waiting replaces it and the rest is gone (a lost tail
-// leaves the heaters on, a lost M500 loses a setting). If something is still waiting to run, the new commands are held and
-// injected from IdleLoop (inject_after_drain) once the queue has run dry. During an SD print the old direct injection is
-// kept: the queue is never dry then, and the save in the middle of a print was always allowed. In a print or a pause only a PROGMEM sequence that still has
-// lines waiting holds a new one back: the pause's own "M24" waits there behind the blocking M125, and a direct M500 replaced it (and Resume's M24 then
-// replaced the M500): a Z-offset SAVE during a pause was lost.
-static PGM_P   inject_wait[8];
-static uint8_t inject_wait_n = 0;
+// ONE FIFO for everything the display runs through the G-code injection (DR-24). Marlin has two injection channels, a PROGMEM pointer and a
+// 64-character RAM buffer, and each holds ONE sequence: injecting while an earlier multi-line sequence still had lines waiting replaced it and
+// the rest was gone (a lost tail left the heaters on, a lost M500 lost a setting; the Z-offset SAVE during a pause). Now every injection
+// waits here until both channels are empty, in the order it was asked for. ui_inject_P() / ui_inject() send at once when nothing is
+// waiting; inject_after_P() is the same but also waits until the queue has run dry (the saves and the "lift, heaters off" tails). In a print or
+// a pause only a PROGMEM sequence that still has lines waiting holds it back: the pause's own "M24" waits there behind the blocking M125.
+// ui_busy() is commandsInQueue() plus what is still waiting here. IdleLoop drains it (ui_fifo_drain).
+struct UiCmd { PGM_P p; char s[64]; bool after_idle; };
+static UiCmd   ui_fifo[6];
+static uint8_t ui_fifo_n = 0;
+static bool ui_busy() { return commandsInQueue() || ui_fifo_n; }
 static bool inject_must_wait() {
   return (isPrintingFromMedia() || isPrintingPaused()) ? (queue.injected_commands_P != nullptr) : queue.has_commands_queued();
 }
-static void inject_after_P(PGM_P const cmds) {
-  if ((!inject_wait_n && !inject_must_wait()) || inject_wait_n >= COUNT(inject_wait)) {
-    injectCommands_P(cmds);
-    return;
-  }
-  inject_wait[inject_wait_n++] = cmds;
+static bool ui_ready(const UiCmd &c) {
+  return !queue.injected_commands_P && !queue.injected_commands[0] && (!c.after_idle || !inject_must_wait());
 }
-static void inject_after_drain() {
-  if (!inject_wait_n || inject_must_wait()) return;
-  injectCommands_P(inject_wait[0]);
-  for (uint8_t i = 1; i < inject_wait_n; i++) inject_wait[i - 1] = inject_wait[i];
-  inject_wait_n--;
+static void ui_send(const UiCmd &c) {
+  if (c.p) ExtUI::injectCommands_P(c.p);
+  else { char b[64]; strlcpy(b, c.s, sizeof(b)); ExtUI::injectCommands(b); }
+}
+static void ui_push(PGM_P const p, const char * const s, const bool after_idle) {
+  UiCmd c;
+  c.p = p; c.after_idle = after_idle; c.s[0] = '\0';
+  if (!p && s) strlcpy(c.s, s, sizeof(c.s));
+  if (!ui_fifo_n && ui_ready(c)) { ui_send(c); return; }
+  if (ui_fifo_n >= COUNT(ui_fifo)) { SERIAL_ECHO_MSG("UI command queue full: command dropped"); return; }
+  ui_fifo[ui_fifo_n++] = c;
+}
+static void ui_inject_P(PGM_P const cmds)    { ui_push(cmds, nullptr, false); }
+static void ui_inject(const char * const c)  { ui_push(nullptr, c, false); }
+static void inject_after_P(PGM_P const cmds) { ui_push(cmds, nullptr, true); }
+static void ui_fifo_drain() {
+  if (!ui_fifo_n || !ui_ready(ui_fifo[0])) return;
+  ui_send(ui_fifo[0]);
+  for (uint8_t i = 1; i < ui_fifo_n; i++) ui_fifo[i - 1] = ui_fifo[i];
+  ui_fifo_n--;
 }
 
 // Values shown when the Print Settings page opens. The page has no read-back: its - / + buttons apply
@@ -631,9 +669,18 @@ static void send_print_page_values() {
   send_progress_bar(TXT_PRINT_BAR, getProgress_percent(), 20);
 }
 
+// The heat soak belongs to the display's own mesh run. A G29 from a slicer's start G-code or a host does NOT soak (it heats and waits for the
+// temperatures only, as in Marlin): probe.cpp asks ac_soak_take() once per G29. The request expires if the G29 never starts.
+static millis_t soak_for_g29_ms = 0;
+static bool soak_take() {
+  const bool want = soak_for_g29_ms && millis() - soak_for_g29_ms < 300000UL;
+  soak_for_g29_ms = 0;
+  return want;
+}
 static void start_leveling_run() {
   bed_warm_extend();
-  injectCommands_P(PSTR("G28\nG29"));   // the mesh holds absolute heights (independent of the Z offset); the offset only shifts Z0 at homing
+  soak_for_g29_ms = millis() | 1;
+  ui_inject_P(PSTR("G28\nG29"));   // the mesh holds absolute heights (independent of the Z offset); the offset only shifts Z0 at homing
   probe_cnt = 0;
 }
 
@@ -645,7 +692,6 @@ xy_uint8_t       DgusTFT::selectedmeshpoint;
 char             DgusTFT::selectedfile[MAX_PATH_LEN];
 char             DgusTFT::panel_command[MAX_CMND_LEN];
 uint8_t          DgusTFT::command_len;
-float            DgusTFT::live_Zoffset;
 file_menu_t      DgusTFT::file_menu;
 
 bool             DgusTFT::data_received;
@@ -697,7 +743,6 @@ void DgusTFT::Startup() {
   pause_state       = AC_paused_idle;
   hotend_state      = AC_heater_off;
   hotbed_state      = AC_heater_off;
-  live_Zoffset      = 0.0;
   file_menu         = AC_menu_file;
 
   // Setup pins for powerloss detection
@@ -738,7 +783,7 @@ void DgusTFT::Startup() {
   // Enable levelling and Disable end stops during print
   // as Z home places nozzle above the bed so we need to allow it past the end stops
 
-  injectCommands_P(AC_cmnd_enable_levelling);
+  ui_inject_P(AC_cmnd_enable_levelling);
 
   // Startup tunes are defined in Tunes.h
   // PlayTune(BEEPER_PIN, Anycubic_PowerOn, 1);
@@ -789,8 +834,7 @@ void DgusTFT::ParamInit() {
 // Power-on jingle. The stock trigger (the display reports REG_LCD_READY 0x010000, "animation just started") never fires
 // with Marlin 2.1: the firmware needs ~6 s to start and the 2.6 s boot animation is over before the first poll, so the
 // jingle was silent. Instead it is requested when the boot sync completes and played from IdleLoop (not from inside
-// ProcessPanelRequest: the tune blocks for 3.5 s in safe_delay(), which keeps the heaters and the watchdog going but would
-// leave a display packet half processed), if sound is switched on.
+// ProcessPanelRequest), if sound is switched on. (The tune plays in the background now, TuneService() in IdleLoop.)
 static bool boot_tune_pending = false;
 
 // The bootloader flashes firmware.bin from the card in the front slot at every power-up and leaves the file there. When this firmware is
@@ -830,7 +874,8 @@ void DgusTFT::IdleLoop()  {
   }
   term_rx_drain();
   wizard_background();
-  inject_after_drain();
+  ui_fifo_drain();
+  TuneService();
   p5_leave_check();
 
   // One-shot diagnostics on first entry (debug builds only; it printed on every boot before).
@@ -889,7 +934,7 @@ void DgusTFT::IdleLoop()  {
 
   if (boot_tune_pending) {
     boot_tune_pending = false;
-    if (lcd_info.audio == ExtUI::ON) PlayTune(BEEPER_PIN, Anycubic_PowerOn, 1);   // takes 3500 ms
+    PlayTune(BEEPER_PIN, Anycubic_PowerOn, 1);   // (plays in the background; not when sound is off)
   }
 
   if (ReadTFTCommand()) {
@@ -960,20 +1005,14 @@ void DgusTFT::IdleLoop()  {
 
   if (page_index_now == 117 || page_index_now == 170) {   // the CHS / ENG Mute pages are the System page's buttons
     page11_handle();
-  } else if (page_index_now == 171) {
+  } else if (page_index_now == 171 || page_index_now == 173) {
     page171_handle();
-  } else if (page_index_now == 173) {
-    page173_handle();
   } else if (page_index_now == 175) {
     page175_handle();
   } else if (page_index_now == 176) {
     page176_handle();
   } else if (177 <= page_index_now && page_index_now <= 198 && page_index_now != 187 && page_index_now != 188) {
-#if 0 // ACDEBUG(AC_MARLIN)
-    SERIAL_ECHOLNPGM("line: ", __LINE__);
-    SERIAL_ECHOLNPGM("func: ", page_index_now);
-#endif
-    //      page177_to_198_handle();
+    // (the fault pages 177-198 have no touch handler: the printer is halted when they are shown)
   } else if (187 == page_index_now || 188 == page_index_now || 199 == page_index_now || page_index_now == 200) {
 #if 0 // ACDEBUG(AC_MARLIN)
     SERIAL_ECHOLNPGM("line: ", __LINE__);
@@ -1075,67 +1114,41 @@ void DgusTFT::IdleLoop()  {
   pop_up_manager();
   key_value = 0;
 
-  CheckHeaters();
 }
 
 void DgusTFT::PrinterKilled(PGM_P error, PGM_P component)  {
   //    SendtoTFTLN(AC_msg_kill_lcd);
 #if ACDEBUG(AC_MARLIN)
-  SERIAL_ECHOLNPGM("PrinterKilled()\nerror: ", error , "\ncomponent: ", component);
+  SERIAL_ECHOLNPGM("PrinterKilled() error: ", error, " component: ", component);
 #endif
+  // (Marlin halts after this call: nothing answers the display any more. Both strings can be null.)
+  const char * const err = error ? error : "", * const comp = component ? component : "";
+  const bool bed = strncmp(comp, "Bed", 3) == 0, hotend = comp[0] == 'E';
+  uint16_t page = 0;
 
-  if (strncmp(error, "Heating Failed", strlen("Heating Failed")) == 0) {
+  if (strncmp(err, "Heating Failed", 14) == 0 || strncmp(err, "THERMAL RUNAWAY", 15) == 0)
+    page = bed ? PAGE_CHS_ABNORMAL_BED_HEATER : hotend ? PAGE_CHS_ABNORMAL_HOTEND_HEATER : 0;
+  else if (strncmp(err, "Err: MINTEMP", 12) == 0 || strncmp(err, "Err: MAXTEMP", 12) == 0)
+    page = bed ? PAGE_CHS_ABNORMAL_BED_NTC : hotend ? PAGE_CHS_ABNORMAL_HOTEND_NTC : 0;
+  else if (strncmp(err, "Homing Failed", 13) == 0)
+    page = comp[0] == 'X' ? PAGE_CHS_ABNORMAL_X_ENDSTOP : comp[0] == 'Y' ? PAGE_CHS_ABNORMAL_Y_ENDSTOP : comp[0] == 'Z' ? PAGE_CHS_ABNORMAL_Z_ENDSTOP : 0;
 
-    if (strncmp(component, "Bed", strlen("Bed")) == 0) {
-      ChangePageOfTFT(PAGE_CHS_ABNORMAL_BED_HEATER);
-      SERIAL_ECHOLNPGM("Check Bed heater");
-    } else if (strncmp(component, "E", 1) == 0) {
-      ChangePageOfTFT(PAGE_CHS_ABNORMAL_HOTEND_HEATER);
-      SERIAL_ECHOLNPGM("Check E1 heater");
-    }
-
-  } else if (strncmp(error, "Err: MINTEMP", strlen("Err: MINTEMP")) == 0) {
-
-    if (strncmp(component, "Bed", strlen("Bed")) == 0) {
-      ChangePageOfTFT(PAGE_CHS_ABNORMAL_BED_NTC);
-      SERIAL_ECHOLNPGM("Check Bed thermistor");
-    } else if (strncmp(component, "E", 1) == 0) {
-      ChangePageOfTFT(PAGE_CHS_ABNORMAL_HOTEND_NTC);
-      SERIAL_ECHOLNPGM("Check E1 thermistor");
-    }
-  } else if (strncmp(error, "Err: MAXTEMP", strlen("Err: MAXTEMP")) == 0) {
-
-    if (strncmp(component, "Bed", strlen("Bed")) == 0) {
-      ChangePageOfTFT(PAGE_CHS_ABNORMAL_BED_NTC);
-      SERIAL_ECHOLNPGM("Check Bed thermistor");
-    } else if (strncmp(component, "E", 1) == 0) {
-      ChangePageOfTFT(PAGE_CHS_ABNORMAL_HOTEND_NTC);
-      SERIAL_ECHOLNPGM("Check E1 thermistor");
-    }
-  } else if (strncmp(error, "THERMAL RUNAWAY", strlen("THERMAL RUNAWAY")) == 0) {
-
-    if (strncmp(component, "Bed", strlen("Bed")) == 0) {
-      ChangePageOfTFT(PAGE_CHS_ABNORMAL_BED_HEATER);
-      SERIAL_ECHOLNPGM("Check Bed thermal runaway");
-    } else if (strncmp(component, "E", 1) == 0) {
-      ChangePageOfTFT(PAGE_CHS_ABNORMAL_HOTEND_HEATER);
-      SERIAL_ECHOLNPGM("Check E1 thermal runaway");
-    }
-
-  } else if (strncmp(error, "Homing Failed", strlen("Homing Failed")) == 0) {
-
-    if (strncmp(component, "X", strlen("X")) == 0) {
-      ChangePageOfTFT(PAGE_CHS_ABNORMAL_X_ENDSTOP);
-      SERIAL_ECHOLNPGM("Check X endstop");
-    } else if (strncmp(component, "Y", strlen("Y")) == 0) {
-      ChangePageOfTFT(PAGE_CHS_ABNORMAL_Y_ENDSTOP);
-      SERIAL_ECHOLNPGM("Check Y endstop");
-    } else if (strncmp(component, "Z", strlen("Z")) == 0) {
-      ChangePageOfTFT(PAGE_CHS_ABNORMAL_Z_ENDSTOP);
-      SERIAL_ECHOLNPGM("Check Z endstop");
-    }
+  if (page) {
+    ChangePageOfTFT(page);
+    SERIAL_ECHOLNPGM("Printer halted: ", err, " ", comp);
+    return;
   }
 
+  // Everything else (M112, a stuck driver, a Marlin fault, a fault of a part without its own page): the halted page with the reason in
+  // its status line. The display drops text written before the page is drawn, so the line goes out three times.
+  char msg[26];
+  snprintf(msg, sizeof(msg), "%s%s%s", err[0] ? err : "Printer halted", comp[0] ? " " : "", comp);
+  SERIAL_ECHOLNPGM("Printer halted: ", msg);
+  ChangePageOfTFT(PAGE_ABNORMAL);
+  for (uint8_t i = 0; i < 3; i++) {
+    delay(300);
+    SendTxtToTFT(msg, TXT_WAIT_STATUS);
+  }
 }
 
 void DgusTFT::MediaEvent(media_event_t event)  {
@@ -1183,7 +1196,6 @@ void DgusTFT::TimerEvent(timer_event_t event)  {
 
   switch (event) {
     case AC_timer_started: {
-        live_Zoffset = 0.0; // reset print offset
         setSoftEndstopState(false);  // disable endstops to print
         printer_state = AC_printer_printing;
         //        SendtoTFTLN(AC_msg_print_from_sd_card);
@@ -1208,10 +1220,7 @@ void DgusTFT::TimerEvent(timer_event_t event)  {
             printer_state = AC_printer_stopping;
 
             // Get Printing Time
-            uint32_t time = getProgress_seconds_elapsed() / 60;
-            sprintf(str_buf, "%s H ", utostr3(time / 60));
-            sprintf(str_buf + strlen(str_buf), "%s M", utostr3(time % 60));
-            SendTxtToTFT(str_buf, TXT_FINISH_TIME);
+            send_hm(getProgress_seconds_elapsed() / 60, TXT_FINISH_TIME);
             ChangePageOfTFT(PAGE_PRINT_FINISH);
           }
         }
@@ -1238,7 +1247,7 @@ void DgusTFT::FilamentRunout()  {
     PlayTune(BEEPER_PIN, FilamentOut, 1);
 
     if (isPrintingFromMedia()) {
-			injectCommands_P(PSTR("M600"));// MEL_MOD will park, eject filament, then resume to load and continue
+			ui_inject_P(PSTR("M600"));// MEL_MOD will park, eject filament, then resume to load and continue
       //pausePrint();
       //printer_state = AC_printer_pausing;
       //pause_state = AC_paused_filament_lack;
@@ -1279,7 +1288,7 @@ void DgusTFT::ConfirmationRequest(const char * const msg)  {
 #if ACDEBUG(AC_MARLIN)
           SERIAL_ECHOLNPGM("send M108 ", __LINE__);
 #endif
-          injectCommands_P(PSTR("M108"));
+          ui_inject_P(PSTR("M108"));
 
           if (pause_state != AC_paused_filament_lack) {
             pause_state = AC_paused_idle;
@@ -1295,7 +1304,7 @@ void DgusTFT::ConfirmationRequest(const char * const msg)  {
 #if ACDEBUG(AC_MARLIN)
           SERIAL_ECHOLNPGM("send M108 ", __LINE__);
 #endif
-          injectCommands_P(PSTR("M108"));
+          ui_inject_P(PSTR("M108"));
 
           if (pause_state != AC_paused_filament_lack) {
             pause_state = AC_paused_idle;
@@ -1342,7 +1351,7 @@ void DgusTFT::StatusChange(const char * const msg)  {
           PlayTune(BEEPER_PIN, BeepBeepBeeep, 1);
           probe_cnt = 0;   // a failed run must not leave the next run's point count off
           az_stage = AZ_IDLE;
-          injectCommands_P(PSTR("G1 Z50 F500\nM104 S0\nM140 S0"));
+          ui_inject_P(PSTR("G1 Z50 F500\nM104 S0\nM140 S0"));
           heaters_off_when_idle();
           ChangePageOfTFT(PAGE_CHS_ABNORMAL_LEVELING_SENSOR);
           //          SendtoTFTLN(AC_msg_probing_complete);
@@ -1592,26 +1601,6 @@ void DgusTFT::SendColorToTFT(uint32_t color, uint32_t address) {
   }
 }
 
-void DgusTFT::SendReadNumOfTxtToTFT(uint8_t number, uint32_t address) {
-  uint8_t data_buf[32] = {0};
-  uint8_t data_index = 0;
-
-  uint8_t *p_u8 =  (uint8_t *)(&address) + 1 ;
-
-  data_buf[data_index++] = 0x5A;
-  data_buf[data_index++] = 0xA5;
-  data_buf[data_index++] = 0x04;      //frame length
-  data_buf[data_index++] = 0x83;
-  data_buf[data_index++] = *p_u8;
-  p_u8--;
-  data_buf[data_index++] = *p_u8;
-  data_buf[data_index++] = number;    //how much bytes to read
-
-  for (uint8_t i = 0; i < data_index; i++) {
-    TFTSer.write(data_buf[i]);
-  }
-}
-
 // Map a CHS-domain page number to the page actually shown for the current language.
 // Single-language pages and the few pages with irregular ENG numbers are listed explicitly;
 // every other page is mirrored at +120. Shared by ChangePageOfTFT and FakeChangePageOfTFT so
@@ -1730,30 +1719,6 @@ void DgusTFT::ChangePageOfTFT_DevicePage(uint32_t device_page) {
   SERIAL_ECHOLNPGM("page_index_last: ", page_index_last);
   SERIAL_ECHOLNPGM("page_index_now: ", page_index_now);
 #endif
-}
-
-void DgusTFT::FakeChangePageOfTFT(uint32_t page_index) {
-
-#if ACDEBUG(AC_MARLIN)
-  SERIAL_ECHOLNPGM("ChangePageOfTFT: ", page_index);
-#endif
-
-  //    uint8_t data_buf[20] = {0};
-  //    uint8_t data_index = 0;
-  uint32_t data_temp = 0;
-
-  data_temp = TranslatePage(page_index);
-
-  page_index_last_2 = page_index_last;
-  page_index_last = page_index_now;
-  page_index_now = data_temp;
-
-#if ACDEBUG(AC_MARLIN)
-  SERIAL_ECHOLNPGM("page_index_last_2: ", page_index_last_2);
-  SERIAL_ECHOLNPGM("page_index_last: ", page_index_last);
-  SERIAL_ECHOLNPGM("page_index_now: ", page_index_now);
-#endif
-
 }
 
 void DgusTFT::LcdAudioSet(ExtUI::audio_t audio) {
@@ -1976,106 +1941,12 @@ bool DgusTFT::ReadTFTCommand() {
   return false;
 }
 
-int8_t DgusTFT::Findcmndpos(const char * buff, char q) {
-  int8_t pos = 0;
-  do {
-    if (buff[pos] == q) return pos;
-  } while (++pos < MAX_CMND_LEN);
-  return -1;
-}
-
-void DgusTFT::CheckHeaters() {
-  static uint8_t faultE0Duration = 0, faultBedDuration = 0;
-  float temp = 0;
-  static uint32_t time_last = 0;
-
-  // Subtraction form is safe across millis() wraparound (~49.7 days)
-  if (millis() - time_last < 500) {
-    return;
-  }
-
-  time_last = millis();
-
-  // if the hotend temp is abnormal, confirm state before signalling panel
-  temp = getActualTemp_celsius(E0);
-  if (!WITHIN(temp, HEATER_0_MINTEMP, HEATER_0_MAXTEMP)) {
-    faultE0Duration++;
-    if (faultE0Duration >= AC_HEATER_FAULT_VALIDATION_TIME) {
-      //          SendtoTFTLN(AC_msg_nozzle_temp_abnormal);
-#if ACDEBUG(AC_MARLIN)
-      SERIAL_ECHOLNPGM("Extruder temp abnormal! : ", temp);
-#endif
-      faultE0Duration = 0;
-    }
-  }
-
-  temp = getActualTemp_celsius(BED);
-  if (!WITHIN(temp, BED_MINTEMP, BED_MAXTEMP)) {
-    faultBedDuration++;
-    if (faultBedDuration >= AC_HEATER_FAULT_VALIDATION_TIME) {
-      //            SendtoTFTLN(AC_msg_bed_temp_abnormal);
-#if ACDEBUG(AC_MARLIN)
-      SERIAL_ECHOLNPGM("Bed temp abnormal! : ", temp);
-#endif
-      faultBedDuration = 0;
-    }
-  }
-
-#if 0
-  // Update panel with hotend heater status
-  if (hotend_state != AC_heater_temp_reached) {
-    if (WITHIN(getActualTemp_celsius(E0) - getTargetTemp_celsius(E0), -1, 1)) {
-      SendtoTFTLN(AC_msg_nozzle_heating_done);
-      hotend_state = AC_heater_temp_reached;
-    }
-  }
-
-  // Update panel with bed heater status
-  if (hotbed_state != AC_heater_temp_reached) {
-    if (WITHIN(getActualTemp_celsius(BED) - getTargetTemp_celsius(BED), -0.5, 0.5)) {
-      SendtoTFTLN(AC_msg_bed_heating_done);
-      hotbed_state = AC_heater_temp_reached;
-    }
-  }
-#endif
-}
-
 void DgusTFT::SendFileList(int8_t startindex) {
   // Respond to panel request for 4 files starting at index
 #if ACDEBUG(AC_INFO)
   SERIAL_ECHOLNPGM("## SendFileList ## ", startindex);
 #endif
   filenavigator.getFiles(startindex);
-}
-
-void DgusTFT::SelectFile() {
-  strncpy(selectedfile, panel_command + 4, command_len - 4);
-  selectedfile[command_len - 5] = '\0';// MEL_FOLDER (was 5)
-  gcodeComment = " G-Code Status Area ";// MEL_MOD malebuffy
-//#if ACDEBUG(AC_FILE)
-  SERIAL_ECHOLNPGM(" Selected File: ", selectedfile);
-//#endif
-  switch (selectedfile[0]) {
-    case '/':   // Valid file selected
-        //SendtoTFTLN(AC_msg_sd_file_open_success);
-      break;
-
-    case '<':   // .. (go up folder level)
-      filenavigator.upDIR();
-          //SendtoTFTLN(AC_msg_sd_file_open_failed);
-      SendFileList( 0 );
-      break;
-    default:   // enter sub folder
-      filenavigator.changeDIR(selectedfile);
-          //SendtoTFTLN(AC_msg_sd_file_open_failed);
-      SendFileList( 0 );
-      break;
-  }
-}
-
-void DgusTFT::InjectCommandandWait(PGM_P cmd) {
-  //injectCommands_P(cmnd); queue.enqueue_now_P(cmd);
-  //SERIAL_ECHOLN(PSTR("Inject>"));
 }
 
 void DgusTFT::ProcessPanelRequest() {
@@ -2374,35 +2245,6 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
       }
       break;
 
-    case 5: // resume of outage(last power off)
-#if ACDEBUG(AC_MARLIN)
-      SERIAL_ECHOLNPGM("printer_state: ", printer_state);
-#endif
-      if (lcd_txtbox_index > 0 && lcd_txtbox_index  < 6) {  // 1~5
-
-        if (filenavigator.filelist.seek(lcd_txtbox_page * 5 + (lcd_txtbox_index - 1))) {
-
-          SendColorToTFT(COLOUR_WHITE, TXT_DISCRIBE_0 + 0x30 * (lcd_txtbox_index - 1));
-
-#if ENABLED(CASE_LIGHT_ENABLE)
-          setCaseLightState(1);
-#endif
-
-          char str_buf[28];
-          fit_text(str_buf, filenavigator.filelist.longFilename(), PRINT_NAME_CHARS);
-          SendTxtToTFT(str_buf, TXT_PRINT_NAME);
-
-          if (printer_state == AC_printer_resuming_from_power_outage) {
-            // Need to home here to restore the Z position
-            //              injectCommands_P(AC_cmnd_power_loss_recovery);
-            //              SERIAL_ECHOLNPGM("start resumeing from power outage: ", AC_cmnd_power_loss_recovery);
-            ChangePageOfTFT(PAGE_STATUS2);    // show pause
-            injectCommands_P(PSTR("M1000"));  // home and start recovery
-          }
-        }
-      }
-      break;
-
     case 6:   // start print
       if (lcd_txtbox_index == 0) {   // nothing tapped yet: say so in the first row (it is put back by the next tap or after 10 s)
         nolevel_warn_ms = millis() | 1;
@@ -2439,7 +2281,7 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
 
           // Allows printer to restart the job if we dont want to recover
           if (printer_state == AC_printer_resuming_from_power_outage) {
-            injectCommands_P(PSTR("M1000 C")); // Cancel recovery
+            ui_inject_P(PSTR("M1000 C")); // Cancel recovery
             printer_state = AC_printer_idle;
           }
 
@@ -2462,10 +2304,7 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
           SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
           send_progress_bar(TXT_PRINT_BAR, getProgress_percent(), 20);
 
-          uint32_t time = 0;
-          sprintf(str_buf, "%s H ", utostr3(time / 60));
-          sprintf(str_buf + strlen(str_buf), "%s M", utostr3(time % 60));
-          SendTxtToTFT(str_buf, TXT_PRINT_TIME);
+          send_hm(0, TXT_PRINT_TIME);
           // reset the status line at print start (the old pointer comparison of two string
           // literals was unspecified behaviour)
           gcodeComment = " G-Code Status Area ";
@@ -2531,12 +2370,6 @@ void DgusTFT::page3_handle(void) {
 
       break;
 
-    case 1: // return
-      if (isPrintingFromMedia() == false) { //only is idle status can return
-        ChangePageOfTFT(PAGE_FILE);
-      }
-      break;
-
     case 2: // resume print
 #if ACDEBUG(AC_MARLIN)
       SERIAL_ECHOLNPGM("printer_state: ", printer_state);
@@ -2593,10 +2426,7 @@ void DgusTFT::page3_handle(void) {
   send_print_page_values();
 
   // Get Printing Time
-  uint32_t time = getProgress_seconds_elapsed() / 60;
-  sprintf(str_buf, "%s H ", utostr3(time / 60));
-  sprintf(str_buf + strlen(str_buf), "%s M", utostr3(time % 60));
-  SendTxtToTFT(str_buf, TXT_PRINT_TIME);
+  send_hm(getProgress_seconds_elapsed() / 60, TXT_PRINT_TIME);
   SendTxtToTFT(gcodeComment, TXT_PRINT_COMMENT);// MEL_MOD malebuffy
 
   if (m600_shown && !activeFilamentChange) { m600_shown = false; if (isPrintingFromMedia() && !isPrintingPaused()) ChangePageOfTFT(PAGE_STATUS2); }   // M600 is over
@@ -2612,15 +2442,6 @@ void DgusTFT::page4_handle(void) {
   switch (key_value)
   {
     case 0:
-      break;
-
-    case 1: // return
-      {
-        if (isPrintingFromMedia() == false) {
-          //            if(card.sdprinting==false)//only is idle status can return
-          ChangePageOfTFT(PAGE_FILE);
-        }
-      }
       break;
 
     case 2:  // print pause (or continue) MEL_MOD
@@ -2676,10 +2497,7 @@ void DgusTFT::page4_handle(void) {
     //SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
   }
 
-  uint32_t time = getProgress_seconds_elapsed() / 60;
-  sprintf(str_buf, "%s H ", utostr3(time / 60));
-  sprintf(str_buf + strlen(str_buf), "%s M", utostr3(time % 60));
-  SendTxtToTFT(str_buf, TXT_PRINT_TIME);
+  send_hm(getProgress_seconds_elapsed() / 60, TXT_PRINT_TIME);
 	if (activeFilamentChange == true) {
 		 m600_shown = true;
 		 ChangePageOfTFT(PAGE_STATUS1);// MEL_MOD auto change to RESUME page for filament change
@@ -2806,7 +2624,7 @@ static void term_run_P(PGM_P cmd) {
   char c[24];
   strncpy_P(c, cmd, sizeof(c) - 1);
   c[sizeof(c) - 1] = 0;
-  injectCommands_P(cmd);
+  ui_inject_P(cmd);
   term_log_push(c);
   term_log_send();
 }
@@ -2861,7 +2679,7 @@ void DgusTFT::page6_handle(void)
         }
         else if (!kb_allowed_while_printing(kb_buf) && BlockedWhilePrinting()) return;   // shows NOT ALLOWED
         else {
-          injectCommands(kb_buf);   // copied into the queue's own buffer
+          ui_inject(kb_buf);   // copied into the queue's own buffer
           term_log_push(kb_buf);
           kb_buf[0] = '\0';
         }
@@ -2958,11 +2776,9 @@ void DgusTFT::page7_handle(void) // tools
 
 void DgusTFT::page8_handle(void) {
 
-  static uint16_t movespeed = 50;
-
   // Nothing here moves while a command or a job (mesh run, probe test, first-layer test) is running, and the jog keys only move an axis that is
   // homed: an axis that is not has a made-up position (the power-on 0), so +50 mm could run into the frame.
-  const bool move_ok = !isMoving() && !commandsInQueue() && !ac_job_active();
+  const bool move_ok = !isMoving() && !ui_busy() && !ac_job_active();
 
   if ((key_value == 2 || key_value == 4 ||
        key_value == 6 || key_value == 8 ||
@@ -2986,29 +2802,29 @@ void DgusTFT::page8_handle(void) {
 
     case 5:
       if (move_ok) {
-        injectCommands_P(PSTR("G28 X"));
+        ui_inject_P(PSTR("G28 X"));
       }
       break;
 
     case 9:
       if (move_ok) {
-        injectCommands_P(PSTR("G28 Y"));
+        ui_inject_P(PSTR("G28 Y"));
       }
       break;
 
     case 13:
       if (move_ok) {
         if (axis_is_trusted(X_AXIS) && axis_is_trusted(Y_AXIS)) {
-          injectCommands_P(PSTR("G28 Z"));
+          ui_inject_P(PSTR("G28 Z"));
         } else {
-          injectCommands_P(PSTR("G28"));
+          ui_inject_P(PSTR("G28"));
         }
       }
       break;
 
     case 17:
       if (move_ok) {
-        injectCommands_P(PSTR("G28"));
+        ui_inject_P(PSTR("G28"));
       }
       break;
 
@@ -3063,17 +2879,6 @@ void DgusTFT::page8_handle(void) {
       SendMoveStepText();
       break;
 
-    case 14:
-      movespeed = 3000;//SERIAL_PROTOCOLLN("3000");
-      break;
-
-    case 15:
-      movespeed = 2000;//SERIAL_PROTOCOLLN("2000");
-      break;
-
-    case 16:
-      movespeed = 1000;//SERIAL_PROTOCOLLN("1000");
-      break;
   }
 }
 
@@ -3292,36 +3097,6 @@ void DgusTFT::page13_handle(void)
 #endif
 }
 
-void DgusTFT::page14_handle(void)
-{
-  switch (key_value)
-  {
-    case 0:
-      break;
-    case 1://return
-      {
-
-      }
-      break;
-    case 2:
-      {
-
-      }
-      break;
-
-    case 3:
-
-      break;
-
-    case 4:
-
-      break;
-  }
-
-
-}
-
-
 // E-steps calibration (page 210) and linear advance K (page 174): the state is set when the Prepare page opens them.
 static float es_actual = 100.0f;   // the length the user measured (mm), 100 = "extruded exactly what was asked"
 enum es_stage_t : uint8_t { ES_IDLE, ES_HEATING, ES_EXTRUDING, ES_DONE };
@@ -3442,10 +3217,10 @@ static bool az_m48_pending = false;  // homed and parked at Z5: M48 starts when 
 static void az_service() {           // from wizard_background()
   if (!az_m48_pending) return;
   if (az_stage != AZ_TEST) { az_m48_pending = false; return; }   // the run was left meanwhile
-  if (commandsInQueue() || !temps_hot()) return;
+  if (ui_busy() || !temps_hot()) return;
   char cmd[40];
   sprintf_P(cmd, PSTR("M48 P5 X%d Y%d V1"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2));
-  injectCommands(cmd);
+  ui_inject(cmd);
   az_m48_pending = false;
 }
 static void az_start_test(const bool save_first) {
@@ -3465,7 +3240,7 @@ static void az_start_test(const bool save_first) {
 #endif
   char cmd[64];
   sprintf_P(cmd, PSTR("%sG28\nG90\nG1 Z5 F600"), save_first ? "M500\n" : "");
-  injectCommands(cmd);
+  ui_inject(cmd);
   az_m48_pending = true;   // M48 itself waits for the temperatures (az_service): a spread measured on a cold bed with a nozzle still heating reads NOISY
   if (az_check_only) return;   // the wizard page watches the queue and shows the result
   zoffset_moving = true;
@@ -3526,7 +3301,7 @@ void DgusTFT::page16_handle(void)//AUTO LEVELING
         z_entry_offset = getZOffset_mm();
         char cmd[64];
         sprintf_P(cmd, PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2));
-        injectCommands(cmd);
+        ui_inject(cmd);
         z_set_hot();   // hot paper test: page17_handle lowers to the start height once the temperatures are reached
         z_heat_wait = true;
         z_lower_tenths = t;
@@ -3589,19 +3364,19 @@ void DgusTFT::page17_handle(void)
     static millis_t status_ms = 0;
     if (millis() - status_ms > 500) {
       status_ms = millis();
-      if (az_stage == AZ_TEST && !az_m48_pending && !commandsInQueue()) {   // no timeout: injecting over a command that is still running corrupts the buffer
+      if (az_stage == AZ_TEST && !az_m48_pending && !ui_busy()) {   // no timeout: injecting over a command that is still running corrupts the buffer
         // M48 has finished (or the wait ran out): read the spread, then park at the start height for the manual step
         az_listen = false;
         az_make_msg();
         az_stage = AZ_PARKED;
-        injectCommands_P(PSTR("G1 Z5 F600"));   // lift; the lower to the paper height waits for the temperatures (hot paper test)
+        ui_inject_P(PSTR("G1 Z5 F600"));   // lift; the lower to the paper height waits for the temperatures (hot paper test)
         z_set_hot();
         z_heat_wait = true;
         z_lower_tenths = z_start_tenths();
         z_need_check = !az_fresh_mesh;   // M48 only measures the probe's repeatability and compares nothing with the mesh: a mesh that was not made just now is checked against the bed
         zoffset_moving = true;
       }
-      else if (z_heat_wait && !commandsInQueue()) {   // parked at Z5: wait for the temperatures, check the mesh still matches the bed, then lower
+      else if (z_heat_wait && !ui_busy()) {   // parked at Z5: wait for the temperatures, check the mesh still matches the bed, then lower
         if (z_is_hot()) {
           const int g = z_need_check ? stale_gate() : 1;
           if (g != 0) {
@@ -3612,18 +3387,18 @@ void DgusTFT::page17_handle(void)
             else {
               char cmd[40];   // M420 S1 Z0: G30 left the mesh off (harmless when no check ran)
               sprintf_P(cmd, PSTR("M420 S1 Z0\nG1 Z%u.%u F200"), (unsigned)(z_lower_tenths / 10), (unsigned)(z_lower_tenths % 10));
-              injectCommands(cmd);
+              ui_inject(cmd);
             }
           }
         }
       }
-      else if (zoffset_moving && !commandsInQueue()) zoffset_moving = false;
+      else if (zoffset_moving && !ui_busy()) zoffset_moving = false;
       char st[28];
       if (soak_note_active()) strlcpy(st, soak_note, sizeof(st));
       else if (z_stale) sc_fail_text(st, sizeof(st));
-      else if (az_stage == AZ_TEST && az_m48_pending && !commandsInQueue()) heat_status(st, sizeof(st));
+      else if (az_stage == AZ_TEST && az_m48_pending && !ui_busy()) heat_status(st, sizeof(st));
       else if (az_stage == AZ_TEST) strcpy_P(st, PSTR("Testing probe (5x)..."));
-      else if (z_heat_wait && !commandsInQueue()) heat_status(st, sizeof(st));
+      else if (z_heat_wait && !ui_busy()) heat_status(st, sizeof(st));
       else if (sc_state == 1) strcpy_P(st, PSTR("Checking mesh vs bed..."));
       else if (zoffset_moving) strcpy_P(st, PSTR("Homing and moving..."));
       else if (az_stage == AZ_PARKED && ((millis() / 3000) & 1)) strlcpy(st, az_msg, sizeof(st));   // alternates with the prompt
@@ -3646,7 +3421,7 @@ void DgusTFT::page17_handle(void)
     }
   }
   // every key waits: a new command would overwrite the sequence still running (BACK is allowed while only heating: the queue is empty then)
-  if (zoffset_moving && key_value && !(z_heat_wait && (key_value == 1 || key_value == 7) && !commandsInQueue())) return;
+  if (zoffset_moving && key_value && !(z_heat_wait && (key_value == 1 || key_value == 7) && !ui_busy())) return;
   if (z_stale && key_value != 1) return;   // the mesh is stale: only BACK
 
   switch (key_value)
@@ -3793,7 +3568,7 @@ void DgusTFT::page19_handle(void)   // Filament
     case 3:   // unload
     case 5:   // extrude
       if (BlockedWhilePrinting()) break;
-      if (commandsInQueue() || filament_running != FILA_NO_ACT) break;   // still busy
+      if (ui_busy() || filament_running != FILA_NO_ACT) break;   // still busy
       if (getTargetTemp_celsius(E0) < FILAMENT_TEMP) setTargetTemp_celsius(FILAMENT_TEMP, E0);
       filament_cmd = key_value == 2 ? FILA_IN : (key_value == 3 ? FILA_OUT : FILA_EXTRUDE);
       flash_time = 0;   // refresh the status line now
@@ -3806,10 +3581,11 @@ void DgusTFT::page19_handle(void)   // Filament
         queue.clear();
         queue.injected_commands_P = nullptr;
         queue.injected_commands[0] = '\0';
+        ui_fifo_n = 0;
         if (stepper.axis_is_moving(E_AXIS) && !stepper.axis_is_moving(X_AXIS) && !stepper.axis_is_moving(Y_AXIS) && !stepper.axis_is_moving(Z_AXIS))
           quickstop_stepper();   // (stops, and brings the planner's position back to where the steppers are)
         filament_running = FILA_NO_ACT;
-        injectCommands_P(PSTR("M82\nG92 E0\nM84"));   // absolute extruder again (EXTRUDE leaves it relative), no motor holding current
+        ui_inject_P(PSTR("M82\nG92 E0\nM84"));   // absolute extruder again (EXTRUDE leaves it relative), no motor holding current
       }
       if (!isPrinting()) setTargetTemp_celsius(0, E0);
       filament_cmd = FILA_NO_ACT;
@@ -3825,13 +3601,13 @@ void DgusTFT::page19_handle(void)   // Filament
   sprintf(str_buf, "%u/%u", (uint16_t)getActualTemp_celsius(E0), (uint16_t)getTargetTemp_celsius(E0));
   SendTxtToTFT(str_buf, TXT_FILAMENT_TEMP);
 
-  if (filament_running != FILA_NO_ACT && !commandsInQueue()) filament_running = FILA_NO_ACT;   // finished
+  if (filament_running != FILA_NO_ACT && !ui_busy()) filament_running = FILA_NO_ACT;   // finished
 
   // Start the requested sequence once the hotend is up to temperature.
   if (filament_cmd != FILA_NO_ACT && !isPrinting() && getActualTemp_celsius(E0) >= FILAMENT_READY) {
     // lift to Z20 only when Z is known and below that (a taller part, or a Z that is not homed, would be run into)
     const bool lift = isAxisPositionKnown(Z) && getAxisPosition_mm(Z) < 20.0f;
-    injectCommands_P(filament_cmd == FILA_IN  ? (lift ? MEL_cmnd_auto_load_Filament : MEL_cmnd_auto_load_nolift)        // MELS mod: quick load + purge
+    ui_inject_P(filament_cmd == FILA_IN  ? (lift ? MEL_cmnd_auto_load_Filament : MEL_cmnd_auto_load_nolift)        // MELS mod: quick load + purge
                    : filament_cmd == FILA_OUT ? (lift ? MEL_cmnd_auto_unload_filament : MEL_cmnd_auto_unload_nolift)
                                               : MEL_cmnd_extrude_filament);
     filament_running = filament_cmd;
@@ -3909,10 +3685,6 @@ void DgusTFT::page22_handle(void)   // print finish
       }
       break;
 
-    case 2:
-      {
-      }
-      break;
   }
   if (millis() < (flash_time + 1000) )return;
   flash_time = millis();
@@ -3985,7 +3757,7 @@ void DgusTFT::page25_handle(void)   // lack filament
         if (AC_printer_printing == printer_state) {
           ChangePageOfTFT(PAGE_STATUS2);  // show pause
         } else if (AC_printer_paused == printer_state) {
-          //                      injectCommands_P(PSTR("M108"));
+          //                      ui_inject_P(PSTR("M108"));
           ChangePageOfTFT(PAGE_STATUS1);  // show resume
         } else {
           ChangePageOfTFT(isPrintingPaused() ? PAGE_STATUS1 : (isPrintingFromMedia() ? PAGE_STATUS2 : PAGE_MAIN));   // pausing / stopping / resuming: still a way out
@@ -4011,12 +3783,6 @@ void DgusTFT::page26_handle(void)
 
       }
       break;
-    case 2:
-      {
-
-      }
-      break;
-
   }
 
 
@@ -4045,7 +3811,7 @@ void DgusTFT::page27_handle(void)
           ChangePageOfTFT(PAGE_MAIN);
         } else {
           if (printer_state == AC_printer_resuming_from_power_outage)
-            injectCommands_P(PSTR("M1000 C")); // Cancel recovery
+            ui_inject_P(PSTR("M1000 C")); // Cancel recovery
           printer_state = AC_printer_idle;
           ChangePageOfTFT(PAGE_MAIN);   // (it stayed on this confirmation page)
         }
@@ -4118,12 +3884,6 @@ void DgusTFT::page29_handle(void)
       }
       break;
 
-    case 2:
-      {
-
-      }
-      break;
-
   }
 
   if (millis() < (flash_time + 1000) )return;
@@ -4149,38 +3909,6 @@ void DgusTFT::page30_handle(void)   // Auto heat filament
 
   if (millis() < (flash_time + 1000) )return;
   flash_time = millis();
-}
-
-void DgusTFT::page31_handle(void)
-{
-  static millis_t flash_time = 0;
-  switch (key_value)
-  {
-    case 0:
-      break;
-
-    case 1://return
-      {
-      }
-      break;
-
-    case 2:
-      {
-      }
-      break;
-  }
-
-  if (millis() < (flash_time + 1000) )return;
-  flash_time = millis();
-}
-
-void DgusTFT::page32_handle(void)
-{
-  static millis_t flash_time = 0;
-
-  if (millis() < (flash_time + 1000) )return;
-  flash_time = millis();
-
 }
 
 void DgusTFT::page33_handle(void)
@@ -4229,7 +3957,7 @@ void DgusTFT::page34_handle(void)
 
 }
 
-void DgusTFT::page171_handle(void)  // CHS power outage resume handler
+void DgusTFT::page171_handle(void)  // power outage resume handler (171 CHS, 173 ENG: the same keys)
 {
   char str_buf[20] = { '\0' };
 
@@ -4255,9 +3983,9 @@ void DgusTFT::page171_handle(void)  // CHS power outage resume handler
 
         ChangePageOfTFT(PAGE_STATUS2);               // show pause
 #ifdef CASE_LIGHT_ENABLE
-        injectCommands_P(PSTR("M355 S1\nM1000"));    // case light on, home and start recovery
+        ui_inject_P(PSTR("M355 S1\nM1000"));    // case light on, home and start recovery
 #else
-        injectCommands_P(PSTR("M1000"));
+        ui_inject_P(PSTR("M1000"));
 #endif
       }
       break;
@@ -4268,58 +3996,9 @@ void DgusTFT::page171_handle(void)  // CHS power outage resume handler
         ChangePageOfTFT(PAGE_MAIN);
 
 #ifdef CASE_LIGHT_ENABLE
-        injectCommands_P(PSTR("M355 S0\nM1000 C"));  // cancel recovery
+        ui_inject_P(PSTR("M355 S0\nM1000 C"));  // cancel recovery
 #else
-        injectCommands_P(PSTR("M1000 C"));
-#endif
-      }
-      break;
-  }
-}
-
-void DgusTFT::page173_handle(void)  // ENG power outage resume handler
-{
-  char str_buf[20] = { '\0' };
-
-  switch (key_value)
-  {
-    case 0:
-      break;
-
-    case 1:   // resume
-      {
-        char filename[64] = { '\0' };
-        ChangePageOfTFT(PAGE_OUTAGE_RECOVERY);
-        card.getLongPath(filename, recovery.info.sd_filename);
-        filename[17] = '\0';
-        SendTxtToTFT(filename, TXT_OUTAGE_RECOVERY_FILE);
-
-        sprintf(str_buf, "%u", (uint16_t)getFeedrate_percent());
-        SendTxtToTFT(str_buf, TXT_PRINT_SPEED);
-
-        sprintf(str_buf, "%u", (uint16_t)getProgress_percent());
-        SendTxtToTFT(str_buf, TXT_PRINT_PROGRESS);
-        send_progress_bar(TXT_PRINT_BAR, getProgress_percent(), 20);
-
-        ChangePageOfTFT(PAGE_STATUS2);      // show pause
-
-#ifdef CASE_LIGHT_ENABLE
-        injectCommands_P(PSTR("M355 S1\nM1000"));    // case light on, home and start recovery
-#else
-        injectCommands_P(PSTR("M1000"));
-#endif
-      }
-      break;
-
-    case 2:   // cancel
-      {
-        printer_state = AC_printer_idle;
-        ChangePageOfTFT(PAGE_MAIN);
-
-#ifdef CASE_LIGHT_ENABLE
-        injectCommands_P(PSTR("M355 S0\nM1000 C"));  // cancel recovery
-#else
-        injectCommands_P(PSTR("M1000 C"));
+        ui_inject_P(PSTR("M1000 C"));
 #endif
       }
       break;
@@ -4356,59 +4035,6 @@ void DgusTFT::page176_handle(void)     // ENG probe preheating handler
     return;
   }
   flash_time = millis();
-}
-
-void DgusTFT::page177_to_198_handle(void)
-{
-  switch (key_value)
-  {
-    case 1:   // return
-
-#if ACDEBUG(AC_MARLIN)
-      SERIAL_ECHOLNPGM("page_index_now: ", page_index_now);
-      SERIAL_ECHOLNPGM("page_index_last: ", page_index_last);
-      SERIAL_ECHOLNPGM("page_index_last_2: ", page_index_last_2);
-#endif
-
-      if ((PAGE_CHS_ABNORMAL_X_ENDSTOP <= page_index_now &&
-           page_index_now <= PAGE_CHS_ABNORMAL_Z_ENDSTOP) ||
-          (PAGE_ENG_ABNORMAL_X_ENDSTOP <= page_index_now &&
-           page_index_now <= PAGE_ENG_ABNORMAL_Z_ENDSTOP)) {
-
-        if (lcd_info.language == ExtUI::ENG) {
-          if (page_index_last_2 > 120) {
-            page_index_last_2 -= 120;
-          }
-
-          if (page_index_last > 120) {
-            page_index_last -= 120;
-          }
-        }
-
-        if (PAGE_STATUS1 == page_index_last_2 || PAGE_STATUS2 == page_index_last_2 ||
-            PAGE_PRINT_FINISH == page_index_last) {
-          ChangePageOfTFT(PAGE_MAIN);
-        } else {
-          ChangePageOfTFT_DevicePage(page_index_last_2);
-        }
-
-      } else {
-
-        if (lcd_info.language == ExtUI::ENG) {
-          if (page_index_last > 120) {
-            page_index_last -= 120;
-          }
-        }
-        ChangePageOfTFT_DevicePage(page_index_last);
-      }
-
-      stepper.disable_all_steppers();
-
-      break;
-
-    default:
-      break;
-  }
 }
 
 #if 0
@@ -4529,15 +4155,23 @@ void DgusTFT::page202_handle(void)  // probe precheck ok
   //        static uint8_t probe_state_last = 0;
   //        char str_buf[16];
 
+  // This handler runs on every pass while the page is shown: the heaters are set on the first pass and the run starts 3 s later (the 3 s used to
+  // block the whole firmware in delay(3000)). A start time that is old (the page was left meanwhile) is taken as a new visit.
+  static millis_t go_ms = 0;
+  if (go_ms && millis() - go_ms > 10000UL) go_ms = 0;
+  if (!go_ms) {
 #if PROBING_NOZZLE_TEMP || LEVELING_NOZZLE_TEMP
-  nozzle_late(LEVELING_NOZZLE_TEMP);   // G29 (probe.cpp) heats it for the end of the soak
+    nozzle_late(LEVELING_NOZZLE_TEMP);   // G29 (probe.cpp) heats it for the end of the soak
 #endif
 
 #if PROBING_BED_TEMP || LEVELING_BED_TEMP
-  setTargetTemp_celsius(LEVELING_BED_TEMP, BED);
+    setTargetTemp_celsius(LEVELING_BED_TEMP, BED);
 #endif
-
-  delay(3000);
+    go_ms = millis() | 1;
+    return;
+  }
+  if (millis() - go_ms < 3000UL) return;
+  go_ms = 0;
 
   start_leveling_run();
   printer_state = AC_printer_probing;
@@ -4862,17 +4496,17 @@ void DgusTFT::page216_handle(void) {
       ChangePageOfTFT(PAGE_PREPARE);
       break;
     case 2: // PID AUTOTUNE HOTEND (KEY_TUNE_HOTEND)
-      if (running || BlockedWhilePrinting() || commandsInQueue()) break;
+      if (running || BlockedWhilePrinting() || ui_busy()) break;
       tune_was_bed = false;
       tune_state = TUNE_HOTEND;
-      injectCommands_P(PSTR("M303 E0 S" STRINGIFY(AC_PID_HOTEND_TUNE_TEMP) " C8 U1\nM500"));
+      ui_inject_P(PSTR("M303 E0 S" STRINGIFY(AC_PID_HOTEND_TUNE_TEMP) " C8 U1\nM500"));
       flash_time = 0;
       break;
     case 3: // PID AUTOTUNE BED (KEY_TUNE_BED)
-      if (running || BlockedWhilePrinting() || commandsInQueue()) break;
+      if (running || BlockedWhilePrinting() || ui_busy()) break;
       tune_was_bed = true;
       tune_state = TUNE_BED;
-      injectCommands_P(PSTR("M303 E-1 S" STRINGIFY(AC_PID_BED_TUNE_TEMP) " C8 U1\nM500"));
+      ui_inject_P(PSTR("M303 E-1 S" STRINGIFY(AC_PID_BED_TUNE_TEMP) " C8 U1\nM500"));
       flash_time = 0;
       break;
   }
@@ -4973,12 +4607,12 @@ static void es_poll() {
   if (es_stage == ES_HEATING) {
     snprintf(es_msg, sizeof(es_msg), "Heating %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_ESTEPS_TEMP);
     if (getActualTemp_celsius(E0) >= AC_ESTEPS_TEMP - 3) {
-      injectCommands_P(PSTR("M83\nG1 E100 F100\nM82\nM400"));   // 100 mm at 100 mm/min
+      ui_inject_P(PSTR("M83\nG1 E100 F100\nM82\nM400"));   // 100 mm at 100 mm/min
       es_stage = ES_EXTRUDING;
       strcpy_P(es_msg, PSTR("Extruding 100 mm..."));
     }
   }
-  else if (es_stage == ES_EXTRUDING && !commandsInQueue()) {
+  else if (es_stage == ES_EXTRUDING && !ui_busy()) {
     es_stage = ES_DONE;
     setTargetTemp_celsius(0, E0);
     strcpy_P(es_msg, PSTR("Done: measure, enter, SAVE"));
@@ -5205,7 +4839,7 @@ static void kt_step(char * const c, const size_t cs, char (&fm)[26]) {
       snprintf(c, cs, "G1 Z0.2 F600\nG1 E1 F1800\nG1 X%d E%s F1200", xs - 4, e1);
       break;
   }
-  injectCommands(c);
+  ui_inject(c);
   fl_row++;
 }
 
@@ -5217,7 +4851,7 @@ static void fl_poll() {
     // before it runs, so that is safe at any time); the SRAM buffer is left alone because its line is parsed in place and may be
     // running right now (at most two row lines). What is already in the planner still runs (a few seconds), then the nozzle
     // lifts and the heaters go off (FL_END). A G28 in progress cannot be interrupted: the stop follows it.
-    if (fl_stage == FL_PURGE || fl_stage == FL_SQUARES) injectCommands_P(nullptr);
+    if (fl_stage == FL_PURGE || fl_stage == FL_SQUARES) ui_inject_P(nullptr);
     fl_stage = FL_END;
   }
 
@@ -5231,7 +4865,7 @@ static void fl_poll() {
     snprintf(fm, sizeof(fm), "Heat %u/%u  bed %u/%u", (unsigned)getActualTemp_celsius(E0), (unsigned)AC_FL_NOZZLE_TEMP,
              (unsigned)getActualTemp_celsius(BED), (unsigned)AC_FL_BED_TEMP);
     if (fl_hot) {
-      injectCommands_P(PSTR("G28"));
+      ui_inject_P(PSTR("G28"));
       fl_stage = FL_HOME;
       strcpy_P(fm, PSTR("Homing..."));
     }
@@ -5241,7 +4875,7 @@ static void fl_poll() {
   // Queue the next moves as soon as the injected commands have RUN (their moves may still be in the planner), so the planner
   // never runs dry and the nozzle does not stop and blob at the end of every row. Not more than FL_AHEAD blocks ahead.
   // The finish waits for everything, including the moves.
-  if (fl_stage == FL_TAIL ? commandsInQueue()
+  if (fl_stage == FL_TAIL ? ui_busy()
                           : (queue.has_commands_queued() || (fl_stage == FL_SQUARES && planner.movesplanned() > FL_AHEAD))) return;
   char c[64];
 
@@ -5262,7 +4896,7 @@ static void fl_poll() {
       // Bowden tube before it flows again: a 5 mm prime left the first square under-extruded (hardware test 2026-11-01). So: 15 mm
       // pushed out in place (slowly), then two thick passes (X20 to X180 and back, 8 mm each for 160 mm, about 30 % more than a
       // 0.2 mm line needs) that also show whether the flow is established. About 30 seconds.
-      injectCommands_P(PSTR("G90\nM420 S1 Z0\nM83\nG92 E0\nG1 Z5 F900\nG1 X20 Y10 F5000\nG1 Z0.3 F600\nG1 E15 F150\nG1 X180 Y10 E8 F1200\nG1 Y13 E0.5 F1200\nG1 X20 E8 F1200\nG1 E-2 F1800\nG1 Z1 F900"));
+      ui_inject_P(PSTR("G90\nM420 S1 Z0\nM83\nG92 E0\nG1 Z5 F900\nG1 X20 Y10 F5000\nG1 Z0.3 F600\nG1 E15 F150\nG1 X180 Y10 E8 F1200\nG1 Y13 E0.5 F1200\nG1 X20 E8 F1200\nG1 E-2 F1800\nG1 Z1 F900"));
       fl_stage = FL_PURGE;
       if (sc_n >= 2) {   // (shown for the purge: how far the two probed nodes are from the mesh)
         const unsigned f = (unsigned)lroundf(sc_df * 100.0f), c = (unsigned)lroundf(sc_dc * 100.0f);
@@ -5284,13 +4918,13 @@ static void fl_poll() {
       const int y0 = (int)(Y_BED_SIZE * fl_pct_y[fl_sq] / 100) - FL_SIZE / 2;
       if (fl_row == -2) {
         snprintf(c, sizeof(c), "G1 Z1 F900\nG1 X%d Y%d F5000", x0, y0);
-        injectCommands(c);
+        ui_inject(c);
         fl_row = -1;
       }
       else if (fl_row == -1) {
         // No stationary prime here: 1 mm pushed out while the nozzle sat at the start corner made a lump that tore the first rows
         // (hardware photos 2026-11-01). The retracted 1 mm is put back during the first row instead (see below).
-        injectCommands_P(PSTR("G1 Z0.18 F600\nG1 F1500"));   // (0.02 mm under the 0.2 mm the line volume is sized for: the rows showed gaps)
+        ui_inject_P(PSTR("G1 Z0.18 F600\nG1 F1500"));   // (0.02 mm under the 0.2 mm the line volume is sized for: the rows showed gaps)
         fl_row = -3;
       }
       else if (fl_row == -3 || fl_row == -4) {
@@ -5311,7 +4945,7 @@ static void fl_poll() {
           snprintf(c, sizeof(c), "G1 X%d E%s\nG1 Y%d E%s\nG1 X%s Y%s E0.0252", x0, eb, y0, eb, xs, ys);
           fl_row = -5;
         }
-        injectCommands(c);
+        ui_inject(c);
         snprintf(fm, sizeof(fm), "Square %d/%d  outline", fl_sq + 1, FL_SQUARES_N);
       }
       else if (fl_row <= -5 && fl_row >= -7) {
@@ -5337,7 +4971,7 @@ static void fl_poll() {
           snprintf(c, sizeof(c), "G1 X%s Y%s E0.0252", xs, ys);
           fl_row = 0;
         }
-        injectCommands(c);
+        ui_inject(c);
         snprintf(fm, sizeof(fm), "Square %d/%d  outline 2", fl_sq + 1, FL_SQUARES_N);
       }
       else if (fl_row < FL_ROWS) {
@@ -5351,7 +4985,7 @@ static void fl_poll() {
           snprintf(c, sizeof(c), "G1 X%s E%s\nG1 Y%s E%s", xs, e1, ys, e2);
         }
         else snprintf(c, sizeof(c), "G1 X%s E%s", xs, e1);
-        injectCommands(c);
+        ui_inject(c);
         fl_row++;
         snprintf(fm, sizeof(fm), "Square %d/%d  row %d/%d", fl_sq + 1, FL_SQUARES_N, (int)fl_row, FL_ROWS);
       }
@@ -5362,7 +4996,7 @@ static void fl_poll() {
         fmt_dec(xs, sizeof(xs), ends_left ? xa + FL_WIPE : xb - FL_WIPE, 2);
         fmt_dec(ee, sizeof(ee), FL_RETRACT, 2);
         snprintf(c, sizeof(c), "G1 X%s E-%s F1800", xs, ee);
-        injectCommands(c);
+        ui_inject(c);
         fl_row = -2;
         if (++fl_sq >= FL_SQUARES_N) fl_stage = FL_END;
       }
@@ -5371,8 +5005,8 @@ static void fl_poll() {
     case FL_END:
       // lift, then park at the back centre so the last square is not hidden under the head (owner, 2026-11-02)
       if (fl_k) setLinearAdvance_mm_mm_s(kt_saved, E0);   // (every line has run: the K the user had comes back)
-      if (fl_homed) injectCommands_P(PSTR("M420 S1 Z0\nG1 E-1 F1800\nG1 Z10 F600\nG1 X200 Y395 F6000\nM82\nM104 S0\nM140 S0"));
-      else          injectCommands_P(PSTR("M82\nM104 S0\nM140 S0"));
+      if (fl_homed) ui_inject_P(PSTR("M420 S1 Z0\nG1 E-1 F1800\nG1 Z10 F600\nG1 X200 Y395 F6000\nM82\nM104 S0\nM140 S0"));
+      else          ui_inject_P(PSTR("M82\nM104 S0\nM140 S0"));
       fl_stage = FL_TAIL;
       strcpy_P(fm, PSTR("Finishing..."));
       break;
@@ -5396,14 +5030,14 @@ static void wizard_background() {
   if (fl_stage != FL_IDLE && isPrintingFromMedia()) fl_abort = true;   // a real print started: stop the test
 
   // Step 3 finished (the 5-probe test)
-  if (az_check_only && az_stage == AZ_TEST && !az_m48_pending && !commandsInQueue()) {
+  if (az_check_only && az_stage == AZ_TEST && !az_m48_pending && !ui_busy()) {
     az_listen = false;
     az_make_msg();
     strlcpy(wz_msg[WZ_PROBE], az_msg, sizeof(wz_msg[WZ_PROBE]));
     if (az_range >= 0) wz_mark(WZ_PROBE); else wz_done[WZ_PROBE] = false;
     az_stage = AZ_IDLE;
     az_check_only = false;
-    injectCommands_P(bed_warm() ? PSTR("G1 Z10 F600\nM104 S0") : PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift, heaters off (the bed stays on for the next step)
+    ui_inject_P(bed_warm() ? PSTR("G1 Z10 F600\nM104 S0") : PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift, heaters off (the bed stays on for the next step)
   }
   az_service();
   ol_poll();
@@ -5411,7 +5045,7 @@ static void wizard_background() {
   es_poll();
 
   // a finished step is kept with the settings (the flows that do not save anyway leave this to the idle loop)
-  if (wz_save_pending && !isPrinting() && !isPrintingFromMedia() && fl_stage == FL_IDLE && !az_check_only && !commandsInQueue()) {
+  if (wz_save_pending && !isPrinting() && !isPrintingFromMedia() && fl_stage == FL_IDLE && !az_check_only && !ui_busy()) {
     wz_save_pending = false;
     inject_after_P(getLevelingIsValid() ? PSTR("M420 S1 Z0\nM500") : PSTR("M500"));   // (G30 / M48 leave the mesh switched off)
   }
@@ -5511,6 +5145,7 @@ static void p5_leave_check() {
     if (p5_dirty) { p5_restore(); p5_dirty = false; }
     p5_busy = p5_heat_wait = false;
     p5_pt = -1;
+    heaters_off_when_idle();   // (the page was left without BACK / SAVE: the heaters it started must not stay on)
   }
 }
 
@@ -5520,7 +5155,7 @@ void DgusTFT::page119_handle(void) {
   // progress of the homing / move / heating / lowering (the queue is empty between the steps)
   if (millis() - poll_ms > 500) {
     poll_ms = millis();
-    if (p5_busy && !commandsInQueue()) {
+    if (p5_busy && !ui_busy()) {
       if (p5_heat_wait) {
         if (z_is_hot()) {
           const bool checked = p5_check;   // first corner of this visit: probe the centre and compare with the mesh first
@@ -5539,7 +5174,7 @@ void DgusTFT::page119_handle(void) {
                 sprintf_P(cmd, PSTR("M420 S1 Z0\nG1 Z5 F600\nG1 X%d Y%d F4000\nG1 Z%u.%u F200"), p5_tx, p5_ty, (unsigned)(P5_START_TENTHS / 10), (unsigned)(P5_START_TENTHS % 10));
               else
                 sprintf_P(cmd, PSTR("G1 Z%u.%u F200"), (unsigned)(P5_START_TENTHS / 10), (unsigned)(P5_START_TENTHS % 10));
-              injectCommands(cmd);
+              ui_inject(cmd);
             }
           }
         }
@@ -5552,7 +5187,7 @@ void DgusTFT::page119_handle(void) {
     case 0: break;
 
     case 1: // BACK: undo what was not saved, lift, heaters off. Allowed while only heating (nothing is moving then).
-      if (p5_busy && !(p5_heat_wait && !commandsInQueue())) break;
+      if (p5_busy && !(p5_heat_wait && !ui_busy())) break;
       p5_undo();
       if (p5_dirty) { p5_restore(); p5_dirty = false; }
       if (!isPrinting()) inject_after_P(bed_warm() ? (p5_homed ? PSTR("G1 Z10 F600\nM104 S0") : PSTR("M104 S0"))
@@ -5563,7 +5198,7 @@ void DgusTFT::page119_handle(void) {
 
     case 2: case 3: case 4: case 5: { // go to a corner (home and heat first time)
       const uint8_t p = key_value - 2;
-      if (p5_busy || commandsInQueue()) { p5_say(PSTR("Busy, wait a moment")); break; }
+      if (p5_busy || ui_busy()) { p5_say(PSTR("Busy, wait a moment")); break; }
       if (BlockedWhilePrinting()) break;
       if (!getLevelingIsValid()) { p5_say(PSTR("Make the bed mesh first")); break; }
       if (p5_stale) { p5_say(PSTR("Bed moved: redo the mesh")); break; }
@@ -5578,7 +5213,7 @@ void DgusTFT::page119_handle(void) {
       p5_tx = (int)(X_BED_SIZE * p5_pct_x[p] / 100);
       p5_ty = (int)(Y_BED_SIZE * p5_pct_y[p] / 100);
       sprintf_P(cmd, p5_homed ? PSTR("G90\nG1 Z5 F600\nG1 X%d Y%d F4000") : PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000"), p5_tx, p5_ty);
-      injectCommands(cmd);
+      ui_inject(cmd);
       z_set_hot();   // hot, like the paper test of the Z offset
       p5_check = !p5_homed;   // the first corner of a visit also runs the stale mesh check
       p5_homed = true;
@@ -5672,7 +5307,7 @@ void DgusTFT::page119_handle(void) {
   else if (p5_stale) sc_fail_text(b, sizeof(b));
   else if (p5_msg[0]) strlcpy(b, p5_msg, sizeof(b));
   else if (sc_state == 1) strcpy_P(b, PSTR("Checking mesh vs bed..."));
-  else if (p5_busy && p5_heat_wait && !commandsInQueue()) heat_status(b, sizeof(b));
+  else if (p5_busy && p5_heat_wait && !ui_busy()) heat_status(b, sizeof(b));
   else if (p5_busy) strcpy_P(b, PSTR("Homing and moving..."));
   else if (p5_pt < 0 && p5_dirty) { char m[12]; fmt_mm(m, sizeof(m), p5_max); snprintf(b, sizeof(b), "Max change %s mm", m); }
   else if (p5_pt < 0) strcpy_P(b, PSTR("Tap a corner to go there"));
@@ -5702,7 +5337,7 @@ void DgusTFT::page172_handle(void) {
 
   // A tap just after a step ended: its lift / heaters-off commands are still running. BlockedWhilePrinting() would throw the
   // user to the "not while printing" page for that, so say "busy" on the tapped step instead and do nothing.
-  const bool queued_busy = key_value >= 2 && key_value <= 6 && !busy && !isPrintingFromMedia() && commandsInQueue();
+  const bool queued_busy = key_value >= 2 && key_value <= 6 && !busy && !isPrintingFromMedia() && ui_busy();
   if (queued_busy) {
     strcpy_P(wz_msg[key_value - 2], PSTR("Busy, wait a moment"));
     busy_ms = millis();
@@ -5740,7 +5375,7 @@ void DgusTFT::page172_handle(void) {
       z_entry_offset = getZOffset_mm();
       char cmd[64];
       sprintf_P(cmd, PSTR("G28\nG90\nG1 Z5 F600\nG1 X%d Y%d F4000"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2));
-      injectCommands(cmd);
+      ui_inject(cmd);
       z_set_hot();   // hot paper test (see z_heat_wait)
       z_heat_wait = true;
       z_lower_tenths = zt;
@@ -5808,7 +5443,7 @@ void DgusTFT::page217_handle(void) {
       break;
     case 2: // RESET — restore defaults and persist them
       if (BlockedWhilePrinting()) break;
-      injectCommands_P(PSTR("M502\nM500"));
+      ui_inject_P(PSTR("M502\nM500"));
       ChangePageOfTFT(PAGE_MAIN);
       break;
   }
@@ -5851,10 +5486,7 @@ void DgusTFT::pop_up_manager(void)
 
     case 24://
       {
-        uint32_t time = getProgress_seconds_elapsed() / 60;
-        sprintf(str_buf, "%s H ", utostr3(time / 60));
-        sprintf(str_buf + strlen(str_buf), "%s M", utostr3(time % 60));
-        SendTxtToTFT(str_buf, TXT_FINISH_TIME);
+        send_hm(getProgress_seconds_elapsed() / 60, TXT_FINISH_TIME);
         ChangePageOfTFT(PAGE_PRINT_FINISH);
         pop_up_index = 100;
       }
@@ -5905,6 +5537,7 @@ void DgusTFT::printerStatsToTFT(void) {// MEL_MOD printer statistics
 	}
 } // namespace
 
+bool ac_soak_take() { return Anycubic::soak_take(); }   // probe.cpp: does this G29 get the heat soak (started from the display menu)?
 uint32_t ac_bed_hot_ms() { return Anycubic::ac_bed_hot_ms(); }   // probe.cpp: how long the bed has been at temperature (G29 heat soak)
 
 #endif // ANYCUBIC_LCD_DGUS

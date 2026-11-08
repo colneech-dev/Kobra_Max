@@ -806,6 +806,21 @@ G29_TYPE GcodeSuite::G29() {
         bedlevel.print_leveling_grid(&abl.z_values);
       else {
         bedlevel.set_grid(abl.gridSpacing, abl.probe_position_lf);
+        #if ENABLED(MESH_NORMALIZE_TO_HOME_OFFSET)
+          // Kobra Max: take the mean height out of the nodes and keep it in the Z home offset (leveling is off here, so no position needs fixing;
+          // the end of G29 switches leveling on again and converts the Z position with the new mesh). Rounded to 0.01 mm.
+          {
+            float sum = 0; uint8_t cnt = 0;
+            GRID_LOOP(x, y) if (!isnan(abl.z_values[x][y])) { sum += abl.z_values[x][y]; cnt++; }
+            if (cnt) {
+              const float ref = roundf(sum / cnt * 100.0f) / 100.0f;
+              GRID_LOOP(x, y) if (!isnan(abl.z_values[x][y])) abl.z_values[x][y] -= ref;
+              set_home_offset(Z_AXIS, -ref);
+              update_software_endstops(Z_AXIS);
+              if (abl.verbose_level) SERIAL_ECHOLNPGM("Mesh normalised: Z home offset ", -ref);
+            }
+          }
+        #endif
         COPY(bedlevel.z_values, abl.z_values);
         TERN_(IS_KINEMATIC, bedlevel.extrapolate_unprobed_bed_level());
         bedlevel.refresh_bed_level();

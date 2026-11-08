@@ -28,6 +28,7 @@
 
 #if ENABLED(ANYCUBIC_LCD_DGUS)
   uint32_t ac_bed_hot_ms();   // dgus_tft.cpp: how long the bed has been at temperature
+  bool ac_soak_take();        // dgus_tft.cpp: true once when this G29 was started from the display menu (only that one soaks)
 #endif
 
 #if HAS_BED_PROBE
@@ -474,7 +475,8 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
 
     // Anycubic: with a heat soak the nozzle is heated for the last LEVELING_NOZZLE_LEAD_SECONDS of it only (a nozzle held at 190 C for 10 minutes oozes)
     #if BOTH(ANYCUBIC_LCD_DGUS, WAIT_FOR_BED_HEAT) && defined(LEVELING_SOAK_SECONDS) && defined(LEVELING_NOZZLE_LEAD_SECONDS)
-      const bool late_nozzle = LEVELING_SOAK_SECONDS && bed_temp && !early;
+      const bool soak_wanted = !early && LEVELING_SOAK_SECONDS && bed_temp && ac_soak_take();
+      const bool late_nozzle = soak_wanted;
     #else
       constexpr bool late_nozzle = false;
     #endif
@@ -502,7 +504,7 @@ FORCE_INLINE void probe_specific_action(const bool deploy) {
       TERN_(WAIT_FOR_BED_HEAT,    if (bed_temp    > thermalManager.wholeDegBed() + (TEMP_BED_WINDOW)) thermalManager.wait_for_bed_heating());
       #if BOTH(ANYCUBIC_LCD_DGUS, WAIT_FOR_BED_HEAT) && defined(LEVELING_SOAK_SECONDS)
         // Anycubic: heat soak. ac_bed_hot_ms() (dgus_tft.cpp) is how long the bed has been at temperature without a break.
-        if (LEVELING_SOAK_SECONDS && bed_temp) {
+        if (soak_wanted) {
           const millis_t need = SEC_TO_MS(LEVELING_SOAK_SECONDS);
           millis_t next_msg = 0;
           bool nozzle_on = !late_nozzle;
@@ -804,7 +806,7 @@ float Probe::run_z_probe(const bool sanity_check/*=true*/) {
         const float z = bedlevel.z_values[x][y];
         if (!isnan(z) && (isnan(lowest) || z < lowest)) lowest = z;
       }
-      if (!isnan(lowest)) NOLESS(z_probe_low_point, -offset.z + lowest - (Z_PROBE_MESH_LOW_MARGIN));
+      if (!isnan(lowest)) NOLESS(z_probe_low_point, -offset.z + lowest - TERN0(MESH_NORMALIZE_TO_HOME_OFFSET, home_offset.z) - (Z_PROBE_MESH_LOW_MARGIN));   // (normalised mesh: bed = node - home_offset.z)
     }
   #endif
 
@@ -852,7 +854,7 @@ float Probe::run_z_probe(const bool sanity_check/*=true*/) {
   #endif
     {
       // If the probe won't tare, return
-      if (TERN0(PROBE_TARE, tare())) return true;
+      if (TERN0(PROBE_TARE, tare())) return NAN;   // (upstream returned true = 1.0 mm here, a made-up reading)
 
       // Probe downward slowly to find the bed
       if (try_to_probe(PSTR("SLOW"), z_probe_low_point, MMM_TO_MMS(Z_PROBE_FEEDRATE_SLOW),

@@ -39,22 +39,33 @@
 
 #include "dgus_Tunes.h"
 #include "../../ui_api.h"
+#include "dgus_tft.h"   // Dgus.lcd_info.audio
 
 namespace Anycubic {
 
-  void PlayTune(uint8_t beeperPin, const uint16_t *tune, uint8_t speed=1) {
-    uint8_t pos = 1;
-    uint16_t wholenotelen = tune[0] / speed;
-    do {
-      uint16_t freq = tune[pos];
-      uint16_t notelen = wholenotelen / tune[pos + 1];
+  // A tune plays in the background: PlayTune() starts it, TuneService() (IdleLoop) starts the next note when the last one is over.
+  // It used to block for the length of the tune (3.5 s for the power-on jingle) inside callbacks and the touch handler.
+  // Not played when sound is switched off in the System menu; a new tune replaces one still playing.
+  static const uint16_t *tune_cur = nullptr;
+  static uint8_t  tune_pin = 0, tune_pos = 1;
+  static uint16_t tune_whole = 0;
+  static millis_t tune_next = 0;
 
-      ::tone(beeperPin, freq, notelen);
-      ExtUI::delay_ms(notelen);
-      pos += 2;
+  void TuneService() {
+    if (!tune_cur || PENDING(millis(), tune_next)) return;
+    if (tune_pos >= MAX_TUNE_LENGTH || tune_cur[tune_pos] == n_END) { tune_cur = nullptr; return; }
+    const uint16_t freq = tune_cur[tune_pos], notelen = tune_whole / tune_cur[tune_pos + 1];
+    ::tone(tune_pin, freq, notelen);
+    tune_next = millis() + notelen;
+    tune_pos += 2;
+  }
 
-      if (pos >= MAX_TUNE_LENGTH) break;
-    } while (tune[pos] != n_END);
+  void PlayTune(uint8_t beeperPin, const uint16_t *tune, uint8_t speed) {
+    if (Dgus.lcd_info.audio == ExtUI::OFF) return;
+    tune_cur = tune; tune_pin = beeperPin; tune_pos = 1;
+    tune_whole = tune[0] / (speed ? speed : 1);
+    tune_next = millis();
+    TuneService();
   }
 
 }

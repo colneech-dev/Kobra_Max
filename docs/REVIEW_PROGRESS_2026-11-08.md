@@ -47,3 +47,9 @@ source-hash check for libraries, tagged About pages in a temp folder, exact file
 
 ## Decisions still open (plan section 5)
 Soak for every G29 or only the display's; keep absolute meshes or normalise; runout polarity after M119; which MCU part is fitted (256 K or 512 K); posting the upstream reports (texts first).
+
+## Follow-up, release_v64 (same day, after the owner's answers)
+Done: the soak only for G29 started from the display menu (LV-17); MC-22 mesh normalisation; DR-12 halted page; DR-24 one injection FIFO; DR-19 background tunes and no delay(3000); DR-25 / DR-26 dead and duplicate code;
+LV-17 leftovers (late-nozzle timeout message, 5-point heaters, `run_z_probe` tare failure returned 1.0 mm).
+Not done, on purpose: DR-14 (soft endstops stay off during prints: remove after the normalised mesh is proven), DR-29 (the 500 ms resend repairs text the display dropped at a redraw).
+Still open: DR-11, DR-13, DR-20..23, MC-4 (needs the M119 readings), MC-11, MC-17, MC-18, the static Z_PROBE_LOW_POINT (needs the measured bed depth: M206 Z after a normalised mesh), ENDSTOPPULLDOWN_ZMIN_PROBE, FPU, UART priorities, TL-21.

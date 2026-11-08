@@ -465,6 +465,8 @@ PAGE17 = STATUS_BAR + [
     make_text_record(TXT_WAIT_STATUS, 8, 294, 256, 24, chars=25),   # "Homing..." / "Adjust Z"
 ]
 
+PAGE21 = STATUS_BAR + [make_text_record(TXT_WAIT_STATUS, 8, 342, 256, 20, cw=10, ch=20)]   # 25 characters
+
 # Pages 18/138 — Preheat
 # page_preheat(): y starts at CONTENT_Y1+14=106
 #   HOTEND row: label(+22→128), NOW/TGT labels(+14→142)
@@ -595,10 +597,10 @@ PAGE174 = STATUS_BAR + [
 _STATUS_ONLY = [
     # CHS core pages with no content VPs
     1, 7, 11, 12, 15, 16,
-    20, 21, 24, 25, 26, 27, 28, 29, 30, 31, 33,
+    20, 24, 25, 26, 27, 28, 29, 30, 31, 33,
     # ENG mirrors of the above (all +120)
     121, 127, 131, 132, 135, 136,
-    140, 141, 144, 145, 146, 147, 148, 149, 150, 151, 153,
+    140, 144, 145, 146, 147, 148, 149, 150, 151, 153,
     # Standalone system/utility pages
     117,   # system CHS audio-off
     170,   # system ENG audio-off
@@ -614,6 +616,9 @@ _STATUS_ONLY = [
 
 # Content-VP pages: (page_number, records_list)
 _CONTENT = [
+    # Halted (kill() with no page of its own): the reason is written into the status line
+    (21,  PAGE21),
+    (141, PAGE21),
     # CHS
     (2,   PAGE2),
     (3,   PAGE3),

@@ -169,7 +169,8 @@
 
 namespace Anycubic {
 
-  void PlayTune(uint8_t beeperPin, const uint16_t *tune, uint8_t speed);
+  void PlayTune(uint8_t beeperPin, const uint16_t *tune, uint8_t speed);   // starts a tune (plays in the background, not when sound is off)
+  void TuneService();                                                      // IdleLoop: next note
 
   // Only uncomment the tunes you are using to save memory
   // This will help you write tunes!

@@ -1605,6 +1605,11 @@
 
 #define Z_PROBE_LOW_POINT -10 // (mm) Farthest distance below the Z endstop plane the probe may go. Keep -10 until the real bed gap is known (see M420 V1 after a G29): -4 fails probing when the bed is more than 4 mm below the endstop
 
+// Kobra Max: after every G29 the mesh is normalised: its mean height is taken out of the nodes and put into the Z home offset (M206 Z, saved by M500),
+// so the mesh holds the small deviations (+-0.3 mm) and Z0 is at the mean bed height even when leveling is off or the mesh is lost. The physical bed
+// height is z_values - home_offset.z. A mesh saved before this change has home_offset.z = 0 and still works (absolute nodes). Do not set M206 Z by hand.
+#define MESH_NORMALIZE_TO_HOME_OFFSET
+
 // Kobra Max: with a valid mesh, G30 / M48 stop this far below the LOWEST mesh node instead (probe.cpp), so a probe that does not
 // trigger presses at most this far into the bed. G29 keeps Z_PROBE_LOW_POINT: a new mesh must work after the bed was lowered.
 #define Z_PROBE_MESH_LOW_MARGIN 2.0 // (mm)

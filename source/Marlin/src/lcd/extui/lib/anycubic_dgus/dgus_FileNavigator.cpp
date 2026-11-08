@@ -140,69 +140,6 @@ namespace Anycubic {
     DgusTFT::SendTxtToTFT(name, TXT_FILE_0 + (sel_row - 1) * 0x30);
   }
 
-  void FileNavigator::sendFile() {
-    // send the file and folder info to the panel
-    // this info will be returned when the file is selected
-    // Permitted special characters in file name -_*#~
-    // Panel can display 22 characters per line
-    if (filelist.isDir()) {
-      //TFTSer.print(currentfoldername);
-//      TFTSer.println(filelist.shortFilename());
-//      TFTSer.print(filelist.shortFilename());
-//      TFTSer.println("/");
-
-//        send_to_TFT_txt(filelist.shortFilename(), TXT_FILE_0);
-    }
-    else {
-    #if 0
-      // Logical Name
-      TFTSer.print("/");
-      if (folderdepth > 0) TFTSer.print(currentfoldername);
-
-      TFTSer.println(filelist.shortFilename());
-
-      // Display Name
-      TFTSer.println(filelist.longFilename());
-      #endif
-
-      DgusTFT::SendTxtToTFT(filelist.longFilename(), TXT_FILE_0);
-    }
-  }
-  void FileNavigator::changeDIR(char *folder) {
-    #if ACDEBUG(AC_FILE)
-      SERIAL_ECHOLNPAIR("currentfolder: ", currentfoldername, "  New: ", folder);
-    #endif
-    if (folderdepth >= MAX_FOLDER_DEPTH) return; // limit the folder depth
-    strcat(currentfoldername, folder);
-    strcat(currentfoldername, "/");
-    filelist.changeDir(folder);
-    refresh();
-    folderdepth++;
-    currentindex = 0;
-  }
-
-  void FileNavigator::upDIR() {
-    filelist.upDir();
-    refresh();
-    folderdepth--;
-    currentindex = 0;
-    // Remove the last child folder from the stored path
-    if (folderdepth == 0) {
-      currentfoldername[0] = '\0';
-      reset();
-    }
-    else {
-      char *pos = nullptr;
-      for (uint8_t f = 0; f < folderdepth; f++)
-        pos = strchr(currentfoldername, '/');
-
-      *(pos + 1) = '\0';
-    }
-    #if ACDEBUG(AC_FILE)
-      SERIAL_ECHOLNPAIR("depth: ", folderdepth, " currentfoldername: ", currentfoldername);
-    #endif
-  }
-
   char* FileNavigator::getCurrentFolderName() { return currentfoldername; }
 
   uint16_t FileNavigator::getFileNum() {

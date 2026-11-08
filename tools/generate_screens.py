@@ -911,9 +911,17 @@ def page_done():
 
 
 def page_abnormal():
-    return _icon_page("WARNING", lambda d: _warning_tri(d, W//2, CONTENT_Y1 + 18),
-        [("An abnormal condition was detected", GRAY)],
-        btns=[("BACK", 'ghost')], title_color=WARNING)
+    """Marlin has halted the printer (kill()): the fallback page for every fault that has no page of its own. The firmware writes the
+    reason into the status line (TXT_WAIT_STATUS); nothing is served after a kill, so there is no button."""
+    img, draw = new_page()
+    status_bar(draw)
+    title_bar(draw, "PRINTER HALTED", color=ERROR)
+    _warning_tri(draw, W//2, CONTENT_Y1 + 18)
+    text_center(draw, (0, CONTENT_Y1 + 90, W, CONTENT_Y1 + 116), "The printer has stopped", F_BODY, WHITE)
+    text_center(draw, (0, CONTENT_Y1 + 122, W, CONTENT_Y1 + 146), "Heaters and motors are off", F_SMALL, GRAY)
+    wait_status_box(draw, '')
+    text_center(draw, (0, FOOTER_Y1 + 14, W, FOOTER_Y2 - 14), "Power-cycle the printer", F_SMALL, WARNING)
+    return img
 
 
 def page_print_finish():

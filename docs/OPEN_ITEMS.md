@@ -96,3 +96,16 @@ Filament LOAD then STOP mid-feed (the extruder should stop within a second); wiz
 - v61: first layer squares: 5 % more flow, 0.18 mm layer, 2 mm retract + 3 mm wipe, mesh check probes in front of the centre (a hot nozzle touching the bed at the centre left a blob under the first square). Watch: gaps between rows closed? strings gone? nozzle clean (if it clogs, set Z to 0.19)?
 - v62: firmware.bin on the card in the front slot is renamed to firmware.cur once the new firmware has booted (once per boot, only with the card in at power-up), so the bootloader does not flash it again.
 - Not possible in firmware: a built-in CaliCat print (flash is 88 % full, about 25 KB left; the G-code is megabytes). A pre-sliced file for the SD card would work.
+
+## v64 (2026-11-08, built from the review follow-up; ALL UNTESTED on hardware)
+- Heat soak only for the display's own mesh run (BED MESH in the menus, wizard, first layer test, AUTO Z): `ac_soak_take()` in probe.cpp; a G29 from a slicer start G-code or the Terminal heats and waits for the temperatures only.
+- MC-22 mesh normalised (`MESH_NORMALIZE_TO_HOME_OFFSET`, Configuration.h): after every G29 the mean node height is moved into the Z home offset (M206 Z, saved by M500). Nodes are small deviations; the bed is at `node - home_offset.z`.
+  Soft Z minimum follows the home offset, the probe's dynamic low point and the stale-plate check use the same formula. An old absolute mesh (home_offset.z = 0) still works. Do not set M206 Z by hand.
+- DR-12: the halted page (page 21 / 141) shows "PRINTER HALTED", the reason in its status line and "Power-cycle the printer" (no button: nothing answers after a kill). Kills with a page of their own still use it.
+- DR-24: one FIFO for every injected command (`ui_inject_P` / `ui_inject` / `inject_after_P`), `ui_busy()` counts what is still waiting; Filament STOP empties it.
+- DR-19: tunes play in the background (`TuneService()` in IdleLoop) and not when sound is off; the 3 s `delay(3000)` before a mesh run is a timer.
+- DR-25 / DR-26: dead code removed (SelectFile, InjectCommandandWait, Findcmndpos, FakeChangePageOfTFT, SendReadNumOfTxtToTFT, CheckHeaters, page177_to_198, pages 14 / 31 / 32 handlers, FileNavigator changeDIR / upDIR / sendFile,
+  movespeed, live_Zoffset, TXT_BASE64, the 8 dead handler cases); page173 = page171; the elapsed-time text is one helper.
+- LV-17 rest: late-nozzle timeout message, 5-point page left without BACK/SAVE switches its heaters off, `Probe::run_z_probe` returned 1.0 (`true`) when the tare failed in the slow pass: now NAN.
+- Not done on purpose: DR-29 (the display forgets text at every page redraw; the 500 ms resend is what repairs it), DR-14 (soft endstops stay off during prints until the normalised mesh is proven).
+Test: M206 after a mesh (Z about +4.4 and a mesh range of a few tenths: `M420 V1`), then the first layer test and a hand-checked Z0 with paper; `M112` from the Terminal (halted page); a SKIP-less mesh from the menu (soak) and a plain `G29` from the Terminal (no soak).

@@ -194,7 +194,7 @@ _ZONES = [
     # ── PAGES 20-31 / 140-151  Simple confirm / info pages ───────────────────
     # All use footer_1btn → key 1
     ([20, 140], 8, 429, 264, 473, 1),   # Done – confirm
-    ([21, 141], 8, 429, 264, 473, 1),   # Abnormal – BACK
+    # 21 / 141 (halted): no button, the printer does not answer after a kill()
     ([22, 142], 8, 429, 264, 473, 1),   # Print Finish – OK → Main Menu
     # 23/143 wait_stop: no interactive buttons
     ([25, 145], 8, 429, 264, 473, 1),   # Filament Lack – BACK TO PRINT

@@ -255,7 +255,6 @@
 #define TXT_OUTAGE_RECOVERY_FILE     0x2180
 
 //PREVIEW PAGE
-#define TXT_BASE64									 0x3020
 #define TXT_VAR_IMAGE 							 0x7FFE
 
 #define ADDRESS_SYSTEM_AUDIO     0x0080
@@ -474,7 +473,6 @@ namespace Anycubic {
     static char             panel_command[MAX_CMND_LEN];
     static uint8_t          command_len;
     static char             selectedfile[MAX_PATH_LEN];
-    static float            live_Zoffset;
     static file_menu_t      file_menu;
     static bool             data_received;
     static bool             lcd_boot_synced;
@@ -534,7 +532,6 @@ namespace Anycubic {
       static void page11_handle(void);  // system
       static void page12_handle(void);
       static void page13_handle(void);
-      static void page14_handle(void);
       static void page15_handle(void);
       static void page16_handle(void);
       static void page17_handle(void);
@@ -551,8 +548,6 @@ namespace Anycubic {
       static void page28_handle(void);
       static void page29_handle(void);
       static void page30_handle(void);
-      static void page31_handle(void);
-      static void page32_handle(void);
       static void page33_handle(void);
       static void page34_handle(void);
       static void page171_handle(void);     // CHS power outage resume handler
@@ -560,7 +555,6 @@ namespace Anycubic {
       static void page175_handle(void);     // ENG probe preheating handler
       static void page176_handle(void);     // CHS probe preheating handler
 
-      static void page177_to_198_handle(void);
 //      static void page178_to_181_190_to_193_handle(void);
       static void page199_to_200_handle(void);
 
@@ -591,11 +585,7 @@ namespace Anycubic {
       void SendtoTFT(PGM_P);
       void SendtoTFTLN(PGM_P);
       bool ReadTFTCommand();
-      int8_t Findcmndpos(const char *, char);
-      void CheckHeaters();
       static void SendFileList(int8_t);
-      void SelectFile();
-      void InjectCommandandWait(PGM_P);
       void ProcessPanelRequest();
       void PanelInfo(uint8_t);
       void PanelAction(uint8_t);
@@ -605,10 +595,8 @@ namespace Anycubic {
       static void RequestValueFromTFT(uint32_t address);
       static void SendTxtToTFT(const char *pdata, uint32_t address);
       static void SendColorToTFT(uint32_t color, uint32_t address);
-      static void SendReadNumOfTxtToTFT(uint8_t number, uint32_t address);
       static void ChangePageOfTFT(uint32_t page_index);
       static void ChangePageOfTFT_DevicePage(uint32_t device_page);
-      static void FakeChangePageOfTFT(uint32_t page_index);
       static uint32_t TranslatePage(uint32_t page_index);   // CHS page -> device page for lcd_info.language
       static void GoToolsPage();          // Tools page whose art matches the case-light state (207 off / 209 on)
       static void GoPrintSettingsPage();  // Print Settings page matching the case-light state (211 off / 212 on)
