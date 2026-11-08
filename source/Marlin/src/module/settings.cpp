@@ -600,7 +600,9 @@ typedef struct SettingsDataStruct {
 
 } SettingsData;
 
-//static_assert(sizeof(SettingsData) <= MARLIN_EEPROM_SIZE, "EEPROM too small to contain SettingsData!");
+#ifdef MARLIN_EEPROM_SIZE
+  static_assert(EEPROM_OFFSET + sizeof(SettingsData) <= MARLIN_EEPROM_SIZE, "EEPROM too small to contain SettingsData!");
+#endif
 
 MarlinSettings settings;
 

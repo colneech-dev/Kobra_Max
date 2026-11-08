@@ -35,7 +35,7 @@
 #include "../inc/MarlinConfig.h"
 
 #ifndef FIL_SENSOR_OPTIONAL
-  #define FIL_SENSOR_OPTIONAL false   // Anycubic: ignore a "run out" reading that was already present at boot
+  #define FIL_SENSOR_OPTIONAL false   // Anycubic: polarity from the pin level at boot, see run() and poll_runout_states()
 #endif
 
 #if ENABLED(EXTENSIBLE_UI)
@@ -156,8 +156,11 @@ class TFilamentMonitor : public FilamentMonitorBase {
         #endif
 
         if (ran_out) {
-          // Anycubic: with an optional sensor, a "run out" reading that was already there at boot (no sensor fitted, or
-          // no filament loaded) is not a runout event. The first change after that clears the flag.
+          // Anycubic (FIL_SENSOR_OPTIONAL, port of the stock V2.8.7 logic): state_original is the raw pin level at boot.
+          // If it was HIGH, the first runout event is swallowed (not reported) and state_original becomes 0; if it was LOW
+          // nothing is swallowed. With state_original 0, poll_runout_states() treats pin HIGH as "run out", whatever
+          // FIL_RUNOUT_STATE says. So after the first event (or a boot with the pin LOW) the polarity is always HIGH = runout.
+          // Which level the sensor really gives without filament is unconfirmed (M119 with and without filament).
           #if FIL_SENSOR_OPTIONAL
             if (!sensor.state_original)
           #endif
@@ -238,7 +241,7 @@ class FilamentSensorBase {
       return poll_runout_pins() ^ uint8_t(0
         #if NUM_RUNOUT_SENSORS >= 1
           #if FIL_SENSOR_OPTIONAL
-            | ((FIL_RUNOUT1_STATE ? 0 : _BV(1 - 1)) & ~(state_original ? 0 : _BV(1 - 1)))   // (precedence as in the old firmware)
+            | ((FIL_RUNOUT1_STATE ? 0 : _BV(1 - 1)) & ~(state_original ? 0 : _BV(1 - 1)))   // (precedence as in the old firmware) state_original 0: pin HIGH = runout; 1: as FIL_RUNOUT_STATE
           #else
             | (FIL_RUNOUT1_STATE ? 0 : _BV(1 - 1))
           #endif

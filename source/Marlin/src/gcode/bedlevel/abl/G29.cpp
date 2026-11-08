@@ -240,6 +240,11 @@ G29_TYPE GcodeSuite::G29() {
   // Keep powered steppers from timing out
   reset_stepper_timeout();
 
+  // Kobra Max: a new mesh probes down to Z_PROBE_LOW_POINT, not to the old mesh's lowest node (the bed may have been lowered)
+  #if defined(Z_PROBE_MESH_LOW_MARGIN) && HAS_MESH
+    REMEMBER(mlp, probe.mesh_low_point, false);
+  #endif
+
   // Q = Query leveling and G29 state
   const bool seenQ = ANY(DEBUG_LEVELING_FEATURE, PROBE_MANUALLY) && parser.seen_test('Q');
 

@@ -183,7 +183,7 @@
 //
 // SDIO
 //
-  #define SDIO_READ_RETRIES                   16
+  #define SDIO_READ_RETRIES                    4   // x 100 ms timeout each (was 16: a bad block could block 1.6 s)
   #define SDIO_D0_PIN                         PC8
   #define SDIO_D1_PIN                         PC9
   #define SDIO_D2_PIN                         PC10
@@ -210,8 +210,9 @@
 #define BOARD_USART2_TX_PIN     PA2     // DEBUG
 #define BOARD_USART2_RX_PIN     PA3
 
-#define BOARD_USART3_TX_PIN     PB4     // MOTO
-#define BOARD_USART3_RX_PIN     PB3
+// USART3 (PB4 / PB3) is not used (no E1 driver): left undefined so no MSerial3 object is built
+//#define BOARD_USART3_TX_PIN     PB4     // MOTO
+//#define BOARD_USART3_RX_PIN     PB3
 
 #define BOARD_USART4_TX_PIN     PB10    // LCD (stock firmware: bsp_init.h USART4_TX_PORT=PortB Pin10)
 #define BOARD_USART4_RX_PIN     PH2     // LCD (stock firmware: bsp_init.h USART4_RX_PORT=PortH Pin02)

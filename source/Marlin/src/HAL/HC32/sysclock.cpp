@@ -157,15 +157,19 @@ void core_hook_sysclock_init() {
   // after which sysclock_configure_mpll spins forever waiting for MPLL ready).
   // HRC is always available; MPLL output is F_SYSTEM_CLOCK regardless of source.
   //
-  // HRC frequency: nominally 16 MHz (ICG default). If ICG configures 20 MHz, the MPLL
-  // will over-clock slightly (250 MHz vs 200 MHz). Intentionally not panicking on that
-  // here — runtime clock validation via ALWAYS_VALIDATE_CLOCKS catches it when enabled.
+  // HRC frequency: 16 MHz by default, but the ICG word (written with the bootloader, not by us) can select 20 MHz.
+  // The 16 MHz PLL setting on a 20 MHz HRC would run the core at 250 MHz, beyond the 200 MHz rating, so the PLL
+  // setting follows the frequency actually selected (upstream panics instead; a panic this early leaves a dead board).
   sysclock_configure_hrc();
 
   constexpr stc_clk_mpll_cfg_t pllConf_hrc = get_mpll_config(16000000UL, F_SYSTEM_CLOCK);
   static_assert(pllConf_hrc.pllmDiv != 0 && pllConf_hrc.plln != 0 && pllConf_hrc.PllpDiv != 0,
                 "MPLL auto-configuration failed for HRC source");
-  sysclock_configure_mpll(ClkPllSrcHRC, &pllConf_hrc);
+  constexpr stc_clk_mpll_cfg_t pllConf_hrc20 = get_mpll_config(20000000UL, F_SYSTEM_CLOCK);
+  static_assert(pllConf_hrc20.pllmDiv != 0 && pllConf_hrc20.plln != 0 && pllConf_hrc20.PllpDiv != 0,
+                "MPLL auto-configuration failed for a 20 MHz HRC");
+  const bool hrc_is_16mhz = (HRC_FREQ_MON() & 1UL) == 1UL;   // ICG1.HRCFREQSEL: 1 = 16 MHz, 0 = 20 MHz
+  sysclock_configure_mpll(ClkPllSrcHRC, hrc_is_16mhz ? &pllConf_hrc : &pllConf_hrc20);
 
   // Setup clock divisors
   constexpr stc_clk_sysclk_cfg_t sysClkConf = {

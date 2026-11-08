@@ -52,7 +52,8 @@ private:
   #if ENABLED(POWER_MONITOR_VOLTAGE)
     static constexpr float volts_adc_scale = (float(ADC_VREF_MV) / 1000.0f) / (POWER_MONITOR_VOLTS_PER_VOLT * PM_SAMPLE_RANGE);
     static pm_lpf_t<volts_adc_scale, PM_K_VALUE, PM_K_SCALE> volts;
-    static uint16_t volts_raw;
+    static volatile uint16_t volts_raw;
+    static volatile bool outage_low;
   #endif
 
 public:
@@ -76,9 +77,35 @@ public:
 
   #if ENABLED(POWER_MONITOR_VOLTAGE)
     FORCE_INLINE static float getVolts() { return volts.value + (POWER_MONITOR_VOLTAGE_OFFSET); }
-    void add_voltage_sample(const uint16_t value) { volts.add_sample(value); volts_raw = value; }
+    // Called from the temperature ISR with every new reading. Returns true while the supply looks like it is failing.
+    bool add_voltage_sample(const uint16_t value) {
+      volts.add_sample(value); volts_raw = value;
+      outage_low = outage_check(value);
+      return outage_low;
+    }
     // Latest unfiltered ADC reading (12 bit). The power-loss detector needs the raw value: the filtered one lags by tens of samples.
     FORCE_INLINE static uint16_t getVoltsRaw() { return volts_raw; }
+
+    // Anycubic outage detection (PrintJobRecovery::outage() acts on it). The sense pin (PC2) sits on a 1:11 divider from the
+    // 24 V rail, about 2.2 V when healthy. An outage: raw readings below ~19.5 V (2200 of 4095 counts) that fall 4 times (as the
+    // original firmware), or that stay below for 8 readings in a row (a fast collapse that then reads flat never "falls" 4 times).
+    // Every reading is judged once, in the ISR; the main loop only had the latest one and ran late behind blocking calls.
+    FORCE_INLINE static bool outageDetected() { return outage_low; }
+    static bool outage_check(const uint16_t adc) {
+      static constexpr uint16_t OUTAGE_ADC_BELOW = 2200;
+      static uint8_t below = 0, falling = 0;
+      static uint16_t last = 0xFFFF;
+      bool low = false;
+      if (adc < OUTAGE_ADC_BELOW) {
+        low = falling >= 4 || below >= 8;
+        if (adc < last && falling < 255) falling++;
+        if (below < 255) below++;
+      }
+      else
+        below = falling = 0;
+      last = adc;
+      return low;
+    }
   #else
     FORCE_INLINE static float getVolts() { return POWER_MONITOR_FIXED_VOLTAGE; }
   #endif

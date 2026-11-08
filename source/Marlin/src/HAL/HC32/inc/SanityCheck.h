@@ -82,6 +82,11 @@
   #endif
 #endif
 
+// The external interrupt lines are shared by pin number: Pxn of every port uses line n (Kobra Max: X_MIN PA6, probe PB6)
+#if ENABLED(ENDSTOP_INTERRUPTS_FEATURE) && PIN_EXISTS(X_MIN) && PIN_EXISTS(Z_MIN_PROBE) && (X_MIN_PIN % 16) == (Z_MIN_PROBE_PIN % 16)
+  #error "ENDSTOP_INTERRUPTS_FEATURE: X_MIN_PIN and Z_MIN_PROBE_PIN share an external interrupt line on HC32."
+#endif
+
 #if ENABLED(POSTMORTEM_DEBUGGING) && !defined(CORE_DISABLE_FAULT_HANDLER)
   #error "POSTMORTEM_DEBUGGING requires CORE_DISABLE_FAULT_HANDLER to be set."
 #endif

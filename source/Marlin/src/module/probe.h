@@ -86,6 +86,10 @@ public:
 
     static xyz_pos_t offset;
 
+    #if defined(Z_PROBE_MESH_LOW_MARGIN) && HAS_MESH
+      static bool mesh_low_point;   // Kobra Max: stop the probe Z_PROBE_MESH_LOW_MARGIN below the lowest mesh node (G29 turns it off)
+    #endif
+
     #if ANY(PREHEAT_BEFORE_PROBING, PREHEAT_BEFORE_LEVELING)
       static void preheat_for_probing(const celsius_t hotend_temp, const celsius_t bed_temp, const bool early=false);
     #endif

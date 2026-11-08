@@ -291,9 +291,10 @@
  * temperature of the air in the room, and the the firmware will keep
  * the heater on.
  *
- * The solution: Once the temperature reaches the target, start observing.
- * If the temperature stays too far below the target (hysteresis) for too
- * long (period), the firmware will halt the machine as a safety precaution.
+ * The solution: Once the temperature is within the hysteresis of the target,
+ * start observing. If the temperature stays too far below the target
+ * (hysteresis) for too long (period), the firmware will halt the machine as
+ * a safety precaution.
  *
  * If you get false positives for "Thermal Runaway", increase
  * THERMAL_PROTECTION_HYSTERESIS and/or THERMAL_PROTECTION_PERIOD
@@ -311,9 +312,9 @@
    * Whenever an M104, M109, or M303 increases the target temperature, the
    * firmware will wait for the WATCH_TEMP_PERIOD to expire. If the temperature
    * hasn't increased by WATCH_TEMP_INCREASE degrees, the machine is halted and
-   * requires a hard reset. This test restarts with any M104/M109/M303, but only
-   * if the current temperature is far enough below the target for a reliable
-   * test.
+   * requires a hard reset. This test restarts with any M104/M109/M303 and
+   * repeats until the temperature is within THERMAL_PROTECTION_HYSTERESIS of
+   * the target, where Thermal Runaway protection takes over.
    *
    * If you get false positives for "Heating failed", increase WATCH_TEMP_PERIOD
    * and/or decrease WATCH_TEMP_INCREASE. WATCH_TEMP_INCREASE should not be set
@@ -1594,7 +1595,10 @@
     // Anycubic: yes. Z can slip when the steppers lose power, and the original firmware homed Z on resume too.
     #define POWER_LOSS_RECOVER_ZHOME
     #if ENABLED(POWER_LOSS_RECOVER_ZHOME)
-      #define POWER_LOSS_ZHOME_POS { 0, 0 } // Safe XY position to home Z while avoiding objects on the bed (the front-left corner, as G28 does)
+      // Kobra Max: Z homes on the Z-min endstop (no Z_SAFE_HOMING), so G28 homes Z where XY homing left the nozzle: in front of
+      // the bed at X_MIN_POS / Y_MIN_POS. Resume does the same: at { 0, 0 } the nozzle would drop to the endstop plane over the
+      // bed corner (3-5 mm above the glass), into a part printed there.
+      #define POWER_LOSS_ZHOME_POS { X_MIN_POS, Y_MIN_POS } // Safe XY position to home Z while avoiding objects on the bed
     #endif
   #endif
 
@@ -3014,6 +3018,11 @@
   //#define  U_SLAVE_ADDRESS 0
   //#define  V_SLAVE_ADDRESS 0
   //#define  W_SLAVE_ADDRESS 0
+  // Kobra Max (not changed, documented only): E0 is a TMC2208, which has no address pins and only answers address 0. So the
+  // writes to address 3 reach no driver, and E0 takes the X driver's settings (address 0) instead. That works because X and E0
+  // are configured alike (800 mA, 16 microsteps, 0.11 ohm, stealthChop; HYBRID_THRESHOLD is off).
+  // Setting 3 -> 0 here would send E's settings to the X driver as well, so keep X_* and E0_* driver settings identical
+  // instead. (LIN_ADVANCE with STEALTHCHOP_E is a known poor pairing: spreadCycle on E is the usual advice.)
   #define E0_SLAVE_ADDRESS 3
   //#define E1_SLAVE_ADDRESS 0
   //#define E2_SLAVE_ADDRESS 0
