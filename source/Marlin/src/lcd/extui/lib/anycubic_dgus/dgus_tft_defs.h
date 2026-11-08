@@ -139,9 +139,13 @@
 #define AC_cmnd_manual_unload_filament_first_in PSTR("M83\nG1 E10 F300\nM82")
 #define AC_cmnd_enable_levelling       PSTR("M420 S1 V1")
 #define AC_cmnd_power_loss_recovery    PSTR("G28 R5 X Y\nG28 Z")       // Lift, home X and Y then home Z when in 'safe' position
+// The lifted variants raise the nozzle to Z20 (only used when Z is homed and below 20 mm: a part taller than that, or an unknown Z, would be hit);
+// the others leave the nozzle where it is. No G28 here: a full home probes the bed centre and hits whatever is left on the bed.
 #define MEL_cmnd_auto_unload_filament  PSTR("G90\nG1 Z20 F500\nG92 E0\nG1 F200 E20\nG4 P1000\nG92 E0\nG1 F2400 E-660\nM400\nG92 E0\nM104 S0\nM84")//
+#define MEL_cmnd_auto_unload_nolift    PSTR("G90\nG92 E0\nG1 F200 E20\nG4 P1000\nG92 E0\nG1 F2400 E-660\nM400\nG92 E0\nM104 S0\nM84")
 #define MEL_cmnd_extrude_filament      PSTR("M83\nG1 E30 F200\nM82\nM400\nM104 S0")   // slow 30 mm purge (safe with filament in the nozzle), then hotend off like load/unload
-#define MEL_cmnd_auto_load_Filament   PSTR("G28\nG1 Z20 F560\nG92 E0\nG1 F2600 E560\nG92 E0\nG1 F200 E80\nM400\nM104 S0\nM84")// faster load and purge
+#define MEL_cmnd_auto_load_Filament   PSTR("G90\nG1 Z20 F560\nG92 E0\nG1 F2600 E560\nG92 E0\nG1 F200 E80\nM400\nM104 S0\nM84")// faster load and purge
+#define MEL_cmnd_auto_load_nolift     PSTR("G90\nG92 E0\nG1 F2600 E560\nG92 E0\nG1 F200 E80\nM400\nM104 S0\nM84")
 
 namespace Anycubic {
   enum heater_state_t : uint8_t {

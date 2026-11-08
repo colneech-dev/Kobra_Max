@@ -198,11 +198,11 @@
 #define TXT_DISCRIBE_4       0x50C0
 
 // PRINT TXT
-#define TXT_PRINT_NAME          0x2000+8*0x30
-#define TXT_PRINT_SPEED         0x2000+9*0x30
-#define TXT_PRINT_TIME          0x2000+10*0x30
-#define TXT_PRINT_PROGRESS       0x2000+11*0x30
-#define TXT_PRINT_COMMENT       0x2000+12*0x30// MEL_MOD malebuffy
+#define TXT_PRINT_NAME          (0x2000+8*0x30)
+#define TXT_PRINT_SPEED         (0x2000+9*0x30)
+#define TXT_PRINT_TIME          (0x2000+10*0x30)
+#define TXT_PRINT_PROGRESS       (0x2000+11*0x30)
+#define TXT_PRINT_COMMENT       (0x2000+12*0x30)// MEL_MOD malebuffy
 
 // PRINT ADJUST TXT
 
@@ -514,6 +514,8 @@ namespace Anycubic {
       void StatusChange(const char * const );
       void PowerLoss();
       void PowerLossRecovery();
+      static void LevelingDone();
+      static bool JobActive();   // a mesh run, probe test, Z / 5-point move, first-layer or K test is under way
       void PidTuning(const ExtUI::result_t rst);   // result of an M303 autotune (called from onPidTuning)
       void HomingStart();
       void HomingComplete();

@@ -290,6 +290,7 @@ static void soak_skip() {
 static millis_t bed_warm_until = 0;
 static void bed_warm_extend() { bed_warm_until = (millis() + AC_BED_WARM_MS) | 1; }
 static bool bed_warm() { return bed_warm_until && PENDING(millis(), bed_warm_until); }
+static bool ac_job_active();   // a mesh run, probe test, Z / 5-point move, first-layer or K test is under way (defined with the wizard code)
 
 // Paper test HOT. The bed mesh is probed at the leveling temperatures, so the Z offset is set at the same ones (a cold
 // paper test is off by whatever the bed centre moves between cold and 60 C). Every way into the Z offset page parks the
@@ -344,7 +345,16 @@ static float   sc_value = 0, sc_diff = 0;   // the probed height and how far it 
 static float   sc_vals[2] = { 0, 0 }, sc_df = 0, sc_dc = 0;   // the two replies (front-left node, centre) and their differences
 static uint8_t sc_n = 0;                            // replies received
 static uint8_t sc_state = 0;                        // 0 idle, 1 probing, 2 done
-static void stale_reset() { sc_state = 0; sc_listen = false; }
+static uint8_t sc_retry = 0;                        // the check was started again once after a missing reading
+static void az_line_reset();                        // the serial hook's line buffer (defined with the hook): a half line from an earlier listen must not be parsed
+static void stale_reset() { sc_state = 0; sc_listen = false; sc_retry = 0; }
+static float p5_saved_surface(float x, float y);    // what the saved 5-point corrections added to the mesh at (x, y) (defined with the 5-point page)
+#define SC_NO_READING 99.0f                         // sc_diff when the probe gave no reading: the check REFUSES (it must not pass when it cannot measure)
+static void sc_fail_text(char * const out, const size_t size, const bool stopped = false) {   // the refusal as a status line
+  if (sc_diff >= 90.0f) { strlcpy_P(out, stopped ? PSTR("Stopped: no probe reading") : PSTR("No probe reading: redo"), size); return; }
+  const unsigned h = (unsigned)lroundf(sc_diff * 100.0f);
+  snprintf_P(out, size, stopped ? PSTR("Stopped: mesh off %u.%02u mm") : PSTR("Mesh off by %u.%02u mm: redo"), h / 100, h % 100);
+}
 // The front-left node is the FIRST one G29 probes (the bed had soaked least then), the centre is in the middle of the run: together they show
 // plate changes and thermal drift. Both differences are printed every time (Terminal) and shown by the first layer test.
 // beside_centre: probe the node in front of the centre instead (the first layer test prints its first square at the centre, and a hot nozzle that
@@ -354,12 +364,16 @@ static int stale_gate(const bool beside_centre = false) {   // 0 = still working
   if (sc_state == 0) {
     sc_got = false;
     sc_n = 0;
+    az_line_reset();
     sc_listen = true;
     // G30 leaves the nozzle on the bed surface (no stow lift on this probe): lift after each probe or the XY move to the next node drags it
-    // over the bed (owner, 2026-11-05). 51 characters at most: the injection buffer holds 64.
+    // over the bed (owner, 2026-11-05). The first lift is for the XY travel TO the first probe: the callers start from Z1 .. Z5 and a mesh that is
+    // several mm stale (a plate added) would leave less clearance than that. 63 characters at most (3-digit coordinates): the injection buffer holds 63.
     char cmd[64];
-    sprintf_P(cmd, PSTR("G30 X%d Y%d\nG1 Z10 F600\nG30 X%d Y%d\nG1 Z10 F600"), (int)lroundf(bedlevel.get_mesh_x(0)), (int)lroundf(bedlevel.get_mesh_y(0)),
-              (int)lroundf(bedlevel.get_mesh_x(cx)), (int)lroundf(bedlevel.get_mesh_y(cy)));
+    const int n = snprintf_P(cmd, sizeof(cmd), PSTR("G1 Z10 F600\nG30 X%d Y%d\nG1 Z10 F600\nG30 X%d Y%d\nG1 Z10 F600"),
+                             (int)lroundf(bedlevel.get_mesh_x(0)), (int)lroundf(bedlevel.get_mesh_y(0)),
+                             (int)lroundf(bedlevel.get_mesh_x(cx)), (int)lroundf(bedlevel.get_mesh_y(cy)));
+    if (n <= 0 || n > 63) { sc_diff = SC_NO_READING; sc_state = 2; sc_n = 0; SERIAL_ECHO_MSG("Mesh check: command too long, refused"); return -1; }
     injectCommands(cmd);
     sc_state = 1;
     return 0;
@@ -369,12 +383,20 @@ static int stale_gate(const bool beside_centre = false) {   // 0 = still working
     sc_state = 2;
     sc_listen = false;
   }
-  if (sc_n < 2) { SERIAL_ECHO_MSG("Mesh check: no reading, skipped"); return 1; }   // a reply was lost: do not block the user
+  if (sc_n < 2) {
+    // A G30 that fails (an early trigger above the clearance, a thick plate, a false strain-gauge trigger, a lost reply) prints no "Bed X:" line. Passing
+    // here would lower the nozzle onto an unchecked mesh in exactly the case this check exists for: look once more, then REFUSE.
+    if (sc_retry < 1) { sc_retry++; sc_state = 0; SERIAL_ECHO_MSG("Mesh check: no reading, trying again"); return 0; }
+    sc_diff = SC_NO_READING;
+    SERIAL_ECHO_MSG("Mesh check: no reading, refused");
+    return -1;
+  }
   xy_uint8_t p0, pc;
   p0.x = 0; p0.y = 0;
   pc.x = cx; pc.y = cy;
-  sc_df = fabsf(sc_vals[0] - getMeshPoint(p0));
-  sc_dc = fabsf(sc_vals[1] - getMeshPoint(pc));
+  // the probe reads the real bed; the node holds the mesh PLUS the saved 5-point corrections: compare with the mesh as it was probed
+  sc_df = fabsf(sc_vals[0] - (getMeshPoint(p0) - p5_saved_surface(bedlevel.get_mesh_x(0), bedlevel.get_mesh_y(0))));
+  sc_dc = fabsf(sc_vals[1] - (getMeshPoint(pc) - p5_saved_surface(bedlevel.get_mesh_x(cx), bedlevel.get_mesh_y(cy))));
   sc_diff = _MAX(sc_df, sc_dc);
   SERIAL_ECHO_MSG("Mesh check: front-left ", sc_df, " mm, centre ", sc_dc, " mm");
   return sc_diff > 0.5f ? -1 : 1;
@@ -390,6 +412,11 @@ static int stale_gate(const bool beside_centre = false) {   // 0 = still working
 static xy_uint8_t ol_nodes[OL_MAX];
 static uint8_t    ol_n = 0, ol_i = 0, ol_state = 0, ol_fixed = 0;
 static bool       ol_run = false;
+static bool       mesh_done_pending = false;   // G29 printed its "Ready" message; the new mesh is only in place when G29 ends (LevelingDone)
+static void mesh_changed() {   // a new mesh (any G29: the display's, a host's, a slicer's start G-code): what belonged to the old one is gone
+  wz_clear(WZ_POINTS); wz_clear(WZ_FIRST);   // the 5-point corrections and the squares
+  for (uint8_t k = 0; k < 4; k++) DgusTFT::lcd_info.p5_cum[k] = 0;   // (a later RESET would otherwise subtract them from the fresh mesh)
+}
 static void heaters_off_when_idle();
 
 static void ol_scan() {
@@ -425,9 +452,7 @@ static void mesh_finish() {
   bed_warm_extend();   // the bed stays on for the next step (the nozzle goes off): the heat soak is kept
   injectCommands_P(PSTR("M420 S1 Z0\nM500\nM104 S0"));   // mesh on again (G30 switches it off), save the mesh and Z offset
   heaters_off_when_idle();
-  wz_mark(WZ_MESH, false);   // (the M500 above saves it)
-  wz_clear(WZ_POINTS); wz_clear(WZ_FIRST);   // the 5-point corrections and the squares belonged to the old mesh
-  for (uint8_t k = 0; k < 4; k++) DgusTFT::lcd_info.p5_cum[k] = 0;
+  wz_mark(WZ_MESH, false);   // (the M500 above saves it; the corrections and steps of the old mesh were dropped in LevelingDone)
   if (wz_launch) {
     if (ol_fixed) snprintf_P(wz_msg[WZ_MESH], sizeof(wz_msg[WZ_MESH]), PSTR("Mesh saved, %u re-probed"), (unsigned)ol_fixed);
     else strcpy_P(wz_msg[WZ_MESH], PSTR("Mesh saved"));
@@ -528,6 +553,8 @@ static const char * about_build_id() {
 // Selected Move Axes step (mm); file scope so the step text can be re-sent when the page opens.
 static float move_dis = 1.0f;
 
+static bool m600_shown = false;   // the paused page was opened for a running M600: back to the print page when it ends
+
 // HOW THE Z OFFSET WORKS HERE (read before changing it). Z homes on the Z-min endstop and set_axis_is_at_home()
 // (motion.cpp) then sets the Z position to -probe.offset.z, so the stored offset (M851 Z, saved by M500) shifts
 // the nozzle height on EVERY G28: positive = nozzle higher, negative = lower, with or without a bed mesh.
@@ -558,18 +585,23 @@ static void heaters_off_when_idle() {
 // so injecting while an earlier multi-line sequence still has lines waiting replaces it and the rest is gone (a lost tail
 // leaves the heaters on, a lost M500 loses a setting). If something is still waiting to run, the new commands are held and
 // injected from IdleLoop (inject_after_drain) once the queue has run dry. During an SD print the old direct injection is
-// kept: the queue is never dry then, and the save in the middle of a print was always allowed.
+// kept: the queue is never dry then, and the save in the middle of a print was always allowed. In a print or a pause only a PROGMEM sequence that still has
+// lines waiting holds a new one back: the pause's own "M24" waits there behind the blocking M125, and a direct M500 replaced it (and Resume's M24 then
+// replaced the M500): a Z-offset SAVE during a pause was lost.
 static PGM_P   inject_wait[8];
 static uint8_t inject_wait_n = 0;
+static bool inject_must_wait() {
+  return (isPrintingFromMedia() || isPrintingPaused()) ? (queue.injected_commands_P != nullptr) : queue.has_commands_queued();
+}
 static void inject_after_P(PGM_P const cmds) {
-  if (!queue.has_commands_queued() || isPrintingFromMedia() || isPrintingPaused() || inject_wait_n >= COUNT(inject_wait)) {
+  if ((!inject_wait_n && !inject_must_wait()) || inject_wait_n >= COUNT(inject_wait)) {
     injectCommands_P(cmds);
     return;
   }
   inject_wait[inject_wait_n++] = cmds;
 }
 static void inject_after_drain() {
-  if (!inject_wait_n || queue.has_commands_queued()) return;
+  if (!inject_wait_n || inject_must_wait()) return;
   injectCommands_P(inject_wait[0]);
   for (uint8_t i = 1; i < inject_wait_n; i++) inject_wait[i - 1] = inject_wait[i];
   inject_wait_n--;
@@ -780,10 +812,21 @@ static void firmware_file_rename_once() {
 void DgusTFT::IdleLoop()  {
   hal.watchdog_refresh(); // prevent WDT fire during DGUS packet processing
   firmware_file_rename_once();
+#if M600_PURGE_MORE_RESUMABLE
+  // Marlin 2.1 waits after the purge of every resume / M600 for a "purge more or resume" answer (pause.cpp: idle_no_sleep() until
+  // pause_menu_response changes). This display has no such page and nothing else answers: without this the printer would sit there with
+  // a hot nozzle until reset (STOP does not end the wait). Answer "resume" at once.
+  if (pause_menu_response == PAUSE_RESPONSE_WAIT_FOR) ExtUI::setPauseMenuResponse(PAUSE_RESPONSE_RESUME_PRINT);
+#endif
   soak_track();
   if (bed_warm_until && !bed_warm()) {   // the window ran out: the bed goes off now (unless a print or a queued command holds it: the idle timeout catches that)
-    bed_warm_until = 0;
-    heaters_off_when_idle();
+    // ... but never in the middle of a job: a 9x9 mesh with its heat soak runs about 45 minutes, longer than the window. Switching the bed off then left
+    // the G29 soak waiting for a heat that was gone and the rest of the mesh on a cooling bed. The job renews the window; it ends it when it finishes.
+    if (ac_job_active() || DgusTFT::page_index_now == PAGE_LEVEL_ADVANCE || DgusTFT::page_index_now == PAGE_LEVEL_ADVANCE + 120 || DgusTFT::page_index_now == PAGE_P5) bed_warm_extend();
+    else {
+      bed_warm_until = 0;
+      heaters_off_when_idle();
+    }
   }
   term_rx_drain();
   wizard_background();
@@ -1287,12 +1330,9 @@ void DgusTFT::StatusChange(const char * const msg)  {
           if (probe_cnt >= GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y) {   // >=: an extra message must not leave the page stuck
             probe_cnt = 0;
             printer_state = AC_printer_idle;
-            ol_scan();   // a node that disagrees with its neighbours is probed again before the mesh is saved (ol_poll)
-            if (ol_n) {
-              ol_i = 0; ol_state = 0; ol_fixed = 0; ol_run = true;
-              SERIAL_ECHO_MSG("Mesh check: ", ol_n, " odd node(s), probing again");
-            }
-            else { ol_fixed = 0; mesh_finish(); }
+            // This message is printed BEFORE G29 copies the new grid into place (G29.cpp: ui.reset_status() ... COPY(z_values, abl.z_values)), so the
+            // outlier scan and the save wait for ExtUI::onLevelingDone (LevelingDone below): scanning here looked at the OLD mesh.
+            mesh_done_pending = true;
             msg_matched = true;
           }
         }
@@ -1401,8 +1441,21 @@ void DgusTFT::PowerLoss()  {
   }
 }
 
+// The "resume the print that the power cut interrupted?" page with the file name and the progress.
+static void show_outage_page() {
+  char filename[64] = { '\0' };
+  DgusTFT::ChangePageOfTFT(PAGE_OUTAGE_RECOVERY);
+  card.getLongPath(filename, recovery.info.sd_filename);
+  DgusTFT::SendTxtToTFT(filename, TXT_OUTAGE_RECOVERY_FILE);
+  DgusTFT::SendTxtToTFT(ui8tostr3rj(recovery.info.print_progress), TXT_OUTAGE_RECOVERY_PROGRESS);
+  PlayTune(BEEPER_PIN, SOS, 1);
+}
+
 void DgusTFT::PowerLossRecovery()  {
   printer_state = AC_printer_resuming_from_power_outage; // Play tune to notify user we can recover.
+  // The recovery check runs on the first idle(), which may be AFTER the display has reported that its boot animation is over (the page for this state was
+  // only shown from that report, with the state already set): then nobody would show it and the resume question never appeared.
+  if (lcd_boot_synced) show_outage_page();
 }
 
 void DgusTFT::HomingStart() {
@@ -1774,8 +1827,23 @@ void DgusTFT::GoMovePage() {
 
 // Refuse commands that would disturb a print (G28/G29/M502/M500 from the Terminal, factory reset,
 // PID tuning): show the NOT ALLOWED page — its OK button returns to the page we came from.
+// G29 has finished and the new mesh is in place.
+void DgusTFT::LevelingDone() {
+  mesh_changed();
+  if (!mesh_done_pending) return;
+  mesh_done_pending = false;
+  ol_scan();   // a node that disagrees with its neighbours is probed again before the mesh is saved (ol_poll)
+  if (ol_n) {
+    ol_i = 0; ol_state = 0; ol_fixed = 0; ol_run = true;
+    SERIAL_ECHO_MSG("Mesh check: ", ol_n, " odd node(s), probing again");
+  }
+  else { ol_fixed = 0; mesh_finish(); }
+}
+
 bool DgusTFT::BlockedWhilePrinting() {
-  if (isPrinting() || isPrintingFromMedia() || isPrintingPaused()) {
+  // (a background job counts as busy too: during the first-layer / K test's heat soak the queue is empty and nothing else would stop a second flow
+  // from driving the nozzle at the same time)
+  if (isPrinting() || isPrintingFromMedia() || isPrintingPaused() || ac_job_active()) {
     ChangePageOfTFT(PAGE_FORBIT);
     return true;
   }
@@ -2075,7 +2143,7 @@ void DgusTFT::ProcessPanelRequest() {
         p_u8++;
         *p_u8 = data_buf[4];
 
-        float feedrate = constrain((uint16_t)control_value, 40, 999);
+        float feedrate = constrain((uint16_t)control_value, 10, 300);
         //         feedrate_percentage=constrain(control_value,40,999);
         sprintf(str_buf, "%u", (uint16_t)feedrate);
         SendTxtToTFT(str_buf, TXT_PRINT_SPEED);
@@ -2131,13 +2199,7 @@ void DgusTFT::ProcessPanelRequest() {
 #endif
 
           if (AC_printer_resuming_from_power_outage == printer_state) {
-
-            char filename[64] = { '\0' };
-            ChangePageOfTFT(PAGE_OUTAGE_RECOVERY);
-            card.getLongPath(filename, recovery.info.sd_filename);
-            SendTxtToTFT(filename, TXT_OUTAGE_RECOVERY_FILE);
-            SendTxtToTFT(ui8tostr3rj(recovery.info.print_progress), TXT_OUTAGE_RECOVERY_PROGRESS);
-            PlayTune(BEEPER_PIN, SOS, 1);
+            show_outage_page();
           } else if (isPrintingPaused()) {
             ChangePageOfTFT(PAGE_STATUS1);   // the display restarted mid-print: back to the print / pause page, not Main
           } else if (isPrintingFromMedia() || isPrinting()) {
@@ -2245,7 +2307,7 @@ void DgusTFT::page1_handle(void) {
 
 void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
 
-  char file_index = 0;
+  uint16_t file_index = 0;   // (a char wrapped at 256 files)
 
   // "No bed level found" warning: shown in the tapped file's row; a second PRINT within 10 s starts anyway.
   static millis_t nolevel_warn_ms = 0;   // 0 = not showing
@@ -2347,6 +2409,7 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
         SendTxtToTFT("SELECT A FILE FIRST", TXT_FILE_0);
         break;
       }
+      if (BlockedWhilePrinting()) break;   // a host print (OctoPrint) or a job is running: a second print would run over it
       if (lcd_txtbox_index > 0 && lcd_txtbox_index  < 6) {  // 1~5
 
         // No bed mesh in memory (leveling is switched on again by every G28, but only if a mesh exists; the
@@ -2359,6 +2422,12 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
         nolevel_warn_ms = 0;
 
         if (filenavigator.filelist.seek(lcd_txtbox_page * 5 + (lcd_txtbox_index - 1))) {
+
+          if (filenavigator.filelist.isDir()) {   // folders are listed but cannot be opened here: M23 / M24 on a folder "finishes" at once
+            nolevel_warn_ms = millis() | 1;
+            SendTxtToTFT("THAT IS A FOLDER", TXT_FILE_0 + 0x30 * (lcd_txtbox_index - 1));
+            break;
+          }
 
 #if 0
           SERIAL_ECHOLNPGM("start print: ", lcd_txtbox_page * 5 + (lcd_txtbox_index - 1));
@@ -2473,11 +2542,11 @@ void DgusTFT::page3_handle(void) {
       SERIAL_ECHOLNPGM("printer_state: ", printer_state);
       SERIAL_ECHOLNPGM("pause_state: ", pause_state);
 #endif
-			if (activeFilamentChange == true) {// MEL_MOD that gets back to the normal PAUSE page
-          activeFilamentChange = false;// reset the flag so PAUSE works again
-          TERN_(HAS_RESUME_CONTINUE, wait_for_user = false);// MEL_MOD
-          wait_for_heatup = false;
-					ChangePageOfTFT(PAGE_STATUS2);// MEL_MOD auto change back to print page, we're done
+			if (activeFilamentChange == true) {
+          // M600 is running (M600.cpp clears the flag when it ends, whatever way it ends). Answer what it is waiting for and stay on this page: the first
+          // tap used to clear the flag at once, so a tap while M600 was still parking left the print page without a Resume button, with M600 then waiting
+          // for the user forever, and clearing wait_for_heatup from here could cut a heating wait short. A tap while M600 is only moving does nothing.
+          TERN_(HAS_RESUME_CONTINUE, if (wait_for_user) setUserConfirmed());
         } else {
       if (pause_state == AC_paused_idle || pause_state == AC_paused_filament_lack ||
           printer_state == AC_printer_resuming_from_power_outage) {
@@ -2530,6 +2599,7 @@ void DgusTFT::page3_handle(void) {
   SendTxtToTFT(str_buf, TXT_PRINT_TIME);
   SendTxtToTFT(gcodeComment, TXT_PRINT_COMMENT);// MEL_MOD malebuffy
 
+  if (m600_shown && !activeFilamentChange) { m600_shown = false; if (isPrintingFromMedia() && !isPrintingPaused()) ChangePageOfTFT(PAGE_STATUS2); }   // M600 is over
 }
 
 void DgusTFT::page4_handle(void) {
@@ -2611,6 +2681,7 @@ void DgusTFT::page4_handle(void) {
   sprintf(str_buf + strlen(str_buf), "%s M", utostr3(time % 60));
   SendTxtToTFT(str_buf, TXT_PRINT_TIME);
 	if (activeFilamentChange == true) {
+		 m600_shown = true;
 		 ChangePageOfTFT(PAGE_STATUS1);// MEL_MOD auto change to RESUME page for filament change
 	}
 }
@@ -2658,19 +2729,22 @@ static uint8_t  term_rx_len = 0;
 static bool     term_capture = false, term_log_dirty = false;
 static millis_t term_capture_until = 0, term_capture_end = 0;   // _until: quiet period; _end: hard stop for one command
 
+static char    az_line[72];   // the M48 / G30 reply line being collected by the hook
+static uint8_t az_len = 0;
+static void az_line_reset() { az_len = 0; }
+
 static void term_rx_hook(void *, uint8_t c) {
   if ((az_listen || sc_listen) && c != '\r') {   // M48: "Mean: 1.234567 Min: 1.234 Max: 1.245 Range: 0.011"; G30: "Bed X: 200.00 Y: 200.00 Z: -4.12" (own buffer: longer than a Terminal row)
-    static char    az_line[72];
-    static uint8_t az_len = 0;
     if (c == '\n') {
       az_line[az_len] = '\0';
       az_len = 0;
       const char * const r = strstr(az_line, "Range: ");
       if (az_listen && r && strstr(az_line, "Mean")) az_range = atof(r + 7);
       if (sc_listen) {
+        // "Bed X: 200.00 Y: 200.00 Z: -4.12" here; Marlin bugfix-2.1.x prints "Bed X:200.00 Y:200.00 Z:-4.120": match "Z:" and let atof skip the blanks
         const char * const b = strstr(az_line, "Bed X:");
-        const char * const z = b ? strstr(b, " Z: ") : nullptr;
-        if (z) { sc_value = atof(z + 4); sc_got = true; if (sc_n < 2) sc_vals[sc_n++] = sc_value; }
+        const char * const z = b ? strstr(b, "Z:") : nullptr;
+        if (z) { sc_value = atof(z + 2); sc_got = true; if (sc_n < 2) sc_vals[sc_n++] = sc_value; }
       }
     }
     else if (az_len < sizeof(az_line) - 1) az_line[az_len++] = (char)c;
@@ -2886,11 +2960,15 @@ void DgusTFT::page8_handle(void) {
 
   static uint16_t movespeed = 50;
 
+  // Nothing here moves while a command or a job (mesh run, probe test, first-layer test) is running, and the jog keys only move an axis that is
+  // homed: an axis that is not has a made-up position (the power-on 0), so +50 mm could run into the frame.
+  const bool move_ok = !isMoving() && !commandsInQueue() && !ac_job_active();
+
   if ((key_value == 2 || key_value == 4 ||
        key_value == 6 || key_value == 8 ||
        key_value == 10 || key_value == 12) && !isMoving()) {
 
-    if (getAxisPosition_mm(Z) < 0) {
+    if (isAxisPositionKnown(Z) && getAxisPosition_mm(Z) < 0) {
       setAxisPosition_mm(0, Z, 8);
     }
   }
@@ -2907,19 +2985,19 @@ void DgusTFT::page8_handle(void) {
       break;
 
     case 5:
-      if (!isMoving()) {
+      if (move_ok) {
         injectCommands_P(PSTR("G28 X"));
       }
       break;
 
     case 9:
-      if (!isMoving()) {
+      if (move_ok) {
         injectCommands_P(PSTR("G28 Y"));
       }
       break;
 
     case 13:
-      if (!isMoving()) {
+      if (move_ok) {
         if (axis_is_trusted(X_AXIS) && axis_is_trusted(Y_AXIS)) {
           injectCommands_P(PSTR("G28 Z"));
         } else {
@@ -2929,43 +3007,43 @@ void DgusTFT::page8_handle(void) {
       break;
 
     case 17:
-      if (!isMoving()) {
+      if (move_ok) {
         injectCommands_P(PSTR("G28"));
       }
       break;
 
     case 2:   // X-
-      if (!isMoving()) {
+      if (move_ok && isAxisPositionKnown(X)) {
         setAxisPosition_mm(getAxisPosition_mm(X) - move_dis, X, 50);
       }
       break;
 
     case 4:   // X+
-      if (!isMoving()) {
+      if (move_ok && isAxisPositionKnown(X)) {
         setAxisPosition_mm(getAxisPosition_mm(X) + move_dis, X, 50);
       }
       break;
 
     case 6:   // Y+
-      if (!isMoving()) {
+      if (move_ok && isAxisPositionKnown(Y)) {
         setAxisPosition_mm(getAxisPosition_mm(Y) + move_dis, Y, 50);
       }
       break;
 
     case 8:   // Y-
-      if (!isMoving()) {
+      if (move_ok && isAxisPositionKnown(Y)) {
         setAxisPosition_mm(getAxisPosition_mm(Y) - move_dis, Y, 50);
       }
       break;
 
     case 10:  // Z-
-      if (!isMoving()) {
+      if (move_ok && isAxisPositionKnown(Z)) {
         setAxisPosition_mm(getAxisPosition_mm(Z) - move_dis, Z, 8);
       }
       break;
 
     case 12:  // Z+
-      if (!isMoving()) {
+      if (move_ok && isAxisPositionKnown(Z)) {
         setAxisPosition_mm(getAxisPosition_mm(Z) + move_dis, Z, 8);
       }
       break;
@@ -3359,10 +3437,23 @@ static void az_make_msg() {   // "Spread 0.012 mm OK" from az_range
   else strcpy_P(az_msg, PSTR("Probe test: no result"));
 }
 
+static bool az_fresh_mesh = false;   // this AUTO Z run follows a mesh that was just made (it needs no stale-mesh check; one that already existed does)
+static bool az_m48_pending = false;  // homed and parked at Z5: M48 starts when the nozzle and the bed are at temperature
+static void az_service() {           // from wizard_background()
+  if (!az_m48_pending) return;
+  if (az_stage != AZ_TEST) { az_m48_pending = false; return; }   // the run was left meanwhile
+  if (commandsInQueue() || !temps_hot()) return;
+  char cmd[40];
+  sprintf_P(cmd, PSTR("M48 P5 X%d Y%d V1"), (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2));
+  injectCommands(cmd);
+  az_m48_pending = false;
+}
 static void az_start_test(const bool save_first) {
   z_manual_start = z_start_tenths() / 10.0f;
   z_entry_offset = getZOffset_mm();
   az_range = -1;
+  az_fresh_mesh = save_first;
+  az_line_reset();
   az_listen = true;
   az_stage = AZ_TEST;
   z_heat_wait = false;
@@ -3373,8 +3464,9 @@ static void az_start_test(const bool save_first) {
   setTargetTemp_celsius(LEVELING_BED_TEMP, BED);
 #endif
   char cmd[64];
-  sprintf_P(cmd, PSTR("%sG28\nG90\nG1 Z5 F600\nM48 P5 X%d Y%d V1"), save_first ? "M500\n" : "", (int)(X_BED_SIZE / 2), (int)(Y_BED_SIZE / 2));
+  sprintf_P(cmd, PSTR("%sG28\nG90\nG1 Z5 F600"), save_first ? "M500\n" : "");
   injectCommands(cmd);
+  az_m48_pending = true;   // M48 itself waits for the temperatures (az_service): a spread measured on a cold bed with a nozzle still heating reads NOISY
   if (az_check_only) return;   // the wizard page watches the queue and shows the result
   zoffset_moving = true;
   DgusTFT::ChangePageOfTFT(PAGE_LEVEL_ADVANCE);
@@ -3497,7 +3589,7 @@ void DgusTFT::page17_handle(void)
     static millis_t status_ms = 0;
     if (millis() - status_ms > 500) {
       status_ms = millis();
-      if (az_stage == AZ_TEST && !commandsInQueue()) {   // no timeout: injecting over a command that is still running corrupts the buffer
+      if (az_stage == AZ_TEST && !az_m48_pending && !commandsInQueue()) {   // no timeout: injecting over a command that is still running corrupts the buffer
         // M48 has finished (or the wait ran out): read the spread, then park at the start height for the manual step
         az_listen = false;
         az_make_msg();
@@ -3506,7 +3598,7 @@ void DgusTFT::page17_handle(void)
         z_set_hot();
         z_heat_wait = true;
         z_lower_tenths = z_start_tenths();
-        z_need_check = false;   // the mesh was just made or has just passed the probe test
+        z_need_check = !az_fresh_mesh;   // M48 only measures the probe's repeatability and compares nothing with the mesh: a mesh that was not made just now is checked against the bed
         zoffset_moving = true;
       }
       else if (z_heat_wait && !commandsInQueue()) {   // parked at Z5: wait for the temperatures, check the mesh still matches the bed, then lower
@@ -3528,7 +3620,8 @@ void DgusTFT::page17_handle(void)
       else if (zoffset_moving && !commandsInQueue()) zoffset_moving = false;
       char st[28];
       if (soak_note_active()) strlcpy(st, soak_note, sizeof(st));
-      else if (z_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(st, sizeof(st), PSTR("Mesh off by %u.%02u mm: redo"), h / 100, h % 100); }
+      else if (z_stale) sc_fail_text(st, sizeof(st));
+      else if (az_stage == AZ_TEST && az_m48_pending && !commandsInQueue()) heat_status(st, sizeof(st));
       else if (az_stage == AZ_TEST) strcpy_P(st, PSTR("Testing probe (5x)..."));
       else if (z_heat_wait && !commandsInQueue()) heat_status(st, sizeof(st));
       else if (sc_state == 1) strcpy_P(st, PSTR("Checking mesh vs bed..."));
@@ -3593,6 +3686,7 @@ void DgusTFT::page17_handle(void)
         z_off = getZOffset_mm();
 
         if (plus ? (z_off >= 5) : (z_off <= -5)) return;
+        if (!plus && !isPrinting() && z_nozzle_height() - step < -0.3f) return;   // the nozzle is at the bed already (babysteps ignore the probe): at most 0.3 mm further, never into the glass
         if (!z_change) z_orig = z_off;
 
         // Move the nozzle now (babystep) and record the same change in the stored offset.
@@ -3621,7 +3715,9 @@ void DgusTFT::page17_handle(void)
         z_change = false;
         setZOffset_mm(getZOffset_mm() + z_manual_start);   // the paper spot becomes Z0
         if (wz_launch) { wz_mark(WZ_OFFSET, false); strcpy_P(wz_msg[WZ_OFFSET], PSTR("Offset saved")); }
-        inject_after_P(bed_warm() ? PSTR("M500\nG1 Z10 F600\nM104 S0") : PSTR("M500\nG1 Z10 F600\nM104 S0\nM140 S0"));
+        // The offset is only applied when Z homes (motion.cpp shifts Z0 by it) and the babysteps are still on the nozzle: lift, then home Z again, so that a
+        // move on the Move page (or a host job without G28) does not start from a frame that is the start height below the paper.
+        inject_after_P(bed_warm() ? PSTR("M500\nG1 Z10 F600\nG28 Z\nM104 S0") : PSTR("M500\nG1 Z10 F600\nG28 Z\nM104 S0\nM140 S0"));
       }
       else
         inject_after_P(bed_warm() ? PSTR("G1 Z10 F600\nM104 S0") : PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));
@@ -3688,6 +3784,7 @@ void DgusTFT::page19_handle(void)   // Filament
       break;
 
     case 1:   // return
+      if (filament_cmd != FILA_NO_ACT && !isPrinting()) setTargetTemp_celsius(0, E0);   // a start that was still waiting for the heat: this page heated for it, so it cools again
       filament_cmd = FILA_NO_ACT;
       ChangePageOfTFT(PAGE_PREPARE);
       break;
@@ -3710,7 +3807,7 @@ void DgusTFT::page19_handle(void)   // Filament
         queue.injected_commands_P = nullptr;
         queue.injected_commands[0] = '\0';
         if (stepper.axis_is_moving(E_AXIS) && !stepper.axis_is_moving(X_AXIS) && !stepper.axis_is_moving(Y_AXIS) && !stepper.axis_is_moving(Z_AXIS))
-          planner.quick_stop();
+          quickstop_stepper();   // (stops, and brings the planner's position back to where the steppers are)
         filament_running = FILA_NO_ACT;
         injectCommands_P(PSTR("M82\nG92 E0\nM84"));   // absolute extruder again (EXTRUDE leaves it relative), no motor holding current
       }
@@ -3732,8 +3829,10 @@ void DgusTFT::page19_handle(void)   // Filament
 
   // Start the requested sequence once the hotend is up to temperature.
   if (filament_cmd != FILA_NO_ACT && !isPrinting() && getActualTemp_celsius(E0) >= FILAMENT_READY) {
-    injectCommands_P(filament_cmd == FILA_IN  ? MEL_cmnd_auto_load_Filament        // MELS mod: quick load + purge
-                   : filament_cmd == FILA_OUT ? MEL_cmnd_auto_unload_filament
+    // lift to Z20 only when Z is known and below that (a taller part, or a Z that is not homed, would be run into)
+    const bool lift = isAxisPositionKnown(Z) && getAxisPosition_mm(Z) < 20.0f;
+    injectCommands_P(filament_cmd == FILA_IN  ? (lift ? MEL_cmnd_auto_load_Filament : MEL_cmnd_auto_load_nolift)        // MELS mod: quick load + purge
+                   : filament_cmd == FILA_OUT ? (lift ? MEL_cmnd_auto_unload_filament : MEL_cmnd_auto_unload_nolift)
                                               : MEL_cmnd_extrude_filament);
     filament_running = filament_cmd;
     filament_cmd = FILA_NO_ACT;
@@ -3803,6 +3902,7 @@ void DgusTFT::page22_handle(void)   // print finish
 #if ENABLED(CASE_LIGHT_ENABLE)
         setCaseLightState(0);
 #endif
+        printer_state = AC_printer_idle;    // the timer stop left it at "stopping" and only a "Print Aborted" message resets it: the idle heater timeout stayed off for good
         ChangePageOfTFT(PAGE_MAIN);
         setFeedrate_percent(100);           // resume print speed to 100
         clearProgress_seconds_elapsed();    // clear print time elapsed
@@ -3887,6 +3987,8 @@ void DgusTFT::page25_handle(void)   // lack filament
         } else if (AC_printer_paused == printer_state) {
           //                      injectCommands_P(PSTR("M108"));
           ChangePageOfTFT(PAGE_STATUS1);  // show resume
+        } else {
+          ChangePageOfTFT(isPrintingPaused() ? PAGE_STATUS1 : (isPrintingFromMedia() ? PAGE_STATUS2 : PAGE_MAIN));   // pausing / stopping / resuming: still a way out
         }
       }
       break;
@@ -3945,6 +4047,7 @@ void DgusTFT::page27_handle(void)
           if (printer_state == AC_printer_resuming_from_power_outage)
             injectCommands_P(PSTR("M1000 C")); // Cancel recovery
           printer_state = AC_printer_idle;
+          ChangePageOfTFT(PAGE_MAIN);   // (it stayed on this confirmation page)
         }
 
         setFeedrate_percent(100);           // resume print speed to 100
@@ -3958,8 +4061,11 @@ void DgusTFT::page27_handle(void)
           ChangePageOfTFT(PAGE_STATUS2);  // show pause
         } else if (AC_printer_paused == printer_state) {
           ChangePageOfTFT(PAGE_STATUS1);  // show print
+        } else {
+          ChangePageOfTFT(isPrintingPaused() ? PAGE_STATUS1 : (isPrintingFromMedia() ? PAGE_STATUS2 : PAGE_MAIN));
         }
       }
+      break;
   }
 
   if (millis() < (flash_time + 1000) )return;
@@ -4007,6 +4113,7 @@ void DgusTFT::page29_handle(void)
 #if ENABLED(CASE_LIGHT_ENABLE)
         setCaseLightState(0);
 #endif
+        printer_state = AC_printer_idle;
         ChangePageOfTFT(PAGE_MAIN);
       }
       break;
@@ -4517,6 +4624,14 @@ void DgusTFT::page211_212_handle(void)
   static float z_orig = 0;   // offset when the page was first changed; BACK restores it
 
   {
+    // The page was left some other way than BACK / SAVE (the print ended, a pop-up): the change made then stays as it is, but BACK on the next visit
+    // (possibly in the next print) must not undo it to an old value and babystep the nozzle down. This handler runs on every pass while the page is shown.
+    static millis_t last_run = 0;
+    if (millis() - last_run > 1500) z_change = false;
+    last_run = millis();
+  }
+
+  {
     // Same as the Z-offset page: the value boxes are only drawn when written, and a button press redraws the page.
     static millis_t refresh_ms = 0;
     if (millis() - refresh_ms > 500) {
@@ -4926,7 +5041,12 @@ void DgusTFT::page174_handle(void) {
 
   switch (key_value) {
     case 0: break;
-    case 1: ChangePageOfTFT(PAGE_PREPARE); return;
+    case 1:   // BACK; while the pattern runs it is STOP (the test must not carry on unseen: the other flows are blocked while it runs)
+      #if ENABLED(LIN_ADVANCE)
+        if (kt_busy()) { kt_toggle(); break; }
+      #endif
+      ChangePageOfTFT(PAGE_PREPARE);
+      return;
     #if ENABLED(LIN_ADVANCE)
       case 2: case 3: case 4: case 5: {   // 2 / 4 lower, 3 / 5 raise K by 0.1 / 0.01
         const float step = (key_value <= 3) ? 0.1f : 0.01f;
@@ -5068,7 +5188,7 @@ static void kt_step(char * const c, const size_t cs, char (&fm)[26]) {
     case 1:   // lower, put the retracted filament back, set K, first slow stroke (20 mm at 20 mm/s)
       fmt_dec(ks, sizeof(ks), k, 2);
       fmt_dec(e1, sizeof(e1), 20 * FL_E_PER_MM, 4);
-      snprintf(c, cs, "M900 K%s\nG1 Z0.2 F600\nG1 E1 F1800\nG1 X%d E%s F1200", ks, xs + 20, e1);
+      snprintf(c, cs, "M900 K%s\nG1 Z0.2 F600\nG1 E%d F1800\nG1 X%d E%s F1200", ks, line ? 1 : 2, xs + 20, e1);   // (the purge before line 1 ended with a 2 mm retract, the lines after it retract 1 mm)
       snprintf(fm, sizeof(fm), "Line %d/%d  K %s", line + 1, KT_LINES, ks);
       break;
     case 2:   // the fast stroke (40 mm at 80 mm/s), then the second slow one
@@ -5128,31 +5248,32 @@ static void fl_poll() {
   switch (fl_stage) {
     case FL_HOME:
       fl_homed = true;
+      if (!fl_gate_done) {
+        // The stale-mesh check comes BEFORE anything is lowered (the purge below goes to Z0.3 against the mesh): probe the front-left node and the node in
+        // front of the centre and compare them with the mesh (a plate added or removed since the mesh was made); REFUSE when the bed is not where the
+        // mesh says or the probe gave no reading. G30 switches the mesh OFF and leaves it off: the purge sequence starts with M420 S1 Z0, before any move.
+        const int g = stale_gate(true);
+        if (g == 0) break;
+        stale_reset();
+        fl_gate_done = true;
+        if (g < 0) { fl_stale = true; fl_abort = true; break; }
+      }
       // Prime and purge along the front edge, then lift. The nozzle has sat hot and has oozed, and the filament has to run the whole
       // Bowden tube before it flows again: a 5 mm prime left the first square under-extruded (hardware test 2026-11-01). So: 15 mm
       // pushed out in place (slowly), then two thick passes (X20 to X180 and back, 8 mm each for 160 mm, about 30 % more than a
       // 0.2 mm line needs) that also show whether the flow is established. About 30 seconds.
       injectCommands_P(PSTR("G90\nM420 S1 Z0\nM83\nG92 E0\nG1 Z5 F900\nG1 X20 Y10 F5000\nG1 Z0.3 F600\nG1 E15 F150\nG1 X180 Y10 E8 F1200\nG1 Y13 E0.5 F1200\nG1 X20 E8 F1200\nG1 E-2 F1800\nG1 Z1 F900"));
       fl_stage = FL_PURGE;
-      strcpy_P(fm, PSTR("Priming + purge line..."));
+      if (sc_n >= 2) {   // (shown for the purge: how far the two probed nodes are from the mesh)
+        const unsigned f = (unsigned)lroundf(sc_df * 100.0f), c = (unsigned)lroundf(sc_dc * 100.0f);
+        snprintf_P(fm, sizeof(fm), PSTR("Mesh drift f%u.%02u c%u.%02u"), f / 100, f % 100, c / 100, c % 100);
+      }
+      else strcpy_P(fm, PSTR("Priming + purge line..."));
       break;
 
     case FL_PURGE:
-      // The purge sequence has run, so the G28 before it is finished: the bed mesh must be on now (G28 switches it on again, and the
+      // The purge sequence has run (and the stale-mesh check before it): the bed mesh must be on now (G28 switches it on again, and the
       // sequence sends M420 S1 Z0 as well). Without it the nozzle would be several mm off the bed: stop instead of printing in the air.
-      if (!fl_gate_done) {
-        // Probe the bed centre and compare it with the mesh (a plate added or removed since the mesh was made): refuse to print in the air
-        // or into the bed. G30 switches the mesh OFF and leaves it off, so M420 S1 follows at once (and comes before the mesh-on check).
-        const int g = stale_gate(true);
-        if (g == 0) break;
-        stale_reset();
-        fl_gate_done = true;
-        injectCommands_P(PSTR("M420 S1 Z0"));
-        if (g < 0) { fl_stale = true; fl_abort = true; }
-        else if (sc_n >= 2) snprintf_P(fm, sizeof(fm), PSTR("Mesh drift f%u.%02u c%u.%02u"),
-                                       (unsigned)(sc_df), (unsigned)lroundf(sc_df * 100) % 100, (unsigned)(sc_dc), (unsigned)lroundf(sc_dc * 100) % 100);
-        break;
-      }
       if (!getLevelingActive()) { fl_mesh_off = true; fl_abort = true; break; }
       fl_stage = FL_SQUARES;
       break;
@@ -5174,13 +5295,13 @@ static void fl_poll() {
       }
       else if (fl_row == -3 || fl_row == -4) {
         // Outline first, like a slicer's outer wall: one loop round the square (two injections of two sides). It anchors the rows, shows
-        // line width and flow, and starts the flow on a short path; the 1 mm retracted at the end of the previous square comes back on
-        // the first side. The second injection ends with the move to the first row.
+        // line width and flow, and starts the flow on a short path; the filament retracted at the end of the previous square (FL_RETRACT) comes back
+        // spread over the first TWO sides (all of it on one side printed that side at about 3x the flow). The second injection ends with the move to the first row.
         char ea[12], eb[12];
-        fmt_dec(ea, sizeof(ea), FL_SIZE * FL_SQ_E_PER_MM + (fl_row == -3 ? FL_RETRACT : 0.0f), 4);
+        fmt_dec(ea, sizeof(ea), FL_SIZE * FL_SQ_E_PER_MM + (fl_row == -3 ? FL_RETRACT * 0.5f : 0.0f), 4);
         fmt_dec(eb, sizeof(eb), FL_SIZE * FL_SQ_E_PER_MM, 4);
         if (fl_row == -3) {
-          snprintf(c, sizeof(c), "G1 X%d E%s\nG1 Y%d E%s", x0 + FL_SIZE, ea, y0 + FL_SIZE, eb);
+          snprintf(c, sizeof(c), "G1 X%d E%s\nG1 Y%d E%s", x0 + FL_SIZE, ea, y0 + FL_SIZE, ea);
           fl_row = -4;
         }
         else {
@@ -5259,7 +5380,7 @@ static void fl_poll() {
     case FL_TAIL:   // the finishing commands have run (the queue is empty): the test is over
       fl_stage = FL_IDLE;
       if (fl_abort) {
-        if (fl_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(fm, sizeof(fm), PSTR("Stopped: mesh off %u.%02u mm"), h / 100, h % 100); }
+        if (fl_stale) sc_fail_text(fm, sizeof(fm), true);
         else strcpy_P(fm, fl_mesh_off ? PSTR("Stopped: bed mesh is off") : PSTR("Stopped"));
       }
       else if (fl_k) strcpy_P(fm, PSTR("Done: best line = its K"));
@@ -5275,7 +5396,7 @@ static void wizard_background() {
   if (fl_stage != FL_IDLE && isPrintingFromMedia()) fl_abort = true;   // a real print started: stop the test
 
   // Step 3 finished (the 5-probe test)
-  if (az_check_only && az_stage == AZ_TEST && !commandsInQueue()) {
+  if (az_check_only && az_stage == AZ_TEST && !az_m48_pending && !commandsInQueue()) {
     az_listen = false;
     az_make_msg();
     strlcpy(wz_msg[WZ_PROBE], az_msg, sizeof(wz_msg[WZ_PROBE]));
@@ -5284,6 +5405,7 @@ static void wizard_background() {
     az_check_only = false;
     injectCommands_P(bed_warm() ? PSTR("G1 Z10 F600\nM104 S0") : PSTR("G1 Z10 F600\nM104 S0\nM140 S0"));   // lift, heaters off (the bed stays on for the next step)
   }
+  az_service();
   ol_poll();
   fl_poll();
   es_poll();
@@ -5320,6 +5442,14 @@ static char     p5_msg[26] = "";
 static millis_t p5_msg_ms = 0;
 static const uint8_t p5_pct_x[4] = { 25, 75, 25, 75 }, p5_pct_y[4] = { 75, 75, 25, 25 };   // corner positions in % of the bed
 
+// A job that drives the printer by itself is under way (it may be waiting for heat with an empty queue). Used to refuse starting a second one and to keep
+// the bed-warm window from running out in the middle of it.
+bool DgusTFT::JobActive() {
+  return fl_stage != FL_IDLE || az_stage != AZ_IDLE || az_m48_pending || ol_run || printer_state == AC_printer_probing
+      || z_heat_wait || zoffset_moving || p5_busy || p5_heat_wait || sc_state == 1 || mesh_done_pending;
+}
+static bool ac_job_active() { return DgusTFT::JobActive(); }
+
 static void p5_say(PGM_P const m) { strlcpy_P(p5_msg, m, sizeof(p5_msg)); p5_msg_ms = millis(); }
 
 static void p5_open(const bool from_wizard) {
@@ -5336,7 +5466,7 @@ static void p5_open(const bool from_wizard) {
 }
 
 // The correction surface at bed position (x, y); u and v are -1 / +1 at the corner squares (100 and 300 mm on a 400 mm bed).
-static float p5_model(const float x, const float y, const float * const t) {
+static float p5_model(const float x, const float y, const float * const t, const float limit = 0.3f) {
   // u, v are held at +-1 outside the corner squares: the bowl term would otherwise grow 7 times by the bed corners
   const float u = constrain((x - X_BED_SIZE * 0.5f) / (X_BED_SIZE * 0.25f), -1.0f, 1.0f),
               v = constrain((y - Y_BED_SIZE * 0.5f) / (Y_BED_SIZE * 0.25f), -1.0f, 1.0f);
@@ -5345,7 +5475,13 @@ static float p5_model(const float x, const float y, const float * const t) {
               b = (tbr + tfr - tbl - tfl) / 4.0f,          // tilt along X
               c = (tbl + tbr - tfl - tfr) / 4.0f,          // tilt along Y
               d = (tbr - tbl - tfr + tfl) / 4.0f;          // twist
-  return constrain(b * u + c * v + d * u * v + e * (u * u + v * v), -0.3f, 0.3f);
+  return constrain(b * u + c * v + d * u * v + e * (u * u + v * v), -limit, limit);
+}
+
+static float p5_saved_surface(const float x, const float y) {   // what the corrections saved so far (lcd_info.p5_cum) added to the mesh at (x, y)
+  float c[4];
+  for (uint8_t k = 0; k < 4; k++) c[k] = DgusTFT::lcd_info.p5_cum[k] / 100.0f;
+  return p5_model(x, y, c, 100.0f);   // (not limited: the sum of the sessions' surfaces, each of which was limited when it was applied)
 }
 
 static void p5_apply() {   // mesh = the mesh at page open + the correction surface
@@ -5454,7 +5590,7 @@ void DgusTFT::page119_handle(void) {
       if (p5_busy || p5_pt < 0) break;
       const float step = (key_value == 6 || key_value == 7) ? 0.1f : 0.01f;
       const bool plus = (key_value == 7 || key_value == 9);
-      if (plus ? (p5_h >= 3.0f) : (p5_h <= -1.5f)) break;
+      if (plus ? (p5_h >= 3.0f) : (p5_h - step < -0.5f)) break;   // (the readings that matter stay within +-0.3 mm: never lower than 0.5 mm under the mesh)
       const int16_t n = mmToWholeSteps(plus ? step : -step, Z);
       babystepAxis_steps(n, Z);
       p5_steps += n;
@@ -5463,7 +5599,10 @@ void DgusTFT::page119_handle(void) {
 
     case 10: // STORE THIS POINT: the reading is the mesh error at this corner
       if (p5_busy || p5_pt < 0) break;
-      p5_total[p5_pt] = p5_h;   // the reading is against the original mesh: it replaces the earlier value of this corner
+      // The reading is against the original mesh: it replaces the earlier value of this corner. The surface is limited to +-0.3 mm (p5_model) and RESET
+      // needs to know what was really applied: a bigger reading is cut to the limit and the page says so (a mesh that far off should be made again).
+      if (fabsf(p5_h) > 0.3f) p5_say(PSTR("Limit 0.30 mm: new mesh?"));
+      p5_total[p5_pt] = constrain(p5_h, -0.3f, 0.3f);
       p5_set[p5_pt] = true;
       p5_dirty = true;
       p5_undo();
@@ -5471,7 +5610,7 @@ void DgusTFT::page119_handle(void) {
       inject_after_P(PSTR("G1 Z5 F600"));   // lift
       p5_pt = -1;
       p5_h = 0;
-      p5_say(PSTR("Stored: tap a corner"));
+      if (!p5_msg[0] || millis() - p5_msg_ms > 100) p5_say(PSTR("Stored: tap a corner"));
       break;
 
     case 12: // SKIP SOAK
@@ -5488,7 +5627,7 @@ void DgusTFT::page119_handle(void) {
       p5_undo();
       for (uint8_t i = 0; i < GRID_MAX_POINTS_X; i++)
         for (uint8_t j = 0; j < GRID_MAX_POINTS_Y; j++) {
-          p5_orig[i][j] -= p5_model(bedlevel.get_mesh_x(i), bedlevel.get_mesh_y(j), cum);   // (the mesh as it was before the saved corrections)
+          p5_orig[i][j] -= p5_saved_surface(bedlevel.get_mesh_x(i), bedlevel.get_mesh_y(j));   // (the mesh as it was before the saved corrections)
           bedlevel.z_values[i][j] = p5_orig[i][j];
         }
       bedlevel.refresh_bed_level();
@@ -5530,7 +5669,7 @@ void DgusTFT::page119_handle(void) {
   if (p5_msg[0] && millis() - p5_msg_ms > 3000) p5_msg[0] = '\0';
   if (soak_note_active()) strlcpy(b, soak_note, sizeof(b));
   else if (!getLevelingIsValid()) strcpy_P(b, PSTR("Make the bed mesh first"));
-  else if (p5_stale) { const unsigned h = (unsigned)lroundf(sc_diff * 100.0f); snprintf_P(b, sizeof(b), PSTR("Mesh off by %u.%02u mm: redo"), h / 100, h % 100); }
+  else if (p5_stale) sc_fail_text(b, sizeof(b));
   else if (p5_msg[0]) strlcpy(b, p5_msg, sizeof(b));
   else if (sc_state == 1) strcpy_P(b, PSTR("Checking mesh vs bed..."));
   else if (p5_busy && p5_heat_wait && !commandsInQueue()) heat_status(b, sizeof(b));
@@ -5752,7 +5891,7 @@ void DgusTFT::printerStatsToTFT(void) {// MEL_MOD printer statistics
 	SendTxtToTFT(str_buf, TXT_STATS_PRINTS_LONGEST);// longest print
 
 	metresUsed = int32_t(stats.filamentUsed / 1000);
-	metresRemainder = int16_t(stats.filamentUsed / 100) % 10;// and the left over
+	metresRemainder = int32_t(stats.filamentUsed / 100) % 10;// and the left over
 
 	sprintf(str_buf, "Filament Used: %d.%dm",metresUsed , metresRemainder);
 	SendTxtToTFT(str_buf, TXT_STATS_PRINTS_FILAMENT);// filament used in M

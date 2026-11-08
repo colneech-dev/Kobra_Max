@@ -98,7 +98,10 @@ namespace ExtUI {
     // Example:
 //    static_assert(sizeof(Dgus.lcd_info) <= ExtUI::eeprom_data_size);
     memcpy(&Dgus.lcd_info, buff, sizeof(Dgus.lcd_info));
-    memcpy(&Dgus.lcd_info_back, buff, sizeof(Dgus.lcd_info_back));
+    // A byte that is no valid enum value (a block written by other firmware, bits flipped) would leave the page dispatch without a handler: a dead UI.
+    if (Dgus.lcd_info.language > ExtUI::CHS) Dgus.lcd_info.language = ExtUI::ENG;
+    if (Dgus.lcd_info.audio > ExtUI::OFF) Dgus.lcd_info.audio = ExtUI::ON;
+    memcpy(&Dgus.lcd_info_back, &Dgus.lcd_info, sizeof(Dgus.lcd_info_back));
   }
 
   void onPostprocessSettings() {
@@ -118,7 +121,7 @@ namespace ExtUI {
 
   #if HAS_LEVELING
     void onLevelingStart() {}
-    void onLevelingDone() {}
+    void onLevelingDone() { Dgus.LevelingDone(); }
   #endif
 
   #if HAS_MESH

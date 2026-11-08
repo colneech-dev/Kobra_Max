@@ -73,6 +73,7 @@
  */
 void GcodeSuite::M600() {
   activeFilamentChange = true;   // Kobra Max: show the filament-change page on the display
+  struct ClearActiveFilamentChange { ~ClearActiveFilamentChange() { activeFilamentChange = false; } } clear_active_filament_change;   // on every way out of M600
 
 
   #if ENABLED(MIXING_EXTRUDER)
