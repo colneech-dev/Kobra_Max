@@ -1,0 +1,19 @@
+{
+  "_comment": [
+    "Known-good content hashes of the PlatformIO packages the firmware is built with (HW-3 of docs/REVIEW_PLAN_2026-11-08.md).",
+    "tools/build_release.py hashes the installed packages (python tools/build_release.py --package-hashes prints them): a mismatch",
+    "stops the release, an entry whose sha256 is null only warns. The hash covers every file's path and contents except",
+    "PlatformIO's .piopm, __pycache__ and *.pyc. Fill in the sha256 of a PRISTINE install (e.g. delete the package folder and let",
+    "pio run reinstall it from the URL in platformio.ini) - NOT of a locally modified copy."
+  ],
+  "framework-arduino-hc32f46x": {
+    "version": "1.3.1",
+    "url": "https://github.com/shadow578/framework-arduino-hc32f46x/archive/1.3.1.zip",
+    "sha256": null
+  },
+  "framework-hc32f46x-ddl": {
+    "version": "2.2.2",
+    "url": "https://github.com/shadow578/framework-hc32f46x-ddl/archive/2.2.2.zip",
+    "sha256": null
+  }
+}
