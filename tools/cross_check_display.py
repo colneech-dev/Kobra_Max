@@ -162,7 +162,7 @@ def handler_for(page, idle_text):
     """Name of the handler IdleLoop runs for a device page, or None."""
     # Mirrors the explicit branches of DgusTFT::IdleLoop (keep in sync when they change).
     explicit = {117: '11', 170: '11', 171: '171',   # the Mute pages run the System page's handler
-                173: '173',
+                173: '171',   # the ENG outage page runs the CHS page's handler (the same keys)
                 175: '175', 176: '176', 213: '213', 93: '213', 214: '214', 215: '215',
                 216: '216', 217: '217', 187: '199_to_200', 188: '199_to_200',
                 208: '208', 210: '210', 174: '174', 172: '172', 119: '119'}
