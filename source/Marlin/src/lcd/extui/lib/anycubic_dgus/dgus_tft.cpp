@@ -1476,7 +1476,7 @@ void DgusTFT::HomingComplete() {
 
   // Z0 is only "just above the bed" with a bed mesh in memory (the mesh holds the bed height, the offset the gap): without one a print
   // starts about 4 mm too high. A host print (OctoPrint, USB) has no display warning, so say it on the serial port too.
-  if (!getLevelingIsValid()) SERIAL_ECHOLNPGM("Warning: no bed mesh - Z0 is NOT at the bed. Run AUTO BED LEVEL, then the Z offset.");
+  if (!getLevelingIsValid()) SERIAL_ECHOLNPGM("Warning: no bed mesh - Z0 is NOT at the bed. Run BED MESH, then the Z offset.");
 
   if (!isPrintingFromMedia()) {
     ChangePageOfTFT_DevicePage(page_index_last);
@@ -4922,7 +4922,7 @@ void DgusTFT::page208_handle(void) {
     }
     if (!good) {
       for (uint8_t i = 0; i < n * n; i++) SendTxtToTFT(" ", TXT_MESH_BASE + i * 8);
-      SendTxtToTFT(getLevelingIsValid() ? "No valid mesh points" : "No mesh: run AUTO BED LEVEL", TXT_MESH_INFO1);
+      SendTxtToTFT(getLevelingIsValid() ? "No valid mesh points" : "No mesh: run BED MESH", TXT_MESH_INFO1);
       SendTxtToTFT(" ", TXT_MESH_INFO2);
       return;
     }
