@@ -665,6 +665,10 @@ _CONTENT = [
     (uf.PAGE_LINADV, PAGE174),
     (uf.PAGE_WIZARD, PAGE172),
     (uf.PAGE_P5, PAGE119),
+    # Stock pages the firmware never shows, whose records name the font in slot 24 (shipped as 30_FontSong14X14.DZK, see
+    # ui_features.FLASH_RENAMES): emptied so no record anywhere points at a slot the picture library now occupies.
+    (120, []),            # ENG boot page (page 0 is the boot page in both languages)
+    (134, STATUS_BAR),    # ENG print history
 ]
 
 patches = [(pg, STATUS_BAR) for pg in _STATUS_ONLY] + _CONTENT
@@ -730,9 +734,9 @@ for page_num, (n, off) in updates.items():
     data[tbl:tbl+2]   = n.to_bytes(2, 'little')
     data[tbl+2:tbl+4] = off.to_bytes(2, 'big')
 
-# ── Extend count field 215 → 218 (page IDs 0..217) ────────────────────────────
+# ── Extend the count field to cover every patched page (215 -> 218 today: page IDs 0..217) ─────
 
-NEW_COUNT = 218
+NEW_COUNT = max(base_count, max(updates) + 1)
 data[8:10] = NEW_COUNT.to_bytes(2, 'big')
 
 # ── Write output ───────────────────────────────────────────────────────────────
@@ -761,7 +765,35 @@ for page_num, (n, expected_off) in sorted(updates.items()):
     if not ok:
         print(f"  [FAIL] Page {page_num:3d}: n={got_n} (exp {n}), off=0x{got_off:04X} (exp 0x{expected_off:04X})")
 
+ok_all = ok_all and got_count == NEW_COUNT
+
+# Records per page (TL-5). DWIN's guide gives 64 display records per page in the base mode; above that the last records
+# may not be drawn (the 9x9 mesh viewer has 85: test T7 of docs/REVIEW_PLAN_2026-11-08.md decides). Warn above 64,
+# refuse above 128.
+REC_WARN, REC_MAX = 64, 128
+# Records that name a flash slot the picture library now covers (16-28): the stock font (24) and icon library (23) were
+# moved to 30 / 29 (ui_features.FLASH_RENAMES), so a record still pointing at 23/24 reads picture data as a font/icons.
+LIB_SLOTS = range(16, 29)
+for pg in range(got_count):
+    n   = int.from_bytes(check[16 + pg * 4:18 + pg * 4], 'little')
+    off = int.from_bytes(check[18 + pg * 4:20 + pg * 4], 'big')
+    if n > REC_MAX:
+        print(f"  [FAIL] Page {pg}: {n} display records (limit {REC_MAX})")
+        ok_all = False
+    elif n > REC_WARN:
+        print(f"  [WARN] Page {pg}: {n} display records, above the guide's {REC_WARN} per page: check every record draws")
+    for j in range(n):
+        r = check[off + j * 32: off + j * 32 + 32]
+        # text 0x5A11: Font0_ID / Font1_ID at bytes 24 / 25; variable icon 0x5A00: ICON_Lib at 20; animation icon 0x5A01: at 24
+        libs = {b'\x5a\x11': (r[24], r[25]), b'\x5a\x00': (r[20],), b'\x5a\x01': (r[24],)}.get(bytes(r[0:2]), ())
+        bad = [x for x in libs if x in LIB_SLOTS]
+        if bad:
+            print(f"  [FAIL] Page {pg}: record type {r[0:2].hex()} VP 0x{int.from_bytes(r[6:8], 'big'):04X} names font/icon library {bad}, "
+                  "a slot inside the picture library (16-28)")
+            ok_all = False
+
 if ok_all:
     print(f"All {len(patches)} page checks OK")
 else:
     print("*** SOME CHECKS FAILED ***")
+    sys.exit(1)
