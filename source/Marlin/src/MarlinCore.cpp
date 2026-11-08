@@ -1267,6 +1267,8 @@ void setup() {
   #endif
 
   #if ENABLED(POWER_LOSS_RECOVERY)
+    // Kobra Max: keep this before thermalManager.init(). The outage sense pin PC2 is also the ADC voltage input
+    // (POWER_MONITOR_VOLTAGE_PIN): adc_enable() there must be the last to set its pin mode.
     SETUP_RUN(recovery.setup());
   #endif
 
@@ -1286,6 +1288,12 @@ void setup() {
   if (mcu & RST_BROWN_OUT) SERIAL_ECHOLNPGM(STR_BROWNOUT_RESET);
   if (mcu & RST_WATCHDOG)  SERIAL_ECHOLNPGM(STR_WATCHDOG_RESET);
   if (mcu & RST_SOFTWARE)  SERIAL_ECHOLNPGM(STR_SOFTWARE_RESET);
+  #ifdef ARDUINO_ARCH_HC32
+    // Kobra Max: the raw reset flags, for the "random restarts". Bits: 0 power-on, 1 reset pin, 2 brown-out, 3/4 PVD1/2,
+    // 5 watchdog, 6 special watchdog, 7 power-down, 8 software, 9 MPU, 10 RAM parity, 11 RAM ECC, 12 clock, 13 XTAL, 14 multiple
+    extern uint16_t hc32_reset_flags;
+    SERIAL_ECHOLNPGM(" Reset flags: ", hc32_reset_flags);
+  #endif
 
   // Identify myself as Marlin x.x.x
   SERIAL_ECHOLNPGM("Marlin " SHORT_BUILD_VERSION);

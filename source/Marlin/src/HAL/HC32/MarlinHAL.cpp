@@ -108,15 +108,21 @@ volatile pin_t MarlinHAL::last_adc_pin;
 MarlinHAL::MarlinHAL() {}
 
 void MarlinHAL::watchdog_init() {
-  // Target 8000ms → configure_wdt_counter selects count=65536/divider=8192 → ~21.5s actual.
-  // The only available timeouts at PCLK3=25MHz are ~5.4s and ~21.5s (integer truncation gap).
-  // 5.4s was too short: setup() after watchdog_init() + first idle() path takes ~5-6s total.
-  TERN_(USE_WATCHDOG, WDT.begin(8000));
+  // Kobra Max: PCLK3 = 12.5 MHz (sysclock.h) → count 65536 x divider 2048 → 10.7 s.
+  // At the old PCLK3 = 25 MHz only ~5.4 s or ~21.5 s were possible: 5.4 s was too short (setup() after watchdog_init()
+  // + the first idle() path take ~5-6 s), and 21.5 s left a hung main loop with the heaters as they were for too long.
+  // UNTESTED ON HARDWARE: check that the printer boots without a watchdog reset loop.
+  TERN_(USE_WATCHDOG, WDT.begin(10000));
 }
 
 void MarlinHAL::watchdog_refresh() {
   TERN_(USE_WATCHDOG, WDT.reload());
 }
+
+// Kobra Max: replaces the framework's weak yield(), which reloads the watchdog. The core's Usart::write() spins on
+// yield() while its TX buffer is full: with the TX interrupt masked that loop never ends, and the reload inside it kept
+// the watchdog from ever firing. Only Marlin's own watchdog_refresh() calls (temperature updates) feed it now.
+extern "C" void yield() {}
 
 void MarlinHAL::init() {
   NVIC_SetPriorityGrouping(0x3);
@@ -200,8 +206,11 @@ void MarlinHAL::idletask() {
   #endif
 }
 
+uint16_t hc32_reset_flags = 0;   // raw RMU_RSTF0 at boot, printed by setup() (the mapped causes below lose detail)
+
 uint8_t MarlinHAL::get_reset_source() {
   // Query reset cause from RMU
+  hc32_reset_flags = M4_SYSREG->RMU_RSTF0;
   stc_rmu_rstcause_t rstCause;
   RMU_GetResetCause(&rstCause);
 
@@ -271,18 +280,11 @@ void MarlinHAL::adc_enable(const pin_t pin) {
     }
   #endif
 
-  // Runtime guard, not just CORE_ASSERT: the assert is compiled out in release
-  // builds, and an out-of-range pin would index past enabled[] below.
-  if (pin < 0 || pin > 127) return;
+  // Runtime guard, not just CORE_ASSERT: the assert is compiled out in release builds.
+  if (!IS_GPIO_PIN(pin)) return;
 
-  // Only call pinMode once per pin — HAL_START_ADC fires at ~1 kHz per sensor,
-  // so without this guard it wastes thousands of redundant GPIO peripheral writes per second.
-  // Covers pins 0–127 (HC32F460: 8 ports × 16 pins = 128 max).
-  static uint64_t enabled[2] = { 0, 0 };
-  const uint8_t p = uint8_t(pin);
-  if (enabled[p >> 6] & (1ULL << (p & 63u))) return;
-  enabled[p >> 6] |= (1ULL << (p & 63u));
-
+  // Called once per sensor pin from thermalManager.init() (sampling uses adc_start), so no "already enabled" cache:
+  // a cache would keep a pin that something later switched to digital mode (SET_INPUT) from ever being restored.
   pinMode(pin, INPUT_ANALOG);
 }
 

@@ -53,7 +53,7 @@
 #define F_PCLK0 (F_HCLK / 2) // 100 MHz; Timer6 (unused)
 #define F_PCLK1 (F_HCLK / 4) //  50 MHz; USART, SPI, Timer0 (step + temp), TimerA (Servo)
 #define F_PCLK2 (F_HCLK / 8) //  25 MHz; ADC Sampling
-#define F_PCLK3 (F_HCLK / 8) //  25 MHz; I2C, WDT
+#define F_PCLK3 (F_HCLK / 16) // 12.5 MHz; I2C (unused), WDT. Kobra Max: /16 (was /8) gives a 10.7 s watchdog (see watchdog_init)
 #define F_PCLK4 (F_HCLK / 2) // 100 MHz; ADC Control
 
 // MPLL-P clock target frequency. This must be >= the highest peripheral clock frequency.

@@ -83,10 +83,15 @@ bool SDIO_Init() {
   dmaConf->enDmaCh = SDIO_DMA_CHANNEL;
 
   // Create card configuration
-  // This should be a fairly safe configuration for most cards
+  // Kobra Max: data transfers no longer at the 400 kHz identification clock (about 40x slower than the stock firmware's
+  // 16 MHz high speed: slow power-loss saves and dense SD prints). The card is identified at 400 kHz by the middleware,
+  // then switched to this clock. "20 MHz" in normal speed mode: the divider is a power of two of EXCLK (100 MHz), rounded
+  // down in frequency, so the card actually runs at 12.5 MHz, well inside the 25 MHz normal-speed limit of every SD card.
+  // *** UNTESTED ON HARDWARE: try several cards (print a large file, M20, power-loss save). If one fails, go back to
+  // SdiocClk400K here. ***
   stc_sdcard_init_t *cardConf = new stc_sdcard_init_t;
   cardConf->enBusWidth = SdiocBusWidth4Bit;
-  cardConf->enClkFreq = SdiocClk400K;
+  cardConf->enClkFreq = SdiocClk20M;
   cardConf->enSpeedMode = SdiocNormalSpeedMode;
   cardConf->pstcInitCfg = nullptr;
 
