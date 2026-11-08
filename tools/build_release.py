@@ -136,6 +136,17 @@ def packages_dir():
     return os.path.join(core, "packages")
 
 
+def package_path(name):
+    """The installed package folder. A package that platformio.ini pins by URL (the DDL 2.2.3 zip) is installed by PlatformIO as '<name>@src-<hash>'
+    beside the registry copy: that one is what the build uses, so check it when it exists."""
+    base = packages_dir()
+    if os.path.isdir(base):
+        for d in sorted(os.listdir(base)):
+            if d.startswith(name + "@src-") and os.path.isdir(os.path.join(base, d)):
+                return os.path.join(base, d)
+    return os.path.join(base, name)
+
+
 def package_hash(path):
     """SHA-256 over every file's relative path and contents (PlatformIO's .piopm, __pycache__ and *.pyc excluded)."""
     h = hashlib.sha256()
@@ -165,7 +176,7 @@ def check_packages():
     with open(PACKAGE_HASHES, encoding="utf-8") as f:
         expected = json.load(f)
     for name in PACKAGES:
-        path = os.path.join(packages_dir(), name)
+        path = package_path(name)
         want = expected.get(name) or {}
         if not os.path.isdir(path):
             print(f"  {name}: not installed yet (pio run installs it); checked after the build")
@@ -479,7 +490,7 @@ def main():
 
     if a.package_hashes:
         for name in PACKAGES:
-            path = os.path.join(packages_dir(), name)
+            path = package_path(name)
             if os.path.isdir(path):
                 h, n = package_hash(path)
                 print(f"{name} {package_version(path)}: {h}  ({n} files, {path})")
