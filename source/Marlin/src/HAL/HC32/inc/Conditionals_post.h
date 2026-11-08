@@ -28,6 +28,11 @@
   #define USE_SHARED_EEPROM 1
 #endif
 
+// Flash settings (eeprom/eeprom_flash_ab.cpp): size of the settings block; settings.cpp checks that SettingsData fits
+#if ENABLED(FLASH_EEPROM_EMULATION) && !defined(MARLIN_EEPROM_SIZE)
+  #define MARLIN_EEPROM_SIZE 0x1000 // 4KB
+#endif
+
 // Allow SD support to be disabled
 #if !HAS_MEDIA
   #undef ONBOARD_SDIO
