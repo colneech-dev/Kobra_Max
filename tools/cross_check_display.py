@@ -251,21 +251,47 @@ def check_vp_overlap():
             err(f"VP 0x{a:04X} (text length {longest[a] * 2}) runs into VP 0x{b:04X}")
 
 
+# What a release's DWIN_SET must hold, by shipped name -> repository source (None: a library built per release).
+RELEASE_FILES = {
+    "13TouchFile.bin": "13TouchFile.bin", "14ShowFile.bin": "14ShowFile.bin", "DWINOS.bin": "DWINOS.bin",
+    "T5LCFG.CFG": "T5LCFG.CFG", "0_DWIN_ASC.HZK": "0_DWIN_ASC.HZK",
+    **{shipped: src for src, shipped in uf.FLASH_RENAMES.items()},          # 29_ICO.icl, 30_FontSong14X14.DZK
+    "16_68_.icl": None, f"{uf.SPINNER_ICON_LIB}_SPIN.icl": "spinner_icons", f"{uf.STEP_ICON_LIB}_SEL.icl": "select_icons",
+}
+
+
 def check_release(rel):
-    """[10] A release package must hold exactly the repository's display files (the .icl libraries are built per release: check_icl.py;
-    the two About pictures carry the release name)."""
+    """[10] A release package must hold exactly the expected display files: the copied ones byte-identical to the repository,
+    the libraries built per release (16_68_ / SPIN / SEL) complete, with a valid CRC and exactly the expected picture IDs
+    (their pixels are checked by build_release.py with check_icl.py; the two About pictures carry the release name)."""
+    import check_icl as ci
     ds = rel / "DWIN_SET"
     if not ds.is_dir():
         err(f"{ds} not found")
         return
-    for f in sorted(ds.iterdir()):
-        if f.suffix.lower() == '.icl':
+    present = {f.name for f in ds.iterdir()}
+    for name in sorted(present - set(RELEASE_FILES)):
+        err(f"release DWIN_SET/{name} is not a file a release may ship")
+    for name in sorted(set(RELEASE_FILES) - present):
+        err(f"release DWIN_SET/{name} is missing")
+    for name in sorted(present & set(RELEASE_FILES)):
+        f, src = ds / name, RELEASE_FILES[name]
+        if not name.lower().endswith('.icl') or name in uf.FLASH_RENAMES.values():
+            if f.read_bytes() != (DWIN_SET / src).read_bytes():
+                err(f"release {name} differs from DWIN_SET/{src}")
             continue
-        src = DWIN_SET / f.name
-        if not src.exists():
-            warn(f"release file {f.name} is not in DWIN_SET")
-        elif f.read_bytes() != src.read_bytes():
-            err(f"release {f.name} differs from DWIN_SET/{f.name}")
+        raw = f.read_bytes()
+        if raw[:6] != b"DGUS_3" or ci.icl_crc(raw) != raw[6:8]:
+            err(f"release {name}: not a DGUS_3 library with a valid header CRC")
+            continue
+        ids = set(ci.read_icl(f))
+        folder = DWIN_SET / src if src else DWIN_SET
+        want = {int(p.stem) for p in folder.glob("*.bmp") if p.stem.isdigit() and (src or uf.in_library(int(p.stem)))}
+        if ids != want:
+            err(f"release {name}: picture IDs differ from {folder}: missing {sorted(want - ids)[:8]}, extra {sorted(ids - want)[:8]}")
+    _spans, problems = ci.flash_spans({f.name: f.stat().st_size for f in ds.iterdir()})
+    for p in problems:
+        err(f"release flash slots: {p}")
     art = rel / "ICL_SOURCE_BMPS"
     if art.is_dir():
         for f in sorted(art.glob('*.bmp')):
@@ -274,6 +300,67 @@ def check_release(rel):
             src = DWIN_SET / f.name
             if src.exists() and f.read_bytes() != src.read_bytes():
                 err(f"release ICL_SOURCE_BMPS/{f.name} differs from DWIN_SET/{f.name}")
+
+
+def check_handler_cases(handler_keys, handlers):
+    """[11] (TL-13) the reverse of [4]: a `case` in a page handler that no touch zone of the pages it serves can send. Usually a
+    removed button whose code was left behind (or a key reused later by mistake). Warning only: the firmware may also inject
+    key values itself."""
+    for h, keys in sorted(handler_keys.items()):
+        unused = handlers.get(h, set()) - keys
+        if unused:
+            warn(f"page{h}_handle: case {sorted(unused)} has no touch zone on its pages (dead code or a removed button)")
+
+
+def check_shared_constants(cpp, zones):
+    """[12] (TL-16) constants the tools and the firmware must share."""
+    m = re.search(r'#define\s+WZ_N\s+(\d+)', cpp)
+    if not m or int(m.group(1)) != uf.WZ_N:
+        err(f"WZ_N: dgus_tft.cpp {m.group(1) if m else 'missing'} != ui_features {uf.WZ_N}")
+    # wizard: firmware step order WZ_PROBE.. and "the touch key of a step is 2 + its number"; the art's labels in the same order
+    order = sorted((int(v), k) for k, v in re.findall(r'#define\s+WZ_(PROBE|MESH|OFFSET|POINTS|FIRST)\s+(\d+)', cpp))
+    words = {"PROBE": "PROBE CHECK", "MESH": "BED MESH", "OFFSET": "Z OFFSET", "POINTS": "5-POINT", "FIRST": "FIRST LAYER"}
+    labels = [lbl for lbl, _ico in gs.WZ_STEPS]
+    if [i for i, _k in order] != list(range(uf.WZ_N)) or len(labels) != uf.WZ_N:
+        err(f"wizard: firmware steps {order} / art labels {labels} do not cover 0..{uf.WZ_N - 1}")
+    else:
+        for i, k in order:
+            if words[k] not in labels[i]:
+                err(f"wizard step {i}: firmware WZ_{k} but the art says '{labels[i]}'")
+            zone = [z for z in zones.get(uf.PAGE_WIZARD, []) if tuple(z[:4]) == tuple(uf.WZ_BTN(i))]
+            if [z[4] for z in zone] != [2 + i]:
+                err(f"wizard step {i}: touch key {[z[4] for z in zone]} != 2 + step number ({2 + i})")
+    # touch records report to KEY_ADDRESS
+    m = re.search(r'#define\s+KEY_ADDRESS\s+(0x[0-9A-Fa-f]+)', Path("source/Marlin/src/lcd/extui/lib/anycubic_dgus/dgus_tft.h").read_text(
+        encoding='utf-8', errors='replace'))
+    if not m or int(m.group(1), 16) != gc.KEY_ADDRESS:
+        err(f"KEY_ADDRESS: dgus_tft.h {m.group(1) if m else 'missing'} != generate_dwin_controls 0x{gc.KEY_ADDRESS:04X}")
+
+
+def check_vp_windows(cpp):
+    """[13] (TL-16) a string the firmware sends to a text VP must fit before the next VP. The window of a VP is the distance to the next
+    TXT_* address in dgus_tft.h; the longest string is taken from the char buffer passed to SendTxtToTFT (its nearest declaration
+    before the call: up to N - 1 characters plus the 2-byte terminator the firmware appends). Heuristic: warnings only."""
+    hdr = Path("source/Marlin/src/lcd/extui/lib/anycubic_dgus/dgus_tft.h").read_text(encoding='utf-8', errors='replace')
+    vps = {}
+    for m in re.finditer(r'#define\s+(TXT_\w+)\s+(\(?[0-9a-fA-Fx+*() ]+\)?)\s*(?://.*)?$', hdr, re.M):
+        v = _eval_addr(m.group(2))
+        if v is not None:
+            vps[m.group(1)] = v
+    starts = sorted(set(vps.values()))
+    window = {a: (b - a) * 2 for a, b in zip(starts, starts[1:])}
+    for m in re.finditer(r'SendTxtToTFT\s*\(\s*(\w+)\s*,\s*(TXT_\w+)\s*(?:\+\s*[^)]*)?\)', cpp):
+        buf, vp = m.group(1), m.group(2)
+        decl = None
+        for d in re.finditer(r'\bchar\s+' + re.escape(buf) + r'\s*\[\s*(\d+)\s*\]', cpp[:m.start()]):
+            decl = d
+        if decl is None or vp not in vps or vps[vp] not in window:
+            continue
+        need = int(decl.group(1)) - 1 + 2
+        if need > window[vps[vp]]:
+            line = cpp.count('\n', 0, m.start()) + 1
+            warn(f"dgus_tft.cpp:{line} (after #if 0 removal): SendTxtToTFT({buf}[{decl.group(1)}], {vp}) can send {need} bytes but the "
+                 f"window to the next VP is {window[vps[vp]]}")
 
 
 def _eval_addr(expr):
@@ -318,6 +405,7 @@ def main():
     idle_text = cpp[idle.end():idle.end() + 6000] if idle else ''
 
     page_map = gs._build_page_map()
+    handler_keys = {}    # handler -> every key a touch zone of its pages can send
     for name in sorted(page_map):
         pg = int(name)
         REC.clear()
@@ -387,6 +475,7 @@ def main():
             elif h not in handlers:
                 err(f'p{pg}: handler page{h}_handle not found')
             else:
+                handler_keys.setdefault(h, set()).update(keys)
                 dead = keys - handlers[h]
                 if pg == uf.KEYBOARD_PAGE:   # the character keys (16..) are handled by the handler's default branch
                     dead -= set(range(uf.KB_KEY_BASE, uf.KB_KEY_BASE + len(uf.KB_CHARS)))
@@ -405,6 +494,9 @@ def main():
     check_press_effect(page_map)
     check_touch_file()
     check_vp_overlap()
+    check_handler_cases(handler_keys, handlers)
+    check_shared_constants(cpp, zones)
+    check_vp_windows(cpp)
     if '--release' in sys.argv:
         check_release(Path(sys.argv[sys.argv.index('--release') + 1]))
 
