@@ -1603,7 +1603,7 @@
 #define Z_CLEARANCE_MULTI_PROBE     3 // (mm) Z Clearance between multiple probes (was 5: the slower slow probe would cost more time on it)
 //#define Z_AFTER_PROBING           5 // (mm) Z position after probing is done
 
-#define Z_PROBE_LOW_POINT -10 // (mm) Farthest distance below the Z endstop plane the probe may go. Keep -10 until the real bed gap is known (see M420 V1 after a G29): -4 fails probing when the bed is more than 4 mm below the endstop
+#define Z_PROBE_LOW_POINT -4 // (mm) Farthest distance below the Z endstop plane the probe may go. Measured 2026-11-08 (menu-less G29, M206 Z0.52): the deepest node is 1.44 mm below the endstop plane, so -4 leaves 2.5 mm; probing fails (no crash) if the bed is ever more than 4 mm below it
 
 // Kobra Max: after every G29 the mesh is normalised: its mean height is taken out of the nodes and put into the Z home offset (M206 Z, saved by M500),
 // so the mesh holds the small deviations (+-0.3 mm) and Z0 is at the mean bed height even when leveling is off or the mesh is lost. The physical bed
