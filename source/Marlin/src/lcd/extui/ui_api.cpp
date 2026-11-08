@@ -723,7 +723,7 @@ namespace ExtUI {
     bool getFilamentRunoutEnabled()                 { return runout.enabled; }
     void setFilamentRunoutEnabled(const bool value) { runout.enabled = value; }
     bool getFilamentRunoutState()                   { return runout.filament_ran_out; }
-    uint8_t getFilamentRunoutOriginState()          { return runout.get_state_original(); }
+    uint8_t getFilamentRunoutOriginState()          { return !FIL_RUNOUT_STATE; }   // Anycubic: the pin level WITH filament (the display compares the pin with it)
     void setFilamentRunoutState(const bool value)   { runout.filament_ran_out = value; }
 
     #if HAS_FILAMENT_RUNOUT_DISTANCE
