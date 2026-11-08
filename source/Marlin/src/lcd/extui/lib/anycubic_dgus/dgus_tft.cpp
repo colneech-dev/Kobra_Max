@@ -761,8 +761,25 @@ void DgusTFT::ParamInit() {
 // leave a display packet half processed), if sound is switched on.
 static bool boot_tune_pending = false;
 
+// The bootloader flashes firmware.bin from the card in the front slot at every power-up and leaves the file there. When this firmware is
+// running with that card mounted, the file has been flashed (or was refused): rename it once so the next power-up does not flash it
+// again. Once per boot only: a card put in later may carry a file meant for the NEXT power-up.
+static void firmware_file_rename_once() {
+  static bool done = false;
+  if (done || !card.isMounted() || isPrinting() || isPrintingFromMedia() || millis() < 3000) return;
+  done = true;
+  MediaFile root = card.getroot(), file;
+  if (!file.open(&root, "firmware.bin", O_RDWR)) return;   // no such file: nothing to do
+  MediaFile old;
+  if (old.open(&root, "firmware.cur", O_RDWR)) old.remove();   // a rename onto an existing name fails: drop the previous one
+  if (file.rename(&root, "firmware.cur")) SERIAL_ECHO_MSG("firmware.bin renamed to firmware.cur");
+  else SERIAL_ECHO_MSG("firmware.bin could not be renamed");
+  file.close();
+}
+
 void DgusTFT::IdleLoop()  {
   hal.watchdog_refresh(); // prevent WDT fire during DGUS packet processing
+  firmware_file_rename_once();
   soak_track();
   if (bed_warm_until && !bed_warm()) {   // the window ran out: the bed goes off now (unless a print or a queued command holds it: the idle timeout catches that)
     bed_warm_until = 0;

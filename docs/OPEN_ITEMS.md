@@ -1,4 +1,4 @@
-# Open items (2026-11-03, after release_v50)
+# Open items (updated 2026-11-08, after release_v62)
 
 The full history of decisions and results is in `PLAN_REVIEW_2026-10-31.md`. This file is only what is still open.
 
@@ -85,3 +85,14 @@ Negative review of every page's buttons (touch zone vs drawn button vs handler: 
 Not changed: the wizard does not force the Z offset before the 5-point step (the 5-point maths assumes the centre reads 0.00 after the normal offset: do step 3 first).
 Test: Preheating page SKIP HEAT SOAK on a cold bed (the Terminal should stop printing "Heat soak"); the same on the Z page; BED MESH from the menu shows the confirm page;
 Filament LOAD then STOP mid-feed (the extruder should stop within a second); wizard order and that each step's status line sits under its own button.
+
+## v55-v62 (2026-11-06 to 2026-11-08, ALL UNTESTED on hardware unless noted; the user ran v59 on the printer)
+- v55: the mesh stale check and the outlier re-probe lift the nozzle (Z10) after every G30 (it dragged across the bed between nodes).
+- v56: 9x9 mesh (81 probes, about 45-60 min), final probe approach 90 mm/min, multi-probe clearance 3, mesh viewer 28 px cells at VP 0x3400, confirm page says 60 minutes. A grid-size change makes old saved settings reject (defaults): redo the mesh. Fade height stays 0 (refused on purpose).
+- v57: 5-point Z: a corner is measured against the mesh as it was when the page opened and STORE replaces its value (it stacked on the earlier one).
+- v58: the nozzle heats only for the last 4 minutes of the heat soak (G29, Z pages, 5-point, first layer test): LEVELING_NOZZLE_LEAD_SECONDS 240.
+- v59: K pattern test on the Linear Advance page (K TEST + SKIP SOAK): 11 lines, K 0.0-1.0 step 0.1 (or K +-0.10 step 0.02 when a K is entered); two wall lines on the first layer squares.
+- v60: the wizard lights the first step not done (orange overlay icon, library 34 ids 3-7); finished steps are remembered in the settings ("Done (saved earlier)"); a new mesh clears the 5-point and first layer steps; 5-POINT page RESET button removes every saved correction from the mesh (needs 34_SEL.icl: flash the display set).
+- v61: first layer squares: 5 % more flow, 0.18 mm layer, 2 mm retract + 3 mm wipe, mesh check probes in front of the centre (a hot nozzle touching the bed at the centre left a blob under the first square). Watch: gaps between rows closed? strings gone? nozzle clean (if it clogs, set Z to 0.19)?
+- v62: firmware.bin on the card in the front slot is renamed to firmware.cur once the new firmware has booted (once per boot, only with the card in at power-up), so the bootloader does not flash it again.
+- Not possible in firmware: a built-in CaliCat print (flash is 88 % full, about 25 KB left; the G-code is megabytes). A pre-sliced file for the SD card would work.
