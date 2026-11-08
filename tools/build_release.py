@@ -501,7 +501,10 @@ def main():
     if dirty and not a.allow_dirty:
         sys.exit("FAILED: uncommitted changes (a release must be traceable to a commit). Commit them, or pass --allow-dirty:\n  "
                  + "\n  ".join(dirty[:20]))
-    check_packages()
+    try:
+        check_packages()
+    except BuildError as e:
+        sys.exit(f"FAILED: {e}")
 
     if os.path.exists(tmp):
         shutil.rmtree(tmp)       # left over from a crashed run: it is ours (named <out>.tmp)
