@@ -530,6 +530,7 @@ def page_move():
         y += 54
 
     btn(draw, MARGIN, y, W - MARGIN, y + 40, "HOME ALL", style='primary', icon=0xf015)
+    vp_area(draw, MARGIN, 370, W - MARGIN, 394, '')   # "Not homed: tap HOME ALL" (TXT_WAIT_STATUS, page8_handle; patch_14showfile.py PAGE8)
     footer_1btn(draw, "BACK", style='ghost')
     return img
 
