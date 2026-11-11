@@ -386,7 +386,8 @@ def _step_records():
                                       icon_id=i, icon_lib=uf.STEP_ICON_LIB, show_when=1)
             for i, b in enumerate(uf.STEP_BUTTONS)]
 
-PAGE8 = STATUS_BAR + _step_records()
+# and a status line under HOME ALL (free band y 358-422): "Not homed: tap HOME ALL" (page8_handle). 25 characters.
+PAGE8 = STATUS_BAR + _step_records() + [make_text_record(TXT_WAIT_STATUS, 8, 370, 256, 24, cw=10, ch=20)]
 
 # 'Please wait' pages — homing 177/189, leveling 34/154, probe preheat 175/176, pausing 32/152,
 # stopping 23/143, probe test 201/204 (no status line). One entry per badge in ui_features.WAIT_BADGES:

@@ -2780,6 +2780,14 @@ void DgusTFT::page8_handle(void) {
   // homed: an axis that is not has a made-up position (the power-on 0), so +50 mm could run into the frame.
   const bool move_ok = !isMoving() && !ui_busy() && !ac_job_active();
 
+  // Say so when an axis is not homed (first boot, after the motors were switched off): the jog keys ignore it, and the page used to do nothing and say
+  // nothing. The text field goes blank when the display redraws the page, so it is re-sent twice a second.
+  static millis_t hint_ms = 0;
+  if (millis() - hint_ms > 500UL) {
+    hint_ms = millis();
+    SendTxtToTFT(isPositionKnown() ? " " : "Not homed: tap HOME ALL", TXT_WAIT_STATUS);
+  }
+
   if ((key_value == 2 || key_value == 4 ||
        key_value == 6 || key_value == 8 ||
        key_value == 10 || key_value == 12) && !isMoving()) {
