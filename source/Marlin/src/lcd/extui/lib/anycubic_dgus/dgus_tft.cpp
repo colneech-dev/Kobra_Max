@@ -3471,7 +3471,10 @@ void DgusTFT::page17_handle(void)
         z_off = getZOffset_mm();
 
         if (plus ? (z_off >= 5) : (z_off <= -5)) return;
-        if (!plus && !isPrinting() && z_nozzle_height() - step < -0.3f) return;   // the nozzle is at the bed already (babysteps ignore the probe): at most 0.3 mm further, never into the glass
+        // The nozzle is at the bed already (babysteps ignore the probe), so the stop is a safety limit. It was -0.3; the paper test then failed at -0.29 with the nozzle still
+        // above the paper (2026-11-12: the probe reads the sheet deflecting under its trigger force, so the nozzle sits above the true surface by that much).
+        // -1.0 mm (the 0.005 keeps the float rounding of 0.1 steps from stopping one step early); the user lowers with paper in hand, one step at a time.
+        if (!plus && !isPrinting() && z_nozzle_height() - step < -1.005f) return;
         if (!z_change) z_orig = z_off;
 
         // Move the nozzle now (babystep) and record the same change in the stored offset.
