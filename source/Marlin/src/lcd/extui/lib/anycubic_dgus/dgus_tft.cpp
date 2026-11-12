@@ -486,9 +486,11 @@ static void ol_poll() {   // from wizard_background (IdleLoop)
     sc_listen = false;
     if (sc_got) {
       const xy_uint8_t nd = ol_nodes[ol_i];
-      const float old = getMeshPoint(nd);
+      // G30 reports the height as Z reads it; a node is a deviation from the mean that G29 keeps in the Z home offset (mesh_ref_z()), the same frame
+      // stale_gate() uses. Comparing the two raw replaced a good node with a value one home offset (0.65 mm) off (2026-11-12 log).
+      const float old = getMeshPoint(nd) - mesh_ref_z();
       SERIAL_ECHO_MSG("Mesh check: node ", nd.x, ",", nd.y, " probed again ", old, " -> ", sc_value);
-      if (fabsf(sc_value - old) > OL_SAME) { setMeshPoint(nd, sc_value); ol_fixed++; }
+      if (fabsf(sc_value - old) > OL_SAME) { setMeshPoint(nd, sc_value + mesh_ref_z()); ol_fixed++; }
     }
     ol_i++;
   }
