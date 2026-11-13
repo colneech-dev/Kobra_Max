@@ -49,6 +49,7 @@ namespace Anycubic {
       bool   enterFolder();   // open the folder that filelist was last seek()ed to (false: too deep or a print is running)
       bool   leaveFolder();   // go up one folder (false: already at the root or a print is running)
       bool   atRoot() { return folderdepth == 0; }
+      void   sendPath();   // title bar: "FILE BROWSER" at the root, else "/A/B" (the end of it when too long)
       char * getCurrentFolderName();
       uint16_t getFileNum();
 
@@ -57,6 +58,7 @@ namespace Anycubic {
       static char      currentfoldername[MAX_PATH_LEN];
       static uint16_t  lastindex;
       static uint8_t   folderdepth;
+      static char      foldernames[MAX_FOLDER_DEPTH][16];   // long names of the open folders (cut to 15 characters)
       static uint16_t  currentindex;
       static uint8_t   sel_row;      // 1-5 = row with the '> ' marker, 0 = none
       static uint8_t   scroll_off;   // first visible character of the selected name

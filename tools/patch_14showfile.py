@@ -191,6 +191,8 @@ TXT_FILE_2 = 0x2000 + 5 * 0x30   # 0x20F0
 TXT_FILE_3 = 0x2000 + 6 * 0x30   # 0x2120
 TXT_FILE_4 = 0x2000 + 7 * 0x30   # 0x2150
 
+TXT_FILE_PATH = 0x2E00   # title bar of the file browser: "FILE BROWSER" or the folder path (dgus_tft.h)
+
 # Print status (pages 3/4)
 TXT_PRINT_NAME     = 0x2000 + 8  * 0x30   # 0x2180 — also TXT_OUTAGE_RECOVERY_FILE
 TXT_PRINT_SPEED    = 0x2000 + 9  * 0x30   # 0x21B0
@@ -325,6 +327,7 @@ STATUS_BAR = [
 # page_file_browser(): ROW_H=54; row i: y1=CONTENT_Y1+i*54=92+i*54, y2=y1+52
 # VP: (MARGIN+28=36, y1+8, W-MARGIN=264, y2-8) → w=228, h=36
 PAGE2 = STATUS_BAR + [
+    make_text_record(TXT_FILE_PATH, 8, 60, 212, 26, color=0xFB46, cw=10, ch=20),   # title bar, orange like the other titles (21 characters)
     # 10x20 characters: 22 per row (dgus_FileNavigator.cpp ROW_CHARS); +8 px puts them mid-row
     make_text_record(TXT_FILE_0, 36, 108, 228, 20, cw=10, ch=20),   # row 0: y1=92
     make_text_record(TXT_FILE_1, 36, 162, 228, 20, cw=10, ch=20),   # row 1: y1=146

@@ -186,6 +186,7 @@
 
 // FILE TXT
 
+#define TXT_FILE_PATH       0x2E00   // file browser title bar: "FILE BROWSER" at the root, else the folder path
 #define TXT_FILE_0          (0x2000+3*0x30)
 #define TXT_DISCRIBE_0      0x5000         //DISCRIBE ADDRESS
 #define TXT_FILE_1          (0x2000+4*0x30)

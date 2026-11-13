@@ -346,7 +346,8 @@ def page_main():
 def page_file_browser():
     img, draw = new_page()
     status_bar(draw)
-    title_bar(draw, "FILE BROWSER")
+    title_bar(draw, "")   # the firmware writes the title (TXT_FILE_PATH): "FILE BROWSER" or the folder path
+    vp_area(draw, 8, 60, W - 44 - 4, 86, visible=False)
     btn(draw, W - 44, STATUS_Y2 + 4, W - MARGIN, TITLE_Y2 - 4, chr(0xf2f1), style='ghost', fnt=_fa(15))
 
     ROW_H = 54
