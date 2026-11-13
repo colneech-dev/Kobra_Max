@@ -70,7 +70,7 @@ jobs:
         with:
           python-version: "3.14"
       - run: python -m pip install platformio -r tools/requirements.txt
-      - name: pio run (retried: the first attempt often fails with a SCons FortranCommon error)
+      - name: "pio run (retried, the first attempt often fails with a SCons FortranCommon error)"
         run: pio run || pio run || pio run
       - name: Framework package hashes (HW-3)
         run: python tools/build_release.py --package-hashes
