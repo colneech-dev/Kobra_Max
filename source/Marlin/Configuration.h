@@ -1512,10 +1512,11 @@
  *     O-- FRONT --+
  */
 // Kobra Max: the nozzle is the probe, so X and Y are 0. Z is the Z offset (M851 Z; the Z-offset page sets it), which also shifts Z0 at
-// every home (motion.cpp). 1.9 is the value found with the glass plate and metal sheet (paper test, hot): the strain gauge triggers
-// about 1.8 mm "late" and the paper gap is 0.1. A fresh install or a cleared SD card therefore starts with Z0 near the paper.
-// Without the glass plate it was 2.36. Redo the Z-offset page whenever the bed surface changes.
-#define NOZZLE_TO_PROBE_OFFSET { 0, 0, 1.9 }
+// every home (motion.cpp). Default 1.0 (2026-11-13): a starting value that leaves the nozzle ABOVE the paper on a bed that triggers early
+// (the paper test saved 0.11 after the bed was stiffened); earlier measurements were 1.74 (PEI sheet), 1.9 (glass plate + sheet), 2.36 (no glass).
+// A fresh install or a factory reset starts with Z0 about 1 mm above the paper at most, never into the bed. Redo the Z-offset page whenever
+// the bed surface changes.
+#define NOZZLE_TO_PROBE_OFFSET { 0, 0, 1.0 }
 
 // Most probes should stay away from the edges of the bed, but
 // with NOZZLE_AS_PROBE this can be negative for a wider probing area.
@@ -1617,7 +1618,7 @@
 // For M851 give a range for adjusting the Z probe offset
 // Kobra Max: -6..6 covers the display's Z pages: they stop at +-5 and pass through negative offsets while the nozzle is lowered to the
 // paper (the start height is added at SAVE). M851 itself takes only 0..4 (Z_PROBE_OFFSET_M851_MIN/MAX): the offset shifts Z0 at
-// every home, so a mistyped "M851 Z-3" is a ~5 mm crash into the bed. Default 1.9, measured offsets were about 1.5 to 2.5.
+// every home, so a mistyped "M851 Z-3" is a ~5 mm crash into the bed. Default 1.0; measured offsets were 0.1 to 2.5 depending on how stiff the bed was.
 #define Z_PROBE_OFFSET_RANGE_MIN -6
 #define Z_PROBE_OFFSET_RANGE_MAX 6
 #define Z_PROBE_OFFSET_M851_MIN 0
