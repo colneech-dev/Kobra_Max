@@ -462,6 +462,28 @@ static void ol_scan() {
     }
 }
 
+// PAGE CHANGE CONFIRMATION. A page change is one 10-byte frame with no answer; a frame the display drops leaves the "Probing 0/81" screen up for good
+// (seen on hardware 2026-11-12 after the outlier re-probes, cause not found). After the page change that ends a mesh run the display is asked which page
+// it shows (register 0x0014, the same one the boot sync reads: the reply is 0x01 in the third byte and the page in the low word) up to 4 times, 1.5 s
+// apart, and the frame is sent again when it shows another page. Stops as soon as the page matches or the user went elsewhere.
+static uint32_t pc_want = 0;       // device page the display should show (page_index_now right after the change)
+static uint8_t  pc_tries = 0;
+static millis_t pc_ms = 0;
+static void page_confirm_arm() { pc_want = DgusTFT::page_index_now; pc_tries = 4; pc_ms = millis() + 1500; }
+static void page_confirm_poll() {   // from wizard_background (IdleLoop)
+  if (!pc_tries || PENDING(millis(), pc_ms)) return;
+  if (DgusTFT::page_index_now != pc_want) { pc_tries = 0; return; }   // the firmware moved on by itself
+  pc_ms = millis() + 1500;
+  pc_tries--;
+  DgusTFT::RequestValueFromTFT(REG_LCD_READY);
+}
+static void page_confirm_reply(const uint32_t page) {   // the display says it shows `page`
+  if (!pc_tries || page == pc_want) { if (page == pc_want) pc_tries = 0; return; }
+  const uint8_t f[10] = { 0x5A, 0xA5, 0x07, 0x82, 0x00, 0x84, 0x5A, 0x01, (uint8_t)(pc_want >> 8), (uint8_t)(pc_want & 0xFF) };
+  for (uint8_t i = 0; i < sizeof(f); i++) TFTSer.write(f[i]);
+  SERIAL_ECHO_MSG("Display showed page ", page, ", page change sent again (page ", pc_want, ")");
+}
+
 // What follows a finished mesh: save it and tidy up (the AUTO Z OFFSET flow goes on with its probe test).
 static void mesh_finish() {
   if (az_stage == AZ_MESH) {
@@ -477,6 +499,7 @@ static void mesh_finish() {
     else strcpy_P(wz_msg[WZ_MESH], PSTR("Mesh saved"));
   }
   DgusTFT::ChangePageOfTFT(wz_back(PAGE_PreLEVEL));   // wait pages 34/154 have no touch zones: must leave them explicitly
+  page_confirm_arm();
 }
 
 static void ol_poll() {   // from wizard_background (IdleLoop)
@@ -1856,10 +1879,11 @@ void DgusTFT::WaitStatus() {
     sprintf(buf, "Homing%s", dots[phase]);   // no positions: Marlin only updates them when a homing move ends, so they never moved
   else if (leveling) {
     const unsigned total = GRID_MAX_POINTS_X * GRID_MAX_POINTS_Y;
-    sprintf(buf, "Probing %u/%u%s", (unsigned)probe_cnt, total, dots[phase]);
+    if (ol_run) sprintf(buf, "Re-checking %u/%u%s", (unsigned)_MIN(ol_i + 1, ol_n), (unsigned)ol_n, dots[phase]);   // the outlier re-probes: probe_cnt is back at 0 by now
+    else        sprintf(buf, "Probing %u/%u%s", (unsigned)probe_cnt, total, dots[phase]);
     char sfx[12];
     sprintf(sfx, " %u/%u", (unsigned)probe_cnt, total);
-    send_progress_bar(TXT_WAIT_BAR, constrain(probe_cnt * 100U / total, 0U, 100U), 24, sfx);   // Leveling page: [####....] 44/49
+    send_progress_bar(TXT_WAIT_BAR, ol_run ? 100U : constrain(probe_cnt * 100U / total, 0U, 100U), 24, ol_run ? "" : sfx);   // Leveling page: [####....] 44/49
   }
   else if (preheat) {
     if (soak_note_active()) strlcpy(buf, soak_note, sizeof(buf));
@@ -2055,6 +2079,7 @@ void DgusTFT::ProcessPanelRequest() {
         *p_u8 = data_buf[4];
         p_u8++;
         *p_u8 = data_buf[3];
+        if (lcd_boot_synced && (control_value >> 16 & 0xFF) == 0x01) page_confirm_reply(control_value & 0xFFFF);   // the answer to page_confirm_poll()
         if ((control_value & 0x00FFFFFF) == (0x010000UL | BOOT_ANIM_LAST_FRAME) ||
             (control_value & 0x00FFFFFF) == (0x010000UL | BOOT_ANIM_STOCK_LAST)) { // startup last gif
           // Only "animation finished" ends IdleLoop's boot-sync poll. Stopping on the first reply
@@ -3472,9 +3497,9 @@ void DgusTFT::page17_handle(void)
 
         if (plus ? (z_off >= 5) : (z_off <= -5)) return;
         // The nozzle is at the bed already (babysteps ignore the probe), so the stop is a safety limit. It was -0.3; the paper test then failed at -0.29 with the nozzle still
-        // above the paper (2026-11-12: the probe reads the sheet deflecting under its trigger force, so the nozzle sits above the true surface by that much).
-        // -1.0 mm (the 0.005 keeps the float rounding of 0.1 steps from stopping one step early); the user lowers with paper in hand, one step at a time.
-        if (!plus && !isPrinting() && z_nozzle_height() - step < -1.005f) return;
+        // above the paper (2026-11-12), and with -1.0 it took two runs (the bed had stiffened: the offset went from 1.74 to 0.11, 1.63 mm in all).
+        // -2.5 mm (the 0.005 keeps the float rounding of 0.1 steps from stopping one step early); the user lowers with paper in hand, one step at a time.
+        if (!plus && !isPrinting() && z_nozzle_height() - step < -2.505f) return;
         if (!z_change) z_orig = z_off;
 
         // Move the nozzle now (babystep) and record the same change in the stored offset.
@@ -5038,6 +5063,24 @@ static void fl_poll() {
   }
 }
 
+// TRACE of the Z offset (M851 Z) and the home offset (M206 Z, which the mesh keeps its mean in). The probe offset was seen at 1.74, then 1.90, then 0.11 between
+// sessions with no cause found; the lines say when and what changed it. Printed once after boot and whenever a value has stayed the same for 2 s
+// (a run of babysteps on the Z page is one line, not one per tap).
+static void zoffset_trace() {
+  static float last_o = NAN, last_h = NAN, seen_o = NAN, seen_h = NAN;
+  static millis_t stable_ms = 0;
+  const float o = getZOffset_mm(), h = mesh_ref_z();   // (h = M206 Z)
+  if (o != seen_o || h != seen_h) { seen_o = o; seen_h = h; stable_ms = millis(); return; }
+  if (millis() - stable_ms < 2000 || (o == last_o && h == last_h)) return;
+  char a[12], b[12], c[12], d[12];   // (ftostr() has one buffer: not twice in one line)
+  fmt_mm(a, sizeof(a), o);
+  fmt_mm(b, sizeof(b), isnan(last_o) ? 0.0f : last_o);
+  fmt_mm(c, sizeof(c), h);
+  fmt_mm(d, sizeof(d), isnan(last_h) ? 0.0f : last_h);
+  SERIAL_ECHO_MSG("Z offset: M851 Z", a, " (was ", isnan(last_o) ? "-" : b, "), M206 Z", c, " (was ", isnan(last_h) ? "-" : d, ")");
+  last_o = o; last_h = h;
+}
+
 // Runs from IdleLoop whatever page is on screen: a multi-step job must not be stranded by a page change (a pop-up, a runout).
 static void wizard_background() {
   if (fl_stage != FL_IDLE && isPrintingFromMedia()) fl_abort = true;   // a real print started: stop the test
@@ -5056,9 +5099,14 @@ static void wizard_background() {
   ol_poll();
   fl_poll();
   es_poll();
+  page_confirm_poll();
+  zoffset_trace();
 
-  // a finished step is kept with the settings (the flows that do not save anyway leave this to the idle loop)
-  if (wz_save_pending && !isPrinting() && !isPrintingFromMedia() && fl_stage == FL_IDLE && !az_check_only && !ui_busy()) {
+  // a finished step is kept with the settings (the flows that do not save anyway leave this to the idle loop). Never while the Z offset page or the
+  // 5-point page is open: the Z page changes the stored offset with every tap (babystep) and an M500 then would keep a half-lowered value.
+  const uint32_t pg_now = DgusTFT::page_index_now;
+  const bool z_pages_open = pg_now == PAGE_LEVEL_ADVANCE || pg_now == PAGE_LEVEL_ADVANCE + 120 || pg_now == PAGE_P5;
+  if (wz_save_pending && !z_pages_open && !isPrinting() && !isPrintingFromMedia() && fl_stage == FL_IDLE && !az_check_only && !ui_busy()) {
     wz_save_pending = false;
     inject_after_P(getLevelingIsValid() ? PSTR("M420 S1 Z0\nM500") : PSTR("M500"));   // (G30 / M48 leave the mesh switched off)
   }
