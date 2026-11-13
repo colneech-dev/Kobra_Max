@@ -46,6 +46,9 @@ namespace Anycubic {
       void   sendRows(uint8_t selected = 0);   // (re)send the 5 visible rows; row 1-5 'selected' gets a '> ' marker
       void   scrollSelected();   // call often: scrolls the selected row's name when it is too long to fit
       void   refresh();
+      bool   enterFolder();   // open the folder that filelist was last seek()ed to (false: too deep or a print is running)
+      bool   leaveFolder();   // go up one folder (false: already at the root or a print is running)
+      bool   atRoot() { return folderdepth == 0; }
       char * getCurrentFolderName();
       uint16_t getFileNum();
 

@@ -2203,6 +2203,14 @@ void DgusTFT::page1_handle(void) {
   flash_time = millis();
 }
 
+// After the file browser changed folder: back to the first page, nothing selected, list the new folder.
+void DgusTFT::open_folder_done() {
+  if (lcd_txtbox_index) SendColorToTFT(COLOUR_WHITE, TXT_DISCRIBE_0 + 0x30 * (lcd_txtbox_index - 1));
+  lcd_txtbox_index = 0;
+  lcd_txtbox_page  = 0;
+  SendFileList(0);
+}
+
 void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
 
   uint16_t file_index = 0;   // (a char wrapped at 256 files)
@@ -2235,8 +2243,9 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
     case 0:
       break;
 
-    case 1: // return
+    case 1: // return (inside a folder: up one folder first)
       {
+        if (filenavigator.leaveFolder()) { open_folder_done(); break; }
         ChangePageOfTFT(PAGE_MAIN);
         if (lcd_txtbox_index) SendColorToTFT(COLOUR_WHITE, TXT_DISCRIBE_0 + 0x30 * (lcd_txtbox_index - 1));
       }
@@ -2307,9 +2316,9 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
 
         if (filenavigator.filelist.seek(lcd_txtbox_page * 5 + (lcd_txtbox_index - 1))) {
 
-          if (filenavigator.filelist.isDir()) {   // folders are listed but cannot be opened here: M23 / M24 on a folder "finishes" at once
-            nolevel_warn_ms = millis() | 1;
-            SendTxtToTFT("THAT IS A FOLDER", TXT_FILE_0 + 0x30 * (lcd_txtbox_index - 1));
+          if (filenavigator.filelist.isDir()) {   // a folder cannot be printed: open it (M23 / M24 on a folder "finishes" at once)
+            if (filenavigator.enterFolder()) open_folder_done();
+            else { nolevel_warn_ms = millis() | 1; SendTxtToTFT("THAT IS A FOLDER", TXT_FILE_0 + 0x30 * (lcd_txtbox_index - 1)); }
             break;
           }
 
@@ -2383,6 +2392,8 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
         // lcd_txtbox_index 1~5
         file_index = lcd_txtbox_page * 5 + (lcd_txtbox_index - 1);
         if (file_index < filenavigator.getFileNum()) {
+
+          if (filenavigator.filelist.seek(file_index) && filenavigator.filelist.isDir() && filenavigator.enterFolder()) { open_folder_done(); break; }   // a tap on a folder opens it
 
           SendColorToTFT(COLOR_RED, TXT_DISCRIBE_0 + 0x30 * (lcd_txtbox_index - 1));
           filenavigator.sendRows(lcd_txtbox_index);   // mark the tapped row with '> '

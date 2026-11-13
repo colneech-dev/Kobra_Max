@@ -585,6 +585,7 @@ namespace Anycubic {
       void SendtoTFTLN(PGM_P);
       bool ReadTFTCommand();
       static void SendFileList(int8_t);
+      static void open_folder_done();
       void ProcessPanelRequest();
       void PanelInfo(uint8_t);
       void PanelAction(uint8_t);
