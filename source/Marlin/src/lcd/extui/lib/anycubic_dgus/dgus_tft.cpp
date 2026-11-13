@@ -2214,6 +2214,21 @@ void DgusTFT::page2_handle(void) {// FILE LISTING and SELECTION
     filenavigator.sendRows(lcd_txtbox_index);   // put the file names back
   }
 
+  // The display drops text that is written right after a page change (the file names sent by the key handlers that open this page, 2026-11-13: two rows of
+  // five were blank with files on the card). Send the rows again 0.7 s and 1.7 s after the page comes up; a tap in between sends its own rows.
+  {
+    static uint8_t  resends = 0;
+    static millis_t resend_ms = 0, last_run = 0;
+    if (millis() - last_run > 1500) { resends = 2; resend_ms = millis() + 700; }   // this handler only runs while the page is shown: a gap means a new visit
+    last_run = millis();
+    if (key_value) resends = 0;
+    else if (resends && !nolevel_warn_ms && !PENDING(millis(), resend_ms)) {
+      filenavigator.sendRows(lcd_txtbox_index);
+      resends--;
+      resend_ms = millis() + 1000;
+    }
+  }
+
   if (!nolevel_warn_ms) filenavigator.scrollSelected();   // marquee for a selected name that does not fit
 
   switch (key_value) {
