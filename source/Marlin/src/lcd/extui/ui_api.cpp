@@ -1204,7 +1204,9 @@ namespace ExtUI {
   }
 
   const char* FileList::longFilename() {
-    return TERN(HAS_MEDIA, card.longFilename, "");
+    // Kobra Max: a file or folder created without a long name (an upper-case 8.3 name such as MODELS) has an EMPTY card.longFilename: the DGUS file
+    // browser showed a blank row for it (2026-11-13). longest_filename() falls back to the short name.
+    return TERN(HAS_MEDIA, card.longest_filename(), "");
   }
 
   bool FileList::isDir() {

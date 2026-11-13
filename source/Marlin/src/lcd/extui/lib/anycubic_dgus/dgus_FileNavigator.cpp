@@ -110,7 +110,9 @@ namespace Anycubic {
     scroll_ms = millis();
     for (uint16_t _seek = currentindex; _seek < currentindex + files; _seek++) {
       if (filelist.seek(_seek)) {
-        const char * const lfn = filelist.longFilename();
+        char dirname[MAX_PATH_LEN + 2];
+        const char * lfn = filelist.longFilename();
+        if (filelist.isDir()) { snprintf(dirname, sizeof(dirname), "/%s", lfn); lfn = dirname; }   // a folder shows with a leading "/" (PRINT on it says so)
         const bool sel = selected && selected == file_num + 1;
         const uint8_t room = sel ? ROW_CHARS - 2 : ROW_CHARS;   // the marker takes two characters
         if (strlen(lfn) <= room)
@@ -129,7 +131,9 @@ namespace Anycubic {
     if (!sel_row || millis() - scroll_ms < 350) return;
     scroll_ms = millis();
     if (!filelist.seek(currentindex + sel_row - 1)) return;
-    const char * const lfn = filelist.longFilename();
+    char dirname[MAX_PATH_LEN + 2];
+    const char * lfn = filelist.longFilename();
+    if (filelist.isDir()) { snprintf(dirname, sizeof(dirname), "/%s", lfn); lfn = dirname; }
     const uint8_t room = ROW_CHARS - 2, len = strlen(lfn);
     if (len <= room) return;
     if (scroll_hold) { scroll_hold--; return; }           // pause at the start and at the end
