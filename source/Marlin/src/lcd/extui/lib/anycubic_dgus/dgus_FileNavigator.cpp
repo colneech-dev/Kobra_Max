@@ -75,7 +75,6 @@ namespace Anycubic {
 
   // Folders. The working folder of the card is changed (card.cd), so M23 and the power-loss file name see the right path.
   // Not while a print runs: the job's folder must stay the working folder.
-  static constexpr uint8_t MAX_FOLDER_DEPTH = 6;
 
   bool FileNavigator::enterFolder() {
     if (isPrintingFromMedia() || folderdepth >= MAX_FOLDER_DEPTH || !filelist.isDir()) return false;
