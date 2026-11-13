@@ -109,6 +109,9 @@ static bool write_sector(const uint32_t sector, const uint32_t seq) {
   const uint32_t crc = copy_crc(true, seq, MARLIN_EEPROM_SIZE, (const uint8_t*)HAL_eeprom_data);
   bool error = false;
 
+  // The CPU stalls for tens of ms below: bytes still queued for the host would be cut short or the next received ones lost (2026-11-13 review).
+  SERIAL_FLUSHTX();
+
   EFM_Unlock();
   EFM_FlashCmd(Enable);
   while (Set != EFM_GetFlagStatus(EFM_FLAG_RDY)) { }

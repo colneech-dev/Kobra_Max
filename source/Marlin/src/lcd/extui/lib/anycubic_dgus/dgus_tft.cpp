@@ -3213,7 +3213,7 @@ void DgusTFT::page15_handle(void)
       break;
 
     case 5: // COOL DOWN — both heaters off. (Was SHAPING; M593 input shaping does not exist in
-            // Marlin 2.0.8, so the button and its page 6 are hidden — see tools/ui_features.py.)
+            // Marlin 2.1.2.9, so the button and its page 6 are hidden — see tools/ui_features.py.)
       heaters_off_when_idle();   // not during a print
       break;
 
@@ -4446,7 +4446,7 @@ void DgusTFT::page213_handle(void) {// MEL_MOD to display printer stats (213 ENG
 // Page 214 — Thumbnail / print preview. Not currently reachable: nothing
 // navigates here yet (would need the file browser's per-file tap handler to
 // carry the selected filename across the page change, which it doesn't).
-// The actual thumbnail IMAGE also has no backend — this Marlin 2.0.8 build
+// The actual thumbnail IMAGE also has no backend — this Marlin 2.1.2.9 build
 // has no G-code thumbnail parsing at all. Left as a safe, minimal stub so
 // that if a future entry point is added, BACK at least works.
 void DgusTFT::page214_handle(void) {
@@ -4515,7 +4515,7 @@ void DgusTFT::page215_handle(void) {
   term_log_send();
 }
 
-// Page 216 — Thermal Tuning. This Marlin 2.0.8 build has no MPC (M306), so both buttons run PID
+// Page 216 — Thermal Tuning. This Marlin 2.1.2.9 build has no MPC (M306), so both buttons run PID
 // autotune (M303) and save the result with M500, which is what the screen says. The tune runs for
 // minutes inside one G-code command: refuse while printing or while any command is still queued,
 // so a second press cannot stack another tune behind the first.
