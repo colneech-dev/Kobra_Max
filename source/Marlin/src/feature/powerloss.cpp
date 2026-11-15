@@ -126,6 +126,7 @@ bool PrintJobRecovery::check() {
   if (card.isMounted()) {
     load();
     success = valid();
+    if (success) SERIAL_ECHO_MSG("Power-loss data found, saved by: ", info.save_source == 1 ? "layer change" : (info.save_source == 2 ? "outage (power-loss sensor)" : (info.save_source == 3 ? "pause / forced" : "unknown")));
     if (!success) {
       // Kobra Max: say why (a rejected file used to vanish without a trace)
       if (info.valid_head || info.valid_foot) SERIAL_ECHO_MSG("Power-loss data rejected: ", info.valid() ? "the file being printed was not found" : "the saved data is incomplete");
@@ -168,7 +169,7 @@ void PrintJobRecovery::prepare() {
 /**
  * Save the current machine state to the power-loss recovery file
  */
-void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=POWER_LOSS_ZRAISE*/, const bool raised/*=false*/) {
+void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=POWER_LOSS_ZRAISE*/, const bool raised/*=false*/, const uint8_t source/*=0*/) {
 
   // We don't check IS_SD_PRINTING here so a save may occur during a pause
 
@@ -208,6 +209,7 @@ void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=POW
     info.zraise = zraise;
     info.flag.raised = raised;                      // Was Z raised before power-off?
     info.print_progress = card.percentDone();       // Anycubic: for the recovery page
+    info.save_source = source ? source : (force ? 3 : 1);   // Kobra Max: 1 layer change, 2 outage, 3 pause / forced
 
     TERN_(GCODE_REPEAT_MARKERS, info.stored_repeat = repeat);
     TERN_(HAS_HOME_OFFSET, info.home_offset = home_offset);
@@ -322,7 +324,7 @@ void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=POW
 
     // Save the current position, distance that Z was (or should be) raised,
     // and a flag whether the raise was already done here.
-    if (IS_SD_PRINTING()) save(true, zraise, ENABLED(BACKUP_POWER_SUPPLY));
+    if (IS_SD_PRINTING()) save(true, zraise, ENABLED(BACKUP_POWER_SUPPLY), 2);   // 2 = saved by the outage detection
 
     // Now the targets can go too
     thermalManager.disable_all_heaters();
@@ -640,6 +642,7 @@ void PrintJobRecovery::resume() {
         DEBUG_EOL();
 
         DEBUG_ECHOLNPGM("feedrate: ", info.feedrate);
+        DEBUG_ECHOLNPGM("saved_by: ", info.save_source == 1 ? "layer change" : (info.save_source == 2 ? "outage (power-loss sensor)" : (info.save_source == 3 ? "pause / forced" : "unknown")));
 
         DEBUG_ECHOLNPGM("zraise: ", info.zraise, " ", info.flag.raised ? "(before)" : "");
 

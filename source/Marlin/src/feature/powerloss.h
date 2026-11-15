@@ -137,6 +137,7 @@ typedef struct {
   } flag;
 
   uint8_t print_progress;       // Anycubic: percent done when saved (shown on the recovery page)
+  uint8_t save_source;          // Kobra Max: who wrote this data: 1 = layer change, 2 = outage (power-loss sensor), 3 = pause / forced save
 
   uint8_t valid_foot;
 
@@ -199,7 +200,7 @@ class PrintJobRecovery {
     static void cancel() { purge(); }
 
     static void load();
-    static void save(const bool force=ENABLED(SAVE_EACH_CMD_MODE), const float zraise=POWER_LOSS_ZRAISE, const bool raised=false);
+    static void save(const bool force=ENABLED(SAVE_EACH_CMD_MODE), const float zraise=POWER_LOSS_ZRAISE, const bool raised=false, const uint8_t source=0);
 
     #if PIN_EXISTS(POWER_LOSS)
       // Anycubic: the sense pin (PC2) sits on a 1:11 divider from the 24 V rail, about 2.2 V when healthy, so a digital
