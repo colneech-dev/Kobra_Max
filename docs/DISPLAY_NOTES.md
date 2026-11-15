@@ -304,7 +304,7 @@ block as `[w][h][hdr_len][data_len] + JPEG`, inserts padding so the JPEG header 
 highest ID as the count, then computes the CRC over bytes 8.. and stores it at 6-7. It also warns "need zero
 padding" when a picture would straddle a 16 MB flash-address boundary (irrelevant at our sizes). This tool
 writes a 4096-byte header/table area; the IDE's own ICL tool (what produced our library) uses a shorter,
-exact-size table — the display accepts both. (`Movie2ICL.exe`, which made the old `34_BootAnim.icl` - now in `tools/archive/` - uses a different
+exact-size table — the display accepts both. (`Movie2ICL.exe`, which made the old `34_BootAnim.icl` - now only in the git history (it was in `tools/archive/`) - uses a different
 CRC variant that we did not decode.)
 
 **Writing it ourselves (experimental) [RE]:** `tools/build_icl.py` builds a library from BMPs: it takes the
@@ -510,7 +510,7 @@ selection marker, the Terminal font. (Proven on hardware since: spinner, Move Ax
   returns to its page after playing, `Pic_Begin < Pic_End`, `ICL_LIB_ID 0` = the background library;
   *Animation Icon* is a different, VP-driven control. (Since solved differently: the boot frames are pictures 50-114
   inside `16_68_.icl`, played by the untouched stock record; see "Boot animation" in Part 6. The old Movie2ICL
-  `34_BootAnim.icl` is in `tools/archive/`.) The old 1-based table
+  `34_BootAnim.icl` is only in the git history, it was in `tools/archive/`.) The old 1-based table
   bug and the library/ICO flash-slot overlap may have contributed — neither was known at the time.
 * **`22_Config.bin` regenerated from a fresh IDE project** — display would not boot. Probably misattributed: at that time the
   file overlapped the picture library's slots (see 2.4). It is no longer shipped.
@@ -568,7 +568,7 @@ there is no fallback; a missing font stops the tools).
 | **`generate_select_icons.py`** | The orange "selected" copies of the Move Axes step buttons (`DWIN_SET/select_icons/`, library `34_SEL.icl`). | after changing `STEP_SIZES` / button layout |
 | **`generate_boot_animation.py`** | Draws the boot frames (pictures `BOOT_FIRST..BOOT_LAST`: flame, title, progress bar) and picture 50 (= frame 0) into `DWIN_SET/`. | after changing the animation or `BOOT_*` |
 | **`update_dgus_excel.py`** | Legacy. Keeps `DGUS/DisplayConfig.xls` / `TouchConfig.xls` in step with the custom pages as human-readable documentation (the GUI path that would regenerate 13/14 from them is bypassed). | rarely |
-| `archive/` | One-off `dgus_tft.cpp` migration scripts (already applied, absolute paths: do not run) and the old Movie2ICL `34_BootAnim.icl`. See `tools/archive/README.md`. | — |
+| (removed) | The old one-off `dgus_tft.cpp` migration scripts and the old Movie2ICL `34_BootAnim.icl` were in `tools/archive/`; they are only in the git history now. | — |
 | `re/il_dump.ps1` | Reverse-engineering helper: disassembles .NET methods by reflection (PowerShell 7). Used on DWIN's `Excel2ICL.dll` to learn the library CRC. | see the header of the script |
 | `DWIN_CONTROLS_README.md` | Per-page touch-zone tables, **generated** by `generate_dwin_controls.py --doc`. | read-only reference |
 | `fonts/` | `fa-solid-900.ttf` (Font Awesome 6 Solid, committed). Segoe UI (`segoeui.ttf`, `segoeuib.ttf`) is required too but not committed (Microsoft licence): Windows has it; elsewhere copy it into `tools/fonts/` or set `KOBRA_FONT_DIR` (`tools/fonts/README.md`). | — |

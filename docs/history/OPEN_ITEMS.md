@@ -1,3 +1,5 @@
+> **HISTORICAL.** Written during development (see the file name and the release it mentions) and not maintained. For the current state read the [README](../../README.md), [MANUAL](../MANUAL.md) and [SETUP](../SETUP.md).
+
 # Open items (updated 2026-11-08, after release_v62)
 
 The full history of decisions and results is in `PLAN_REVIEW_2026-10-31.md`. This file is only what is still open.

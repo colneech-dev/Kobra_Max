@@ -125,7 +125,7 @@ def git_state():
     """(branch@sha, list of changed tracked files)."""
     try:
         ref = f"{git('rev-parse', '--abbrev-ref', 'HEAD')}@{git('rev-parse', '--short', 'HEAD')}"
-        dirty = [l for l in git("status", "--porcelain", "--untracked-files=no").splitlines() if l.strip()]
+        dirty = [l for l in git("status", "--porcelain").splitlines() if l.strip()]
         return ref, dirty
     except (OSError, subprocess.CalledProcessError):
         return "unknown", ["(git not available)"]
@@ -389,6 +389,8 @@ YOU NEED ONE SD CARD (two work too)
   * Formatted FAT32 with 4096-byte clusters (formatting erases it).
   * The same card can hold the DWIN_SET folder and firmware.bin: flash the display with it in the display's slot, then the
     mainboard with it in the printer's front slot.
+  * Use a card of 32 GB or less: Windows refuses to format larger cards as FAT32.
+  * Keep a copy of the stock Anycubic firmware.bin and display files before you flash this release, so you can go back.
 
 If anything goes wrong (blank, frozen or garbled display): power the printer OFF, wait 15-20 seconds (a quick off/on does
 not reset the display), then flash the last set that worked.
@@ -396,7 +398,7 @@ not reset the display), then flash the last set that worked.
 
 STEP 1 - Flash the display (DWIN_SET)
 -------------------------------------
-1. Format the display card: FAT32, allocation unit 4096 bytes. Windows, administrator command prompt (ERASES the card):
+1. Format the display card: FAT32, allocation unit 4096 bytes. Windows, administrator command prompt (ERASES the card; CHECK THE DRIVE LETTER FIRST, the wrong letter wipes that drive):
        format X: /q /fs:fat32 /a:4096
    With any other cluster size the display's blue screen reports 0 files and flashes nothing.
 2. Copy the DWIN_SET folder of this package to the card root (firmware.bin may be on the same card, see below):

@@ -1,3 +1,5 @@
+> **HISTORICAL.** Written during development (see the file name and the release it mentions) and not maintained. For the current state read the [README](../../README.md), [MANUAL](../MANUAL.md) and [SETUP](../SETUP.md).
+
 # Review and work plan — 2026-10-31
 
 Branch `kobra-max-hc32-2.1` (Marlin 2.1.2.9 + our HC32 HAL + DGUS display), after release_v46.

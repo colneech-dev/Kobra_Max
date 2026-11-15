@@ -777,7 +777,7 @@ for page_num, (n, expected_off) in sorted(updates.items()):
 ok_all = ok_all and got_count == NEW_COUNT
 
 # Records per page (TL-5). DWIN's guide gives 64 display records per page in the base mode; above that the last records
-# may not be drawn (the 9x9 mesh viewer has 85: test T7 of docs/REVIEW_PLAN_2026-11-08.md decides). Warn above 64,
+# may not be drawn (the 9x9 mesh viewer has 85: test T7 of docs/history/REVIEW_PLAN_2026-11-08.md decides). Warn above 64,
 # refuse above 128.
 REC_WARN, REC_MAX = 64, 128
 # Records that name a flash slot the picture library now covers (16-28): the stock font (24) and icon library (23) were

@@ -51,6 +51,7 @@ project/*.bin
 # Debugger files
 # define exception below if needed
 *.ini
+!platformio.ini
 
 # Backup files
 *.bak

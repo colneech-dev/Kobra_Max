@@ -1,0 +1,13 @@
+# Text files: git normalises line endings. Binary files are never touched.
+* text=auto
+*.bmp binary
+*.png binary
+*.jpg binary
+*.bin binary
+*.icl binary
+*.HZK binary
+*.DZK binary
+*.pdf binary
+*.ttf binary
+*.elf binary
+*.hex binary

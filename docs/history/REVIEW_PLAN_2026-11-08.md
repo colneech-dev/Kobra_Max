@@ -1,3 +1,5 @@
+> **HISTORICAL.** Written during development (see the file name and the release it mentions) and not maintained. For the current state read the [README](../../README.md), [MANUAL](../MANUAL.md) and [SETUP](../SETUP.md).
+
 # Review plan, 2026-11-08 (after release_v62)
 
 Source: five independent code reviews (Opus), each given one area and NO prior knowledge of the project, each comparing with upstream Marlin

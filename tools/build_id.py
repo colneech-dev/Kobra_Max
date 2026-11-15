@@ -10,7 +10,7 @@ def git(*args):
 
 try:
     ver = "2.1.2.9-hc32-" + git("rev-parse", "--short", "HEAD")
-    if git("status", "--porcelain", "--untracked-files=no"):
+    if git("status", "--porcelain"):
         ver += "-dirty"
 except Exception:
     ver = "2.1.2.9-hc32"

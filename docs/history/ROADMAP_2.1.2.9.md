@@ -1,3 +1,5 @@
+> **HISTORICAL.** Written during development (see the file name and the release it mentions) and not maintained. For the current state read the [README](../../README.md), [MANUAL](../MANUAL.md) and [SETUP](../SETUP.md).
+
 # Kobra Max firmware and display: roadmap on Marlin 2.1.2.9
 
 Written 2026-10-30 on branch `kobra-max-hc32-2.1`. Companion files: `docs/PLAN_2.1.2.9.md` (the immediate fix list) and

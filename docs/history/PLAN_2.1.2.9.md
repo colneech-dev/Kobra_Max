@@ -1,3 +1,5 @@
+> **HISTORICAL.** Written during development (see the file name and the release it mentions) and not maintained. For the current state read the [README](../../README.md), [MANUAL](../MANUAL.md) and [SETUP](../SETUP.md).
+
 # Marlin 2.1.2.9 port: fix plan (2026-10-30)
 
 Branch `kobra-max-hc32-2.1`. Background and what was already ported: `docs/UPGRADE_2.1.2.9.md`.
