@@ -58,8 +58,9 @@ void GcodeSuite::M413() {
       // Kobra Max: the power-loss sensor (PC2, 24 V through a 1:11 divider; healthy about 2700 counts, the detector fires below 2200)
       if (parser.seen_test('A')) {
         const uint16_t raw = power_monitor.getVoltsRaw(), lo = power_monitor.getVoltsRawMin();
-        SERIAL_ECHOLNPGM("Power sense: raw ", raw, " (about ", p_float_t(raw * 0.00887f, 1), " V), lowest ", lo, " (about ", p_float_t(lo * 0.00887f, 1),
-                         " V), outage fires below 2200 (about 19.5 V), fired ", power_monitor.getOutageEvents(), " time(s). M413 X clears the lowest / count.");
+        const uint16_t rv = uint32_t(raw) * 887UL / 10000UL, lv = uint32_t(lo) * 887UL / 10000UL;   // tenths of a volt
+        SERIAL_ECHOLNPGM("Power sense: raw ", raw, " (about ", rv / 10, ".", rv % 10, " V), lowest ", lo, " (about ", lv / 10, ".", lv % 10, " V)");
+        SERIAL_ECHOLNPGM("  outage fires below 2200 (about 19.5 V), fired ", power_monitor.getOutageEvents(), " time(s). M413 X clears the lowest / count.");
       }
       if (parser.seen_test('X')) power_monitor.resetOutageStats();
     #endif
