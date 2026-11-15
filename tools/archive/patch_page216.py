@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Patch dgus_tft.cpp to add thermal tuning page 216 support."""
 
-path = r'C:\Users\USER\Documents\GitHub\Kobra_Max\source\Marlin\src\lcd\extui\lib\anycubic_dgus\dgus_tft.cpp'
+path = r'source\Marlin\src\lcd\extui\lib\anycubic_dgus\dgus_tft.cpp'
 
 with open(path, 'rb') as f:
     raw = f.read()

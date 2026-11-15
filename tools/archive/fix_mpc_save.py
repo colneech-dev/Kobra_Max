@@ -2,7 +2,7 @@
 """Replace M306 T single-command enqueue with injectCommands_P sequence so M500
 runs automatically after MPC autotune completes. Also update the terminal echo."""
 
-path = r'C:\Users\USER\Documents\GitHub\Kobra_Max\source\Marlin\src\lcd\extui\lib\anycubic_dgus\dgus_tft.cpp'
+path = r'source\Marlin\src\lcd\extui\lib\anycubic_dgus\dgus_tft.cpp'
 
 with open(path, 'rb') as f:
     raw = f.read()

@@ -20,7 +20,7 @@ Fix 3 — term_push VP overflow:
   ProcessPanelRequest so command echoes stay within bounds.
 """
 
-path = r'C:\Users\USER\Documents\GitHub\Kobra_Max\source\Marlin\src\lcd\extui\lib\anycubic_dgus\dgus_tft.cpp'
+path = r'source\Marlin\src\lcd\extui\lib\anycubic_dgus\dgus_tft.cpp'
 
 with open(path, 'rb') as f:
     raw = f.read()

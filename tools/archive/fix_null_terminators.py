@@ -10,7 +10,7 @@ Also fixes the space vs null-char sentinel in the marquee scroll guard.
 """
 import re
 
-path = r'C:\Users\USER\Documents\GitHub\Kobra_Max\source\Marlin\src\lcd\extui\lib\anycubic_dgus\dgus_tft.cpp'
+path = r'source\Marlin\src\lcd\extui\lib\anycubic_dgus\dgus_tft.cpp'
 
 with open(path, 'rb') as f:
     raw = f.read()
