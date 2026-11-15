@@ -16,7 +16,7 @@ repository, so the two are not interchangeable; wabbitguy's older firmware is th
 * **`main`** holds the latest tested release (Marlin 2.1.2.9). **`kobra-max-hc32-2.1`** is where development happens; it is merged into
   `main` when a release has been built and tried on the printer. `kobra-max-hc32` (Marlin 2.0.8) stays as an older fallback.
   `master` is Anycubic's own `Kobra_Max` code: this repository is a GitHub fork of it, and `master` is left untouched.
-* Recommended release: **`release_v76`** (tag `release_v76`, see [Releases](#releases)).
+* Recommended release: **`release_v83`** (tag `release_v83`, see [Releases](#releases)).
 * Touch screen manual with a picture of every screen: **[docs/MANUAL.md](docs/MANUAL.md)**.
 * First-time set-up of a printer: **[docs/SETUP.md](docs/SETUP.md)**.
 
@@ -120,14 +120,15 @@ Full details and troubleshooting: [docs/SETUP.md](docs/SETUP.md). The display's 
 
 ## Status
 
-Developed and tested on one Kobra Max, 2026 (state as of release_v76, November 2026).
+Developed and tested on one Kobra Max, 2026 (state as of release_v83, November 2026).
 
 | Area | State |
 |---|---|
 | Boot, serial, touch, navigation, heaters, steppers, SD printing | Used on hardware |
 | 9 x 9 mesh, probe check, Z offset page, wizard, first-layer test (five squares printed well) | Used on hardware |
 | Flash settings, file browser, Terminal, thermal tuning, PID, case light, filament runout | Used on hardware |
-| File browser folders and the folder path in the title bar (release_v75) | Reported working, printing from inside a folder not confirmed |
+| File browser folders (folders listed last), the folder path in the title bar, printing from a folder | Used on hardware |
+| Lit buttons for the chosen preset or running action (Preheat, 5-point corners, Filament, K TEST, Thermal tuning, wizard) | Preheat and K TEST used; others built, in use since v81 |
 | Page-change read-back, Z page limit (2.5 mm below paper level), `Z offset:` log lines, serial flush before a flash save (v70-v75) | Built, in use since v75, not tested separately |
 | E-steps page, K test, pause and resume, PID tuning | Used on hardware (E-steps 420.90, K 0.60 on one printer) |
 | Power-loss recovery: layer saves, outage-sensor save, resume from the top level and from a folder, two alternating recovery files (v82, v83) | Used on hardware with real power cuts |
@@ -206,7 +207,9 @@ fails and leaves no folder when a check fails or when a tracked file changes dur
 
 | Release | Notes |
 |---|---|
-| **release_v76** | Recommended. Same firmware as v75; the release README now says one SD card is enough and the docs are the final set. |
+| **release_v83** | Recommended. Power-loss recovery tested with real cuts (layer saves every 3 s into two alternating files, outage-sensor save, resume from a folder), lit buttons, folders listed last, Preheat highlight, Marlin folder-path fix, SD sort, `M413 A` power-sense readout. Display files changed: flash both. |
+| release_v78 | Last release fully tested before the power-loss work (v79-v83). |
+| release_v76 | Same firmware as v75; the release README says one SD card is enough. |
 | release_v75 | Folders and path in the file browser, Z page -2.5 mm limit, page-change read-back, `Z offset:` log lines, flash-save serial flush, default Z probe offset 1.0 mm. Display files changed (new title text field). |
 | release_v72 | File browser fixes (8.3 names, resend), before folders. |
 | release_v69 | Last release used for long test sessions before the v70-v75 changes. |
