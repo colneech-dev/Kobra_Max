@@ -41,7 +41,12 @@ def main():
         img = Image.new("RGB", (w, h), gs.BG_DARK)
         gs.btn(ImageDraw.Draw(img), 0, 0, w - 1, h - 1, lbl, style="primary", icon=_ico)
         img.save(os.path.join(OUT, f"{uf.WZ_ICON_FIRST + i:03d}.bmp"))
-    print(f"{len(uf.STEP_SIZES)} step + {len(gs.WZ_STEPS)} wizard select icons written to {OUT}/")
+    for i, ((x1, y1, x2, y2), (lbl, hot, bed)) in enumerate(zip(uf.PREHEAT_BUTTONS, (uf.PREHEAT[1], uf.PREHEAT[2]))):   # the Preheat page's preset buttons (icons 8, 9)
+        w, h = x2 - x1 + 1, y2 - y1 + 1
+        img = Image.new("RGB", (w, h), gs.BG_DARK)
+        gs.btn(ImageDraw.Draw(img), 0, 0, w - 1, h - 1, f"{lbl}  {hot}/{bed} C", style="primary", icon=0xf06d)
+        img.save(os.path.join(OUT, f"{uf.PREHEAT_ICON_FIRST + i:03d}.bmp"))
+    print(f"{len(uf.STEP_SIZES)} step + {len(gs.WZ_STEPS)} wizard + 2 preheat select icons written to {OUT}/")
 
 
 if __name__ == "__main__":

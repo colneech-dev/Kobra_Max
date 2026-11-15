@@ -85,6 +85,10 @@ STEP_ICON_LIB     = 34
 STEP_SIZES        = (1, 10, 50)        # mm; the three Move Axes step buttons, left to right
 WZ_ICON_FIRST     = 3                  # the setup wizard's five orange step buttons are icons 3..7 of the same library (the first undone step is lit)
 STEP_BUTTONS      = ((8, 114, 90, 144), (94, 114, 176, 144), (182, 114, 264, 144))   # x1, y1, x2, y2
+# Preheat page (18 / 138): the two preset buttons (same rectangles as their touch zones). The one whose temperatures are the current targets is lit orange by a
+# Variable Icon over it (icons 8 and 9 of the same library, after the wizard's 3..7); the art itself draws both in the normal style.
+PREHEAT_BUTTONS   = ((8, 290, 132, 336), (140, 290, 264, 336))
+PREHEAT_ICON_FIRST = 8
 
 # BOOT_ANIMATION: the STOCK boot process. At power-on the display plays pictures 50..114 of the main library
 #   through the Image Animation record (0x5A04, frame time 5 = 40 ms) that the stock show file carries on

@@ -301,6 +301,7 @@ TXT_ES_STATUS   = 0x2FF0
 TXT_LA_K        = 0x3100
 TXT_LA_STATUS   = 0x3110
 TXT_WZ_STATUS0  = 0x3120   # setup wizard (172): status line under each of the 5 steps, 0x10 apart (0x3120 .. 0x3160)
+TXT_PRE_SEL0    = 0x3250   # Preheat (18/138): orange copy of the PLA button (Variable Icon); TXT_PRE_SEL1 = the second preset, 0x10 later
 TXT_WZ_SEL0     = 0x3200   # setup wizard (172): orange copy of each step button (Variable Icon), 0x10 apart (0x3200 .. 0x3240)
 TXT_P5_VALUE    = 0x3180   # 5-point Z (119): height above Z0
 TXT_P5_STATUS   = 0x3190
@@ -482,7 +483,8 @@ PAGE21 = STATUS_BAR + [make_text_record(TXT_WAIT_STATUS, 8, 342, 256, 20, cw=10,
 PAGE18 = STATUS_BAR + [
     make_text_record(TXT_PREHEAT_HOTEND, 8, 142, 256, 34, chars=9),
     make_text_record(TXT_PREHEAT_BED,    8, 234, 256, 34, chars=9),
-]
+] + ([make_variable_icon_record(TXT_PRE_SEL0 + i * 0x10, b[0], b[1], icon_id=uf.PREHEAT_ICON_FIRST + i, icon_lib=uf.STEP_ICON_LIB, show_when=1)
+      for i, b in enumerate(uf.PREHEAT_BUTTONS)] if uf.STEP_SELECT_ICONS else [])
 
 # Pages 19/139 — Filament
 # page_filament(): y starts at CONTENT_Y1+16=108; label(+16→124)

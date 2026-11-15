@@ -126,8 +126,11 @@ bool PrintJobRecovery::check() {
   if (card.isMounted()) {
     load();
     success = valid();
-    if (!success)
+    if (!success) {
+      // Kobra Max: say why (a rejected file used to vanish without a trace)
+      if (info.valid_head || info.valid_foot) SERIAL_ECHO_MSG("Power-loss data rejected: ", info.valid() ? "the file being printed was not found" : "the saved data is incomplete");
       cancel();
+    }
     else
       queue.inject(F("M1000S"));
   }

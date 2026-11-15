@@ -1011,6 +1011,7 @@ const char* CardReader::diveToFile(const bool update_cwd, MediaFile* &inDirPtr, 
     const uint8_t len = name_end - atom_ptr;
     char dosSubdirname[len + 1];
     strncpy(dosSubdirname, atom_ptr, len);
+    dosSubdirname[len] = ' ';   // Kobra Max fix: strncpy does not terminate, so a path through a folder (power-loss check, M23 /DIR/FILE) failed on stack garbage (also in upstream 2.1.2.9)
 
     if (echo) SERIAL_ECHOLN(dosSubdirname);
 

@@ -198,6 +198,7 @@ static void p5_open(const bool from_wizard);   // 5-point Z page (below)
 static void p5_leave_check();                  // restores unsaved 5-point corrections when the page is left any other way (below)
 static bool az_check_only = false;    // AUTO Z OFFSET run for the wizard: measure the spread, do not park for the manual step
 static void wizard_background();   // wizard / E-steps jobs, run from IdleLoop whatever page is shown
+static millis_t outage_dim_ms = 0;   // PowerLoss() switched the backlight off at this time (a real outage kills the power at once; a simulated one (M413 O) does not)
 static uint32_t wz_back(const uint32_t normal) {   // where a finished step goes: the wizard if it started there
   if (!wz_launch) return normal;
   wz_launch = false;
@@ -1480,6 +1481,7 @@ void DgusTFT::PowerLoss()  {
   for (uint8_t i = 0; i < 8; i++) {
     TFTSer.write(data_buf[i]);
   }
+  outage_dim_ms = millis() | 1;
 }
 
 // The "resume the print that the power cut interrupted?" page with the file name and the progress.
@@ -3589,6 +3591,18 @@ void DgusTFT::page17_handle(void)
   }
 }
 
+// Light the preset button whose temperatures are the current targets (a Variable Icon over it: 1 = shown). Nothing is lit after the heaters were
+// switched off or set to anything else.
+static void preheat_highlight(const bool force) {
+  static int8_t last = -2;
+  const uint16_t h = (uint16_t)getTargetTemp_celsius(E0), b = (uint16_t)getTargetTemp_celsius(BED);
+  const int8_t sel = (h == PREHEAT_1_TEMP_HOTEND && b == PREHEAT_1_TEMP_BED) ? 0 : ((h == PREHEAT_2_TEMP_HOTEND && b == PREHEAT_2_TEMP_BED) ? 1 : -1);
+  if (!force && sel == last) return;
+  last = sel;
+  DgusTFT::SendValueToTFT(sel == 0 ? 1 : 0, TXT_PRE_SEL0);
+  DgusTFT::SendValueToTFT(sel == 1 ? 1 : 0, TXT_PRE_SEL0 + 0x10);
+}
+
 void DgusTFT::page18_handle(void) //preheat
 {
   static millis_t flash_time = 0;
@@ -3616,10 +3630,13 @@ void DgusTFT::page18_handle(void) //preheat
       break;
   }
 
+  preheat_highlight(false);   // a tap lights its button at once
+
   if (millis() < (flash_time + 1500) ) {
     return;
   }
   flash_time = millis();
+  preheat_highlight(true);    // and again every pass of the refresh: the display drops values written right after a page change
 
   sprintf(str_buf, "%u/%u", (uint16_t)getActualTemp_celsius(E0), (uint16_t)getTargetTemp_celsius(E0));
   SendTxtToTFT(str_buf, TXT_PREHEAT_HOTEND);
@@ -5152,6 +5169,11 @@ static void wizard_background() {
   fl_poll();
   es_poll();
   page_confirm_poll();
+  if (outage_dim_ms && ELAPSED(millis(), outage_dim_ms + 3000UL)) {   // still running 3 s after the "outage": it was a simulated one, the display is only dark
+    outage_dim_ms = 0;
+    const uint8_t on[8] = { 0x5A, 0xA5, 0x05, 0x82, 0x00, 0x82, 0x64, 0x00 };   // backlight 100 % (register 0x82; not yet tried on the display)
+    for (uint8_t i = 0; i < 8; i++) TFTSer.write(on[i]);
+  }
   zoffset_trace();
 
   // a finished step is kept with the settings (the flows that do not save anyway leave this to the idle loop). Never while the Z offset page or the

@@ -858,7 +858,8 @@ def page_preheat():
         separator(draw, y);  y += 10
 
     (l1, h1, b1), (l2, h2, b2) = uf.PREHEAT[1], uf.PREHEAT[2]
-    btn(draw, MARGIN, y,       W // 2 - 4, y + 46, f"{l1}  {h1}/{b1} C", style='primary', icon=0xf06d)
+    assert (MARGIN, y, W // 2 - 4, y + 46) == tuple(uf.PREHEAT_BUTTONS[0]), "uf.PREHEAT_BUTTONS must match the Preheat layout"
+    btn(draw, MARGIN, y,       W // 2 - 4, y + 46, f"{l1}  {h1}/{b1} C", style='normal',  icon=0xf06d)   # (the selected one is lit orange by a Variable Icon)
     btn(draw, W // 2 + 4, y, W - MARGIN,   y + 46, f"{l2}  {h2}/{b2} C", style='normal',  icon=0xf06d)
     footer_1btn(draw, "BACK", style='ghost')
     return img

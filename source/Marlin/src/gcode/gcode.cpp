@@ -209,7 +209,7 @@ void GcodeSuite::get_destination_from_command() {
       destination.e = current_position.e;
   #endif
 
-  #if ENABLED(POWER_LOSS_RECOVERY) && !PIN_EXISTS(POWER_LOSS)
+  #if ENABLED(POWER_LOSS_RECOVERY)   // Kobra Max: also WITH a power-loss pin. The outage save has only the milliseconds the board holds power (a real cut left no file, 2026-11-15), so a layer-change save is the safety net
     // Only update power loss recovery on moves with E
     if (recovery.enabled && IS_SD_PRINTING() && seen.e && (seen.x || seen.y))
       recovery.save();
