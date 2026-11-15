@@ -53,7 +53,7 @@ void GcodeSuite::M413() {
     if (parser.seen_test('D')) recovery.debug(F("M413"));
     if (parser.seen_test('O')) recovery._outage(true);
     if (parser.seen_test('C')) (void)recovery.check();
-    if (parser.seen_test('E')) SERIAL_ECHOF(recovery.exists() ? F("PLR Exists\n") : F("No PLR\n));
+    if (parser.seen_test('E')) SERIAL_ECHOF(recovery.exists() ? F("PLR Exists\n") : F("No PLR\n"));
     #if ENABLED(POWER_MONITOR_VOLTAGE)
       // Kobra Max: the power-loss sensor (PC2, 24 V through a 1:11 divider; healthy about 2700 counts, the detector fires below 2200)
       if (parser.seen_test('A')) {
