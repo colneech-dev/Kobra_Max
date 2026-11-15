@@ -71,16 +71,17 @@ All other screens, button by button: [docs/MANUAL.md](docs/MANUAL.md).
 key (to check that the print head is tight); about two hours for flashing and the first set-up. No programmer or IDE is needed to flash.
 Keep a copy of the stock firmware and display files first (see [Going back to stock](#going-back-to-stock-firmware)).
 
-**Release folders are not stored in this repository** (they are git-ignored). Build one yourself (see [Build](#build)) or use a
-`release_vN` folder or zip you were given. **Do not copy this repository's own `DWIN_SET/` folder to the display:** it holds source
-files with the stock names; the release's `DWIN_SET/` is the one to flash.
+**Download a release:** [Releases page](https://github.com/colneech-dev/Kobra_Max/releases) (the zip holds `firmware.bin` and the `DWIN_SET`
+folder, nothing else). You can also build one yourself (see [Build](#build)); release folders are not stored in the repository (they are
+git-ignored). **Do not copy this repository's own `DWIN_SET/` folder to the display:** it holds source files with the stock names; the
+release's `DWIN_SET/` is the one to flash.
 
 You need **one SD card**, FAT32 with 4096-byte clusters. The display and the mainboard are flashed in turn, and the same card can
 hold the release's `DWIN_SET` folder and `firmware.bin` (move the card between the display's slot and the printer's front slot). A
 second card does the same job if you prefer to keep them apart. The display files and the firmware must come from the **same release
 folder**.
 
-1. **Get a release** (see above). Each release folder has a `README.txt` with the exact steps for that release. Check that
+1. **Get a release** (see above). A release folder you built has a `README.txt` with the exact steps for that release. Check that
    `firmware.bin` is about 194 KB: an empty or tiny file has caused a failed flash before.
 2. **Flash the display first.** The SD card (FAT32, 4096-byte clusters) with the release's `DWIN_SET` folder at the root.
    Put it in the slot on the back of the display, power on, wait for the blue "END !" screen, power off for 15 to 20 seconds.
