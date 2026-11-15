@@ -303,8 +303,15 @@ static void soak_skip() {
 }
 // The bed stays on between the steps of one job (mesh, Z offset, 5-point, first layer test), so the soak is not lost; switched off by the idle
 // timeout or heaters_off_when_idle() once the window has run out.
-static millis_t bed_warm_until = 0;
-static void bed_warm_extend() { bed_warm_until = (millis() + AC_BED_WARM_MS) | 1; }
+static millis_t bed_warm_until = 0, bed_warm_since = 0;
+// A job renews the window, but not for ever: a job flag that stayed set (a lost status message, a page left in a strange way) would otherwise keep
+// the bed on without end. 3 hours covers the longest chain (mesh with soak, Z offset, 5-point, first layer). Thermal protection applies anyway.
+#define AC_BED_WARM_MAX_MS (3UL * 60UL * 60UL * 1000UL)
+static void bed_warm_extend() {
+  if (!bed_warm_since || !bed_warm_until || !PENDING(millis(), bed_warm_until)) bed_warm_since = millis() | 1;   // a new window
+  else if (millis() - bed_warm_since > AC_BED_WARM_MAX_MS) return;                                           // renewed for 3 hours: let it end
+  bed_warm_until = (millis() + AC_BED_WARM_MS) | 1;
+}
 static bool bed_warm() { return bed_warm_until && PENDING(millis(), bed_warm_until); }
 static bool ac_job_active();   // a mesh run, probe test, Z / 5-point move, first-layer or K test is under way (defined with the wizard code)
 
@@ -1820,6 +1827,14 @@ void DgusTFT::GoMovePage() {
 // G29 has finished and the new mesh is in place.
 void DgusTFT::LevelingDone() {
   mesh_changed();
+  // G29 has ended. If its "Ready" status message was never seen (a message lost or overwritten) but the run was never reported as failed, finish the
+  // run here: otherwise the page stays on "Leveling" (it has no buttons), the job stays active and the bed stays on.
+  if (!mesh_done_pending && printer_state == AC_printer_probing) {
+    SERIAL_ECHO_MSG("Mesh run ended without its Ready message, finishing it now");
+    probe_cnt = 0;
+    printer_state = AC_printer_idle;
+    mesh_done_pending = true;
+  }
   if (!mesh_done_pending) return;
   mesh_done_pending = false;
   ol_scan();   // a node that disagrees with its neighbours is probed again before the mesh is saved (ol_poll)
@@ -3422,6 +3437,14 @@ void DgusTFT::page17_handle(void)
   static float z_orig = 0;   // offset when the page was first changed; BACK restores it
 
   {
+    // The page was left some other way than BACK / SAVE (a pop-up, an error page): a stale z_change would make SAVE on the next visit add the start
+    // height to the saved offset. This handler runs on every pass while the page is shown, so a gap means a new visit.
+    static millis_t last_run = 0;
+    if (millis() - last_run > 1500) z_change = false;
+    last_run = millis();
+  }
+
+  {
     static millis_t status_ms = 0;
     if (millis() - status_ms > 500) {
       status_ms = millis();
@@ -3642,10 +3665,13 @@ void DgusTFT::page19_handle(void)   // Filament
       if (filament_running != FILA_NO_ACT) {
         // The commands that have not started are dropped. An extruder-only move in progress (the long load / unload feed, the purge) is
         // stopped at once; a move of X, Y or Z (homing, the lift) is left to finish: it must not be cut short.
-        queue.clear();
-        queue.injected_commands_P = nullptr;
-        queue.injected_commands[0] = '\0';
-        ui_fifo_n = 0;
+        // Not while a print runs (SD or a host such as OctoPrint): clearing the queue would drop its lines, and a queued heater-off tail or save with them.
+        if (!isPrintingFromMedia() && !printJobOngoing()) {
+          queue.clear();
+          queue.injected_commands_P = nullptr;
+          queue.injected_commands[0] = '\0';
+          ui_fifo_n = 0;
+        }
         if (stepper.axis_is_moving(E_AXIS) && !stepper.axis_is_moving(X_AXIS) && !stepper.axis_is_moving(Y_AXIS) && !stepper.axis_is_moving(Z_AXIS))
           quickstop_stepper();   // (stops, and brings the planner's position back to where the steppers are)
         filament_running = FILA_NO_ACT;
@@ -4915,7 +4941,7 @@ static void fl_poll() {
     // before it runs, so that is safe at any time); the SRAM buffer is left alone because its line is parsed in place and may be
     // running right now (at most two row lines). What is already in the planner still runs (a few seconds), then the nozzle
     // lifts and the heaters go off (FL_END). A G28 in progress cannot be interrupted: the stop follows it.
-    if (fl_stage == FL_PURGE || fl_stage == FL_SQUARES) ui_inject_P(nullptr);
+    if (fl_stage == FL_PURGE || fl_stage == FL_SQUARES) queue.injected_commands_P = nullptr;   // (ui_inject_P(nullptr) only queued an empty command BEHIND the running purge)
     fl_stage = FL_END;
   }
 
