@@ -4,6 +4,10 @@ Community firmware and a redesigned touch screen for the **Anycubic Kobra Max** 
 DWIN DGUS II 272 x 480 touch display, strain-gauge nozzle probe). It is Marlin 2.1.2.9 with the HC32 HAL, plus a rewritten
 display driver and a set of guided set-up tools. Everything is built from this repository with scripts, no vendor IDE needed.
 
+> **Based on [Marlin Firmware](https://github.com/MarlinFirmware/Marlin) 2.1.2.9** (GPLv3), the parent of this firmware.
+> Also derived from: Anycubic's official [Kobra_Max](https://github.com/ANYCUBIC-3D/Kobra_Max) firmware and DGUS display library, and
+> [wabbitguy's Kobra Max fork](https://github.com/wabbitguy/Kobra_Max). Credits and licence are at the end of this file.
+
 **Lineage.** The repository started from [wabbitguy's Kobra Max fork](https://github.com/wabbitguy/Kobra_Max) (Marlin 2.0.8, itself
 based on Anycubic's firmware) and its history is kept. This branch is now an independent project: a new Marlin 2.1.2.9 base with the
 HC32 HAL, a rewritten display driver and display set, and its own tools and releases. It does not track or merge wabbitguy's
