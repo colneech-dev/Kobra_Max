@@ -1361,7 +1361,7 @@ void CardReader::fileHasFinished() {
 #if ENABLED(POWER_LOSS_RECOVERY)
 
   bool CardReader::jobRecoverFileExists() {
-    const bool exists = recovery.file.open(&root, recovery.filename, O_READ);
+    const bool exists = isMounted() && recovery.file.open(&root, recovery.filename, O_READ);   // not before the card is mounted (upstream 172b9482, #28756)
     if (exists) recovery.file.close();
     return exists;
   }

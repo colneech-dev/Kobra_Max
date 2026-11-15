@@ -486,7 +486,7 @@ struct HeaterWatch {
   inline void restart(const celsius_t curr, const celsius_t tgt) {
     if (tgt && curr < tgt - HYSTERESIS) {
       target = _MIN(curr + INCREASE, tgt - HYSTERESIS);
-      next_ms = millis() + SEC_TO_MS(PERIOD);
+      next_ms = next_millis(millis() + SEC_TO_MS(PERIOD));
     }
     else
       next_ms = 0;
@@ -656,7 +656,7 @@ class Temperature {
         millis_t timeout_ms;
         bool timed_out;
         inline void update(const millis_t &ms) { if (!timed_out && timeout_ms && ELAPSED(ms, timeout_ms)) timed_out = true; }
-        inline void start(const millis_t &ms) { timeout_ms = millis() + ms; timed_out = false; }
+        inline void start(const millis_t &ms) { timeout_ms = next_millis(millis() + ms); timed_out = false; }
         inline void reset() { timeout_ms = 0; timed_out = false; }
         inline void expire() { start(0); }
       } heater_idle_t;
