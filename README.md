@@ -8,14 +8,14 @@ display driver and a set of guided set-up tools. Everything is built from this r
 > Also derived from: Anycubic's official [Kobra_Max](https://github.com/ANYCUBIC-3D/Kobra_Max) firmware and DGUS display library, and
 > [wabbitguy's Kobra Max fork](https://github.com/wabbitguy/Kobra_Max). Credits and licence are at the end of this file.
 
-**Lineage.** The repository started from [wabbitguy's Kobra Max fork](https://github.com/wabbitguy/Kobra_Max) (Marlin 2.0.8, itself
+**Lineage.** This is a GitHub fork of Anycubic's [Kobra_Max](https://github.com/ANYCUBIC-3D/Kobra_Max). The code started from [wabbitguy's Kobra Max fork](https://github.com/wabbitguy/Kobra_Max) (Marlin 2.0.8, itself
 based on Anycubic's firmware) and its history is kept. This branch is now an independent project: a new Marlin 2.1.2.9 base with the
 HC32 HAL, a rewritten display driver and display set, and its own tools and releases. It does not track or merge wabbitguy's
 repository, so the two are not interchangeable; wabbitguy's older firmware is the one for the original TriGorilla board.
 
 * **`main`** holds the latest tested release (Marlin 2.1.2.9). **`kobra-max-hc32-2.1`** is where development happens; it is merged into
-  `main` when a release has been built and tried on the printer. `kobra-max-hc32` (Marlin 2.0.8) and `master` (wabbitguy's original code)
-  stay as older fallbacks.
+  `main` when a release has been built and tried on the printer. `kobra-max-hc32` (Marlin 2.0.8) stays as an older fallback.
+  `master` is Anycubic's own `Kobra_Max` code: this repository is a GitHub fork of it, and `master` is left untouched.
 * Recommended release: **`release_v76`** (tag `release_v76`, see [Releases](#releases)).
 * Touch screen manual with a picture of every screen: **[docs/MANUAL.md](docs/MANUAL.md)**.
 * First-time set-up of a printer: **[docs/SETUP.md](docs/SETUP.md)**.
