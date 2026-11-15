@@ -121,3 +121,8 @@ DWIN_SET/spinner_icons/
 # Release builds use their own build folder (tools/build_release.py) so an IDE build in .pio cannot collide with them
 .pio_release/
 build_logs/
+
+# Vendor documents: kept on the developer's PC only (redistribution terms unclear). Links: docs/reference/README.md
+docs/reference/*.pdf
+docs/reference/*.txt
+source/Marlin/src/HAL/HC32/docs/*.pdf

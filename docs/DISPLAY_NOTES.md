@@ -581,7 +581,7 @@ there is no fallback; a missing font stops the tools).
 * **`DWIN_SET/*.base.*`** — the stock Anycubic files (touch, show, 22 config, picture library) that the
   scripts start from. Don't edit them. `DWINOS.bin`, `T5LCFG.CFG`, `0_DWIN_ASC.HZK`, `23_ICO.icl`,
   `24_FontSong14X14.DZK` are stock too.
-* **`docs/reference/T5L_DGUS_V2.8.pdf`** — DWIN's *T5L DGUSII Application Development Guide* (the
+* **`docs/reference/T5L_DGUS_V2.8.pdf`** (not in git; download it, see `docs/reference/README.md`) — DWIN's *T5L DGUSII Application Development Guide* (the
   authoritative spec; section numbers quoted in these notes refer to it) and
   **`T5L_DGUS_V2.8.txt`**, a text extraction for searching (`grep -n "Animation Icon"`).
   Original: <https://dwin-global.ir/downloads/T5L_DGUS_V2.8.pdf>.
