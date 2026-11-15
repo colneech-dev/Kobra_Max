@@ -39,7 +39,15 @@ bool PrintJobRecovery::enabled; // Initialized by settings.load
 
 MediaFile PrintJobRecovery::file;
 job_recovery_info_t PrintJobRecovery::info;
-const char PrintJobRecovery::filename[5] = "/PLR";
+char PrintJobRecovery::filename[6] = "/PLR0";
+uint8_t PrintJobRecovery::slot = 0;
+
+bool PrintJobRecovery::exists() {
+  bool found = false;
+  for (uint8_t s = 0; s < 2; s++) { use_slot(s); if (card.jobRecoverFileExists()) found = true; }
+  use_slot(slot);
+  return found;
+}
 uint8_t PrintJobRecovery::queue_index_r;
 uint32_t PrintJobRecovery::cmd_sdpos, // = 0
          PrintJobRecovery::sdpos[BUFSIZE];
@@ -129,7 +137,7 @@ bool PrintJobRecovery::check() {
     if (success) SERIAL_ECHO_MSG("Power-loss data found, saved by: ", info.save_source == 1 ? "layer change" : (info.save_source == 2 ? "outage (power-loss sensor)" : (info.save_source == 3 ? "pause / forced" : "unknown")));
     if (!success) {
       // Kobra Max: say why (a rejected file used to vanish without a trace)
-      if (card.jobRecoverFileExists())
+      if (exists())
         SERIAL_ECHO_MSG("Power-loss file found but not usable: ", (!info.valid_head && !info.valid_foot) ? "it is empty (power was cut while it was being written)" : (info.valid_head == info.valid_foot ? "the file being printed was not found" : "the saved data is incomplete"));
       cancel();
     }
@@ -144,18 +152,34 @@ bool PrintJobRecovery::check() {
  */
 void PrintJobRecovery::purge() {
   init();
-  card.removeJobRecoveryFile();
+  for (uint8_t s = 0; s < 2; s++) { use_slot(s); card.removeJobRecoveryFile(); }
+  use_slot(slot);
 }
 
 /**
  * Load the recovery data, if it exists
  */
 void PrintJobRecovery::load() {
-  if (exists()) {
-    open(true);
-    (void)file.read(&info, sizeof(info));
-    close();
+  // Kobra Max: read both files and take the newest valid one (the counter in valid_head counts the saves, 8 bit and wrapping)
+  job_recovery_info_t tmp[2];
+  bool have[2] = { false, false };
+  for (uint8_t s = 0; s < 2; s++) {
+    use_slot(s);
+    if (card.jobRecoverFileExists()) {
+      open(true);
+      have[s] = file.read(&tmp[s], sizeof(info)) == int16_t(sizeof(info));
+      close();
+    }
   }
+  int8_t pick = -1;
+  const bool ok0 = have[0] && tmp[0].valid(), ok1 = have[1] && tmp[1].valid();
+  if (ok0 && ok1) pick = (int8_t)(tmp[0].valid_head - tmp[1].valid_head) > 0 ? 0 : 1;
+  else if (ok0) pick = 0;
+  else if (ok1) pick = 1;
+  else if (have[0]) pick = 0;   // neither is valid: keep what is there so check() can say why
+  else if (have[1]) pick = 1;
+  if (pick >= 0) { memcpy((void*)&info, (const void*)&tmp[pick], sizeof(info)); slot = (uint8_t)pick; }   // (memcpy: info has a volatile member)
+  use_slot(slot);
   debug(F("Load"));
 }
 
@@ -174,7 +198,7 @@ void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=POW
 
   // We don't check IS_SD_PRINTING here so a save may occur during a pause
 
-  // Kobra Max: a layer-change save at most every 15 s. A slicer with Z-hop (the calicat profile) raised Z on every travel, each looked like a new layer and
+  // Kobra Max: a layer-change save at most every 3 s (two alternating files make that safe). A slicer with Z-hop (the calicat profile) raised Z on every travel, each looked like a new layer and
   // the file was rewritten about once a second; a power cut then very likely hit a write (two cuts in a row left an empty file, 2026-11-15).
   static millis_t quiet_until_ms = 0;
   if (!force && PENDING(millis(), quiet_until_ms)) return;
@@ -203,7 +227,7 @@ void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=POW
       next_save_ms = ms + SAVE_INFO_INTERVAL_MS;
     #endif
 
-    if (!force) quiet_until_ms = millis() + 15000UL;
+    if (!force) quiet_until_ms = millis() + 3000UL;
 
     // Set Head and Foot to matching non-zero values
     if (!++info.valid_head) ++info.valid_head; // non-zero in sequence
@@ -365,6 +389,8 @@ void PrintJobRecovery::write() {
 
   // Anycubic: no debug(F("Write")) dump here. DEBUG_POWER_LOSS_RECOVERY is on for M413 O, and the dump blocked ~50 ms on
   // the serial buffer in front of every save, including the one at the outage. M413 D prints it on request.
+  slot ^= 1;           // alternate files (see load())
+  use_slot(slot);
   open(false);
   file.seekSet(0);
   const int16_t ret = file.write(&info, sizeof(info));

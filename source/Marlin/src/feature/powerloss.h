@@ -147,7 +147,9 @@ typedef struct {
 
 class PrintJobRecovery {
   public:
-    static const char filename[5];
+    static char filename[6];       // Kobra Max: "/PLR0" or "/PLR1": saves alternate between two files, so a write cut short never destroys the only good copy
+    static uint8_t slot;           // the file the NEXT save goes to is the other one (load() sets this to the newest)
+    static void use_slot(const uint8_t s) { filename[4] = char('0' + s); }
 
     static MediaFile file;
     static job_recovery_info_t info;
@@ -189,7 +191,7 @@ class PrintJobRecovery {
     static void enable(const bool onoff);
     static void changed();
 
-    static bool exists() { return card.jobRecoverFileExists(); }
+    static bool exists();          // either file
     static void open(const bool read) { card.openJobRecoveryFile(read); }
     static void close() { file.close(); }
 

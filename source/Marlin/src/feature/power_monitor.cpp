@@ -42,6 +42,8 @@ uint8_t PowerMonitor::flags; // = 0
   pm_lpf_t<PowerMonitor::volts_adc_scale, PM_K_VALUE, PM_K_SCALE> PowerMonitor::volts;
   volatile uint16_t PowerMonitor::volts_raw = 0xFFFF;   // "full voltage" until the first sample arrives: no false outage at start-up
   volatile bool PowerMonitor::outage_low = false;
+  volatile uint16_t PowerMonitor::volts_raw_min = 0xFFFF;
+  volatile uint16_t PowerMonitor::outage_events = 0;
 #endif
 
 millis_t PowerMonitor::display_item_ms;

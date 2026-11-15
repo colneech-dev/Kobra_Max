@@ -54,6 +54,8 @@ private:
     static pm_lpf_t<volts_adc_scale, PM_K_VALUE, PM_K_SCALE> volts;
     static volatile uint16_t volts_raw;
     static volatile bool outage_low;
+    static volatile uint16_t volts_raw_min;   // Kobra Max diagnostics (M413 A): lowest raw reading since boot / the last reset
+    static volatile uint16_t outage_events;   //   and how many times the outage detector fired
   #endif
 
 public:
@@ -80,11 +82,17 @@ public:
     // Called from the temperature ISR with every new reading. Returns true while the supply looks like it is failing.
     bool add_voltage_sample(const uint16_t value) {
       volts.add_sample(value); volts_raw = value;
+      if (value < volts_raw_min) volts_raw_min = value;
+      const bool was_low = outage_low;
       outage_low = outage_check(value);
+      if (outage_low && !was_low && outage_events < 0xFFFF) outage_events++;
       return outage_low;
     }
     // Latest unfiltered ADC reading (12 bit). The power-loss detector needs the raw value: the filtered one lags by tens of samples.
     FORCE_INLINE static uint16_t getVoltsRaw() { return volts_raw; }
+    FORCE_INLINE static uint16_t getVoltsRawMin() { return volts_raw_min; }
+    FORCE_INLINE static uint16_t getOutageEvents() { return outage_events; }
+    FORCE_INLINE static void resetOutageStats() { volts_raw_min = 0xFFFF; outage_events = 0; }
 
     // Anycubic outage detection (PrintJobRecovery::outage() acts on it). The sense pin (PC2) sits on a 1:11 divider from the
     // 24 V rail, about 2.2 V when healthy. An outage: raw readings below ~19.5 V (2200 of 4095 counts) that fall 4 times (as the

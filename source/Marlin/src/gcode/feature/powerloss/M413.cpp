@@ -26,6 +26,9 @@
 
 #include "../../gcode.h"
 #include "../../../feature/powerloss.h"
+#if ENABLED(POWER_MONITOR_VOLTAGE)
+  #include "../../../feature/power_monitor.h"
+#endif
 #include "../../../module/motion.h"
 #include "../../../lcd/marlinui.h"
 
@@ -50,7 +53,16 @@ void GcodeSuite::M413() {
     if (parser.seen_test('D')) recovery.debug(F("M413"));
     if (parser.seen_test('O')) recovery._outage(true);
     if (parser.seen_test('C')) (void)recovery.check();
-    if (parser.seen_test('E')) SERIAL_ECHOF(recovery.exists() ? F("PLR Exists\n") : F("No PLR\n"));
+    if (parser.seen_test('E')) SERIAL_ECHOF(recovery.exists() ? F("PLR Exists\n") : F("No PLR\n));
+    #if ENABLED(POWER_MONITOR_VOLTAGE)
+      // Kobra Max: the power-loss sensor (PC2, 24 V through a 1:11 divider; healthy about 2700 counts, the detector fires below 2200)
+      if (parser.seen_test('A')) {
+        const uint16_t raw = power_monitor.getVoltsRaw(), lo = power_monitor.getVoltsRawMin();
+        SERIAL_ECHOLNPGM("Power sense: raw ", raw, " (about ", p_float_t(raw * 0.00887f, 1), " V), lowest ", lo, " (about ", p_float_t(lo * 0.00887f, 1),
+                         " V), outage fires below 2200 (about 19.5 V), fired ", power_monitor.getOutageEvents(), " time(s). M413 X clears the lowest / count.");
+      }
+      if (parser.seen_test('X')) power_monitor.resetOutageStats();
+    #endif
     if (parser.seen_test('V')) SERIAL_ECHOF(recovery.valid() ? F("Valid\n") : F("Invalid\n"));
   #endif
 }
