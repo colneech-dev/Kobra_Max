@@ -11,10 +11,11 @@ for the first homing.
 ## Before flashing
 
 1. On the OLD firmware, note your settings: send `M503` from the Terminal (or a USB host) and keep the output.
-2. Flash the display first, then the mainboard, exactly as the release's `README.txt` says. You need TWO SD cards:
-   * a SEPARATE card for the display, formatted FAT32 with a 4096-byte allocation unit (with any other cluster size the display's
-     blue update screen shows every count as 000 and flashes nothing);
-   * the printer's own card (front slot) for `firmware.bin`. Do not format it.
+2. Flash the display first, then the mainboard, exactly as the release's `README.txt` says. You need one SD card (two work too):
+   * formatted FAT32 with a 4096-byte allocation unit (with any other cluster size the display's blue update screen shows every
+     count as 000 and flashes nothing);
+   * the same card can hold the `DWIN_SET` folder (flashed from the slot on the back of the display) and `firmware.bin` (flashed from
+     the printer's front slot). Move the card between the two slots.
 3. Before each flash power the printer off completely and wait 15 to 20 seconds (a quick off/on does not reset the display).
 4. Once the new firmware has started it renames `firmware.bin` on the card to `firmware.cur`, so the next power-up does not flash
    it again. To flash the same file again, copy `firmware.bin` onto the card again.

@@ -55,7 +55,7 @@ All other screens, button by button: [docs/MANUAL.md](docs/MANUAL.md).
 
 ## Install
 
-**You need:** a Kobra Max with the TriGorilla Pro A board; **two microSD cards** and a card reader; a PC to format one card
+**You need:** a Kobra Max with the TriGorilla Pro A board; **one microSD card** (a second one is optional) and a card reader; a PC to format the card
 (Windows: `format X: /q /fs:fat32 /a:4096`; elsewhere any tool that makes FAT32 with 4096-byte clusters); a strip of paper and a hex
 key (to check that the print head is tight); about two hours for flashing and the first set-up. No programmer or IDE is needed to flash.
 Keep a copy of the stock firmware and display files first (see [Going back to stock](#going-back-to-stock-firmware)).
@@ -64,14 +64,16 @@ Keep a copy of the stock firmware and display files first (see [Going back to st
 `release_vN` folder or zip you were given. **Do not copy this repository's own `DWIN_SET/` folder to the display:** it holds source
 files with the stock names; the release's `DWIN_SET/` is the one to flash.
 
-You need **two SD cards**: one for the display and the printer's own card for the firmware. The display files and the firmware must
-come from the **same release folder**.
+You need **one SD card**, FAT32 with 4096-byte clusters. The display and the mainboard are flashed in turn, and the same card can
+hold the release's `DWIN_SET` folder and `firmware.bin` (move the card between the display's slot and the printer's front slot). A
+second card does the same job if you prefer to keep them apart. The display files and the firmware must come from the **same release
+folder**.
 
 1. **Get a release** (see above). Each release folder has a `README.txt` with the exact steps for that release. Check that
    `firmware.bin` is about 194 KB: an empty or tiny file has caused a failed flash before.
-2. **Flash the display first.** A separate SD card, FAT32 with 4096-byte clusters, with the release's `DWIN_SET` folder at the root.
+2. **Flash the display first.** The SD card (FAT32, 4096-byte clusters) with the release's `DWIN_SET` folder at the root.
    Put it in the slot on the back of the display, power on, wait for the blue "END !" screen, power off for 15 to 20 seconds.
-3. **Flash the mainboard.** Copy `firmware.bin` to the printer's own SD card (front slot), power on. The printer renames the file to
+3. **Flash the mainboard.** Copy `firmware.bin` to the root of the card, put the card in the printer's front slot, power on. The printer renames the file to
    `firmware.cur` after it has flashed it.
 4. **Check** System > ABOUT: it must show the release name (`display set: release_vN`) and the build id.
 5. **Set up** the printer with the [setup wizard](docs/SETUP.md): probe check, mesh, Z offset, 5-point, first layer test.

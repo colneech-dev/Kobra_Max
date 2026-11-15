@@ -384,10 +384,11 @@ FLASH THE DISPLAY FILES AND firmware.bin OF THE *SAME* RELEASE. The firmware sen
 define: a mixed set mis-routes buttons (the wizard keys were renumbered in release_v49 and v54). After flashing, open
 System > ABOUT and check both: "display set: {tag}" and the build id.
 
-YOU NEED TWO SD CARDS
----------------------
-  * The PRINTER'S OWN card (front slot of the printer) for firmware.bin. Do not format it.
-  * A SEPARATE card for the display, formatted FAT32 with 4096-byte clusters (formatting erases it).
+YOU NEED ONE SD CARD (two work too)
+-----------------------------------
+  * Formatted FAT32 with 4096-byte clusters (formatting erases it).
+  * The same card can hold the DWIN_SET folder and firmware.bin: flash the display with it in the display's slot, then the
+    mainboard with it in the printer's front slot.
 
 If anything goes wrong (blank, frozen or garbled display): power the printer OFF, wait 15-20 seconds (a quick off/on does
 not reset the display), then flash the last set that worked.
@@ -398,7 +399,7 @@ STEP 1 - Flash the display (DWIN_SET)
 1. Format the display card: FAT32, allocation unit 4096 bytes. Windows, administrator command prompt (ERASES the card):
        format X: /q /fs:fat32 /a:4096
    With any other cluster size the display's blue screen reports 0 files and flashes nothing.
-2. Copy the DWIN_SET folder of this package to the card root, nothing else:
+2. Copy the DWIN_SET folder of this package to the card root (firmware.bin may be on the same card, see below):
        DWIN_SET/13TouchFile.bin  14ShowFile.bin  DWINOS.bin  T5LCFG.CFG  0_DWIN_ASC.HZK
        DWIN_SET/16_68_.icl  29_ICO.icl  30_FontSong14X14.DZK  33_SPIN.icl  34_SEL.icl
    {lib_note}
@@ -412,7 +413,7 @@ STEP 1 - Flash the display (DWIN_SET)
 
 STEP 2 - Flash the mainboard (firmware.bin)
 -------------------------------------------
-1. Copy firmware.bin to the root of the printer's own card (no folder). Do not format the card.
+1. Copy firmware.bin to the root of the card (no folder).
 2. Power OFF the printer and wait 15-20 seconds.
 3. Card into the printer's FRONT slot, power ON. The bootloader flashes firmware.bin; the display then shows the boot
    animation and the main page.
