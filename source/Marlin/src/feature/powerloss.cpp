@@ -129,7 +129,8 @@ bool PrintJobRecovery::check() {
     if (success) SERIAL_ECHO_MSG("Power-loss data found, saved by: ", info.save_source == 1 ? "layer change" : (info.save_source == 2 ? "outage (power-loss sensor)" : (info.save_source == 3 ? "pause / forced" : "unknown")));
     if (!success) {
       // Kobra Max: say why (a rejected file used to vanish without a trace)
-      if (info.valid_head || info.valid_foot) SERIAL_ECHO_MSG("Power-loss data rejected: ", info.valid() ? "the file being printed was not found" : "the saved data is incomplete");
+      if (card.jobRecoverFileExists())
+        SERIAL_ECHO_MSG("Power-loss file found but not usable: ", (!info.valid_head && !info.valid_foot) ? "it is empty (power was cut while it was being written)" : (info.valid_head == info.valid_foot ? "the file being printed was not found" : "the saved data is incomplete"));
       cancel();
     }
     else
@@ -173,6 +174,11 @@ void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=POW
 
   // We don't check IS_SD_PRINTING here so a save may occur during a pause
 
+  // Kobra Max: a layer-change save at most every 15 s. A slicer with Z-hop (the calicat profile) raised Z on every travel, each looked like a new layer and
+  // the file was rewritten about once a second; a power cut then very likely hit a write (two cuts in a row left an empty file, 2026-11-15).
+  static millis_t quiet_until_ms = 0;
+  if (!force && PENDING(millis(), quiet_until_ms)) return;
+
   #if SAVE_INFO_INTERVAL_MS > 0
     static millis_t next_save_ms; // = 0
     millis_t ms = millis();
@@ -196,6 +202,8 @@ void PrintJobRecovery::save(const bool force/*=false*/, const float zraise/*=POW
     #if SAVE_INFO_INTERVAL_MS > 0
       next_save_ms = ms + SAVE_INFO_INTERVAL_MS;
     #endif
+
+    if (!force) quiet_until_ms = millis() + 15000UL;
 
     // Set Head and Foot to matching non-zero values
     if (!++info.valid_head) ++info.valid_head; // non-zero in sequence

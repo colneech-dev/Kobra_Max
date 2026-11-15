@@ -1370,7 +1370,8 @@ void CardReader::fileHasFinished() {
   void CardReader::openJobRecoveryFile(const bool read) {
     if (!isMounted()) return;
     if (recovery.file.isOpen()) return;
-    if (!recovery.file.open(&root, recovery.filename, read ? O_READ : O_CREAT | O_WRITE | O_TRUNC | O_SYNC))
+    // Kobra Max: no O_TRUNC. The data always has the same size, so it is overwritten in place; truncating first left the file empty for a moment on every save
+    if (!recovery.file.open(&root, recovery.filename, read ? O_READ : O_CREAT | O_WRITE | O_SYNC))
       openFailed(recovery.filename);
     else if (!read)
       echo_write_to_file(recovery.filename);
