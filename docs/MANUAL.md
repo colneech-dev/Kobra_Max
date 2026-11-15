@@ -1,6 +1,6 @@
 # Kobra Max touch screen manual
 
-Firmware line: Marlin 2.1.2.9 with the HC32 HAL (branch `kobra-max-hc32-2.1`), recommended release `release_v75`.
+Firmware line: Marlin 2.1.2.9 with the HC32 HAL (branch `main`), recommended release `release_v76`.
 This manual describes every screen of the printer's 272 x 480 touch display and what each button does.
 
 **About the pictures.** The screens below are the display art that is flashed to the printer (`DWIN_SET/*.bmp`, drawn by

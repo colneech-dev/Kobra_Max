@@ -1,7 +1,7 @@
 # Kobra Max (Marlin 2.1.2.9 port): first-time setup
 
 For the printer with the Anycubic TriGorilla Pro A mainboard and the DWIN touch display, after flashing a release
-(`release_vN`) from branch `kobra-max-hc32-2.1`. Everything below uses the printer's own touch screen; the Terminal page
+(`release_vN`) from branch `main` (development happens on `kobra-max-hc32-2.1`). Everything below uses the printer's own touch screen; the Terminal page
 (System > TERMINAL) takes the few G-code commands.
 
 The probe check, bed mesh, Z offset and first-layer test have been used on a printer; the 5-point page, K test, E-steps page and

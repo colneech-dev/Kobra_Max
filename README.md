@@ -13,8 +13,10 @@ based on Anycubic's firmware) and its history is kept. This branch is now an ind
 HC32 HAL, a rewritten display driver and display set, and its own tools and releases. It does not track or merge wabbitguy's
 repository, so the two are not interchangeable; wabbitguy's older firmware is the one for the original TriGorilla board.
 
-* Branch: `kobra-max-hc32-2.1` (the newer line). `kobra-max-hc32` (Marlin 2.0.8) stays as an older fallback.
-* Recommended release: **`release_v75`** (built from this branch, see [Releases](#releases)).
+* **`main`** holds the latest tested release (Marlin 2.1.2.9). **`kobra-max-hc32-2.1`** is where development happens; it is merged into
+  `main` when a release has been built and tried on the printer. `kobra-max-hc32` (Marlin 2.0.8) and `master` (wabbitguy's original code)
+  stay as older fallbacks.
+* Recommended release: **`release_v76`** (tag `release_v76`, see [Releases](#releases)).
 * Touch screen manual with a picture of every screen: **[docs/MANUAL.md](docs/MANUAL.md)**.
 * First-time set-up of a printer: **[docs/SETUP.md](docs/SETUP.md)**.
 
@@ -118,7 +120,7 @@ Full details and troubleshooting: [docs/SETUP.md](docs/SETUP.md). The display's 
 
 ## Status
 
-Developed and tested on one Kobra Max, 2026 (state as of release_v75, November 2026).
+Developed and tested on one Kobra Max, 2026 (state as of release_v76, November 2026).
 
 | Area | State |
 |---|---|
@@ -202,7 +204,8 @@ fails and leaves no folder when a check fails or when a tracked file changes dur
 
 | Release | Notes |
 |---|---|
-| **release_v75** | Recommended. Folders and path in the file browser, Z page -2.5 mm limit, page-change read-back, `Z offset:` log lines, flash-save serial flush, default Z probe offset 1.0 mm. Display files changed (new title text field). |
+| **release_v76** | Recommended. Same firmware as v75; the release README now says one SD card is enough and the docs are the final set. |
+| release_v75 | Folders and path in the file browser, Z page -2.5 mm limit, page-change read-back, `Z offset:` log lines, flash-save serial flush, default Z probe offset 1.0 mm. Display files changed (new title text field). |
 | release_v72 | File browser fixes (8.3 names, resend), before folders. |
 | release_v69 | Last release used for long test sessions before the v70-v75 changes. |
 
