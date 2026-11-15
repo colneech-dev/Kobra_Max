@@ -674,11 +674,11 @@ def page_thermal_tune():
         hot_lbl = f"PID  TUNE  HOTEND  {uf.PID_HOTEND_TUNE_TEMP}C"
         hot_sub = f"M303 E0 S{uf.PID_HOTEND_TUNE_TEMP} C8  |  hotend PID  |  ~5 min"
     btn(draw, MARGIN, 122, W - MARGIN, 200, hot_lbl,
-        style='primary', fnt=F_LABEL, icon=0xf06d)
+        style='normal', fnt=F_LABEL, icon=0xf06d)   # (the heater being tuned is lit orange by a Variable Icon)
     text_center(draw, (0, 206, W, 222), hot_sub, F_TINY, GRAY)
 
     btn(draw, MARGIN, 230, W - MARGIN, 308, f"PID  TUNE  BED  {uf.PID_BED_TUNE_TEMP}C",
-        style='teal', fnt=F_LABEL, icon=0xf236)
+        style='normal', fnt=F_LABEL, icon=0xf236)
     text_center(draw, (0, 314, W, 330),
                 f"M303 E-1 S{uf.PID_BED_TUNE_TEMP} C8  |  bed PID  |  ~8 min", F_TINY, GRAY)
 
@@ -753,11 +753,21 @@ def page_wizard():
     return img
 
 
+P5_NAMES = ["REAR LEFT", "REAR RIGHT", "FRONT LEFT", "FRONT RIGHT"]   # (not "BACK": that is the footer button)
+FILAMENT_LABELS = [("LOAD FILAMENT", 0xf063), ("EXTRUDE 30 MM", 0xf078), ("UNLOAD FILAMENT", 0xf062)]
+
+
+def tune_labels():
+    """The two Thermal Tuning button labels (hotend, bed), shared with the lit copies in generate_select_icons.py."""
+    hot = "MPC  AUTOTUNE  HOTEND" if uf.HAS_MPC else f"PID  TUNE  HOTEND  {uf.PID_HOTEND_TUNE_TEMP}C"
+    return hot, f"PID  TUNE  BED  {uf.PID_BED_TUNE_TEMP}C"
+
+
 def page_p5():
     img, draw = new_page()
     status_bar(draw)
     title_bar(draw, "5-POINT Z")
-    names = ["REAR LEFT", "REAR RIGHT", "FRONT LEFT", "FRONT RIGHT"]   # (not "BACK": that is the footer button)
+    names = P5_NAMES
     for i, nm in enumerate(names):
         btn(draw, *uf.P5_BTN[i], nm, style='normal', icon=0xf192)
         vp_area(draw, *uf.P5_CORR[i], 'stored -0.15')
@@ -830,7 +840,7 @@ def page_linadv():
     text_center(draw, (0, 318, W, 332), "K = 0: the lines are K 0.0 to 1.0.", F_TINY, GRAY)
     text_center(draw, (0, 332, W, 346), "K set: K-0.10 to K+0.10, steps of 0.02.", F_TINY, GRAY)
     text_center(draw, (0, 346, W, 360), "Best line: even width, clean ends. Enter its K.", F_TINY, GRAY)
-    btn(draw, MARGIN, 372, W // 2 - 4, 416, "K TEST", style='primary', icon=0xf201)
+    btn(draw, MARGIN, 372, W // 2 - 4, 416, "K TEST", style='normal', icon=0xf201)   # (lit orange and labelled STOP while the pattern prints: a Variable Icon)
     btn(draw, W // 2 + 4, 372, W - MARGIN, 416, "SKIP SOAK", style='normal')
     footer_2btn(draw, "BACK", "SAVE", l_style='ghost', r_style='primary')
     return img
@@ -873,7 +883,8 @@ def page_filament():
     text_left(draw, MARGIN, y, "HOTEND TEMPERATURE", F_SMALL, GRAY);  y += 16
     vp_area(draw, MARGIN, y, W - MARGIN, y + 34, '210/230 C');  y += 40
     vp_area(draw, MARGIN, y, W - MARGIN, y + 24, f'Heating to {uf.FILAMENT_TEMP} C...');  y += 32   # live status line
-    btn(draw, MARGIN, y, W - MARGIN, y + 40, "LOAD FILAMENT",   style='primary', icon=0xf063);   y += 48
+    assert y == uf.FILAMENT_BUTTONS[0][1], "uf.FILAMENT_BUTTONS must match the Filament layout"
+    btn(draw, MARGIN, y, W - MARGIN, y + 40, "LOAD FILAMENT",   style='normal',  icon=0xf063);   y += 48   # (the running action is lit orange by a Variable Icon)
     btn(draw, MARGIN, y, W - MARGIN, y + 40, "EXTRUDE 30 MM",   style='normal',  icon=0xf078);   y += 48
     btn(draw, MARGIN, y, W - MARGIN, y + 40, "UNLOAD FILAMENT", style='normal',  icon=0xf062);   y += 48
     btn(draw, MARGIN, y, W - MARGIN, y + 40, "STOP",            style='danger',  icon=0xf04d)

@@ -321,6 +321,10 @@
 #define TXT_LA_K        0x3100  // Linear advance page (174): K factor
 #define TXT_LA_STATUS   0x3110  //   result line
 #define TXT_WZ_STATUS0  0x3120  // Setup wizard page (172): status line of step 1, steps 2-5 follow 0x10 apart (0x3120 .. 0x3160)
+#define TXT_P5_SEL0     0x3270  // 5-point Z page (119): lit copy of each corner button (Variable Icons), 0x10 apart
+#define TXT_FIL_SEL0    0x32B0  // Filament page: lit LOAD / EXTRUDE / UNLOAD, 0x10 apart
+#define TXT_KT_SEL      0x32E0  // Linear advance page: lit STOP K TEST
+#define TXT_TUNE_SEL0   0x32F0  // Thermal tuning page: lit hotend / bed button, 0x10 apart
 #define TXT_PRE_SEL0    0x3250  // Preheat page (18): orange copy of the first preset button (a Variable Icon); the second one is at +0x10
 #define TXT_WZ_SEL0     0x3200  // Setup wizard page (172): orange copy of step 1 (a Variable Icon), steps 2-5 follow 0x10 apart (0x3200 .. 0x3240)
 #define TXT_P5_VALUE    0x3180  // 5-point Z page (119): height above Z0

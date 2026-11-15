@@ -161,13 +161,20 @@ FAN in 5 % steps and SPEED in 5 % steps, applied at once.
 
 ![Preheat](images/screens/138-preheat.png)
 
-Tap a preset to heat the nozzle and bed to it.
+Tap a preset to heat the nozzle and bed to it. The preset whose temperatures are the current targets is **lit orange** (below, PLA);
+nothing is lit once the heaters are off or set to something else.
+
+![Preheat, PLA lit](images/screens/138-preheat-pla-lit.png)
 
 ### Filament
 
 ![Filament](images/screens/139-filament.png)
 
-**LOAD FILAMENT**, **EXTRUDE 30 MM**, **UNLOAD FILAMENT** and **STOP**. The page shows the nozzle temperature and a status line;
+**LOAD FILAMENT**, **EXTRUDE 30 MM**, **UNLOAD FILAMENT** and **STOP**. The action that is waiting for the heat or running is **lit orange**.
+
+![Filament, LOAD lit](images/screens/139-filament-load-lit.png)
+
+ The page shows the nozzle temperature and a status line;
 the nozzle heats to 230 C first. LOAD feeds about 560 mm and then purges about 80 mm; UNLOAD pulls back about 660 mm (set for the
 long Bowden tube; the values are in `dgus_tft_defs.h`). Use EXTRUDE once the filament is loaded.
 
@@ -175,7 +182,11 @@ long Bowden tube; the values are in `dgus_tft_defs.h`). Use EXTRUDE once the fil
 
 ![Thermal tuning](images/screens/216-thermal-tuning.png)
 
-Runs PID autotune for the hotend (at 200 C) or the bed (at 60 C); the nozzle gets hot. It takes roughly 5 and 8 minutes (observed, not
+Runs PID autotune for the hotend (at 200 C) or the bed (at 60 C); the nozzle gets hot. The heater being tuned is **lit orange**.
+
+![Thermal tuning, hotend lit](images/screens/216-thermal-tuning-lit.png)
+
+ It takes roughly 5 and 8 minutes (observed, not
 fixed). The results are saved automatically.
 
 ### E-steps calibration *(little tested)*
@@ -191,8 +202,10 @@ fixed). The results are saved automatically.
 
 ![Linear advance](images/screens/174-linear-advance-k.png)
 
-Set K with `-0.1 / +0.1 / -0.01 / +0.01`, **K TEST** prints 11 lines to pick the best K from (with K = 0: K 0.0 to 1.0; with a K set:
-K-0.10 to K+0.10), **SKIP SOAK** skips the heat soak, **SAVE** stores it. Bowden tubes typically need K of about 0.5 to 1.5.
+Set K with `-0.1 / +0.1 / -0.01 / +0.01`. **K TEST** prints 11 lines to pick the best K from (with K = 0: K 0.0 to 1.0; with a K set:
+K-0.10 to K+0.10), **SKIP SOAK** skips the heat soak, **SAVE** stores it. While the pattern prints the K TEST button is **lit orange and says STOP K TEST**; tap it to stop.
+
+![Linear advance, test running](images/screens/174-linear-advance-k-lit.png) Bowden tubes typically need K of about 0.5 to 1.5.
 
 ---
 
@@ -243,7 +256,11 @@ the nozzle already touched before the paper did.
 
 ![5-point Z](images/screens/119-five-point-z.png)
 
-Paper test at the four corners (REAR LEFT, REAR RIGHT, FRONT LEFT, FRONT RIGHT). Tap a corner, lower the nozzle until the paper
+Paper test at the four corners (REAR LEFT, REAR RIGHT, FRONT LEFT, FRONT RIGHT). The corner being checked is **lit orange** (below, front left).
+
+![5-point Z, corner lit](images/screens/119-five-point-z-lit.png)
+
+ Tap a corner, lower the nozzle until the paper
 drags, **STORE POINT**. The corrections become a smooth surface over the mesh (at most 0.3 mm, zero at the centre).
 **RESET** removes all saved corrections, **SAVE** stores them, **BACK** discards unsaved ones, **SKIP SOAK** ends the heat wait. Redo after every new mesh.
 
@@ -252,7 +269,7 @@ drags, **STORE POINT**. The corrections become a smooth surface over the mesh (a
 ![Setup wizard](images/screens/172-setup-wizard.png)
 
 Five steps, done in order: (1) PROBE CHECK, (2) BED MESH, (3) Z OFFSET, (4) 5-POINT Z, (5) FIRST LAYER TEST. Each step shows its
-status; finished steps are remembered. The first test prints five 24 mm squares one layer high. Details: [SETUP.md](SETUP.md).
+status; finished steps are remembered. The next step to do is **lit orange**, and the first-layer test (step 5) is lit while it runs. The first test prints five 24 mm squares one layer high. Details: [SETUP.md](SETUP.md).
 
 ### Probe test pages
 

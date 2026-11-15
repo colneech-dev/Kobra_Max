@@ -301,6 +301,10 @@ TXT_ES_STATUS   = 0x2FF0
 TXT_LA_K        = 0x3100
 TXT_LA_STATUS   = 0x3110
 TXT_WZ_STATUS0  = 0x3120   # setup wizard (172): status line under each of the 5 steps, 0x10 apart (0x3120 .. 0x3160)
+TXT_P5_SEL0     = 0x3270   # 5-point Z (119): lit copy of each corner button, 0x10 apart (0x3270 .. 0x32A0)
+TXT_FIL_SEL0    = 0x32B0   # Filament (19/139): lit LOAD / EXTRUDE / UNLOAD, 0x10 apart (0x32B0 .. 0x32D0)
+TXT_KT_SEL      = 0x32E0   # Linear advance (174): lit STOP K TEST
+TXT_TUNE_SEL0   = 0x32F0   # Thermal tuning (216): lit hotend / bed button, 0x10 apart (0x32F0, 0x3300)
 TXT_PRE_SEL0    = 0x3250   # Preheat (18/138): orange copy of the PLA button (Variable Icon); TXT_PRE_SEL1 = the second preset, 0x10 later
 TXT_WZ_SEL0     = 0x3200   # setup wizard (172): orange copy of each step button (Variable Icon), 0x10 apart (0x3200 .. 0x3240)
 TXT_P5_VALUE    = 0x3180   # 5-point Z (119): height above Z0
@@ -489,7 +493,11 @@ PAGE18 = STATUS_BAR + [
 # Pages 19/139 — Filament
 # page_filament(): y starts at CONTENT_Y1+16=108; label(+16→124)
 #   vp(8,124,264,158) w=256 h=34
-PAGE19 = STATUS_BAR + [
+def _lit(vp0, rects, first):
+    return [make_variable_icon_record(vp0 + i * 0x10, r[0], r[1], icon_id=first + i, icon_lib=uf.STEP_ICON_LIB, show_when=1)
+            for i, r in enumerate(rects)] if uf.STEP_SELECT_ICONS else []
+
+PAGE19 = STATUS_BAR + _lit(TXT_FIL_SEL0, uf.FILAMENT_BUTTONS, uf.FILAMENT_ICON_FIRST) + [
     make_text_record(TXT_FILAMENT_TEMP, 8, 124, 256, 34, chars=9),
     make_text_record(TXT_FILAMENT_STATUS, 8, 164, 256, 24, chars=25),
 ]
@@ -560,7 +568,7 @@ PAGE215 = STATUS_BAR + [
 # Both call status_bar() but have no VP content areas — status bar only.
 PAGE216 = STATUS_BAR + [
     make_text_record(TXT_TUNE_STATUS, 8, 358, 256, 24, chars=25),   # "Hotend 143/200 tuning..." / "Hotend PID done, saved"
-]
+] + _lit(TXT_TUNE_SEL0, uf.TUNE_BUTTONS, uf.TUNE_ICON_FIRST)
 PAGE217 = STATUS_BAR
 
 def _tr(vp, box, chars, **kw):
@@ -589,11 +597,11 @@ PAGE172 = STATUS_BAR + [_tr(TXT_WZ_STATUS0 + i * 0x10, uf.WZ_STATUS(i), 25) for 
 PAGE119 = STATUS_BAR + [
     _tr(TXT_P5_VALUE, uf.P5_VALUE, 8),
     _tr(TXT_P5_STATUS, uf.P5_STATUS, 25),
-] + [_tr(TXT_P5_CORR0 + i * 0x10, uf.P5_CORR[i], 14) for i in range(4)]
+] + [_tr(TXT_P5_CORR0 + i * 0x10, uf.P5_CORR[i], 14) for i in range(4)] + _lit(TXT_P5_SEL0, uf.P5_BTN, uf.P5_ICON_FIRST)
 PAGE174 = STATUS_BAR + [
     _tr(TXT_LA_K, uf.LINADV_K, 8),
     _tr(TXT_LA_STATUS, uf.LINADV_STATUS, 25),
-]
+] + _lit(TXT_KT_SEL, [uf.KTEST_BUTTON], uf.KTEST_ICON)
 
 # ── Build complete patches list ────────────────────────────────────────────────
 

@@ -46,7 +46,21 @@ def main():
         img = Image.new("RGB", (w, h), gs.BG_DARK)
         gs.btn(ImageDraw.Draw(img), 0, 0, w - 1, h - 1, f"{lbl}  {hot}/{bed} C", style="primary", icon=0xf06d)
         img.save(os.path.join(OUT, f"{uf.PREHEAT_ICON_FIRST + i:03d}.bmp"))
-    print(f"{len(uf.STEP_SIZES)} step + {len(gs.WZ_STEPS)} wizard + 2 preheat select icons written to {OUT}/")
+    def lit(i, rect, label, **kw):
+        x1, y1, x2, y2 = rect
+        w, h = x2 - x1 + 1, y2 - y1 + 1
+        img = Image.new("RGB", (w, h), gs.BG_DARK)
+        gs.btn(ImageDraw.Draw(img), 0, 0, w - 1, h - 1, label, style="primary", **kw)
+        img.save(os.path.join(OUT, f"{i:03d}.bmp"))
+    for i, (rect, nm) in enumerate(zip(uf.P5_BTN, gs.P5_NAMES)):                    # 5-point Z corners (icons 10..13)
+        lit(uf.P5_ICON_FIRST + i, rect, nm, icon=0xf192)
+    for i, (rect, (lbl, ico)) in enumerate(zip(uf.FILAMENT_BUTTONS, gs.FILAMENT_LABELS)):   # Filament actions (14..16)
+        lit(uf.FILAMENT_ICON_FIRST + i, rect, lbl, icon=ico)
+    lit(uf.KTEST_ICON, uf.KTEST_BUTTON, "STOP  K TEST", icon=0xf04d)                 # K TEST while the pattern prints (17)
+    for i, (rect, lbl, ico) in enumerate(zip(uf.TUNE_BUTTONS, gs.tune_labels(), (0xf06d, 0xf236))):   # Thermal Tuning (18..19)
+        lit(uf.TUNE_ICON_FIRST + i, rect, lbl, fnt=gs.F_LABEL, icon=ico)
+    n = len(os.listdir(OUT))
+    print(f"{n} select icons written to {OUT}/")
 
 
 if __name__ == "__main__":

@@ -89,6 +89,15 @@ STEP_BUTTONS      = ((8, 114, 90, 144), (94, 114, 176, 144), (182, 114, 264, 144
 # Variable Icon over it (icons 8 and 9 of the same library, after the wizard's 3..7); the art itself draws both in the normal style.
 PREHEAT_BUTTONS   = ((8, 290, 132, 336), (140, 290, 264, 336))
 PREHEAT_ICON_FIRST = 8
+# More lit copies in the same library (a Variable Icon over the button, shown while it is the active one): 5-point Z corners 10..13, Filament page actions 14..16,
+# the K TEST button 17 (lit and labelled STOP while the pattern prints), Thermal Tuning heater buttons 18..19. Rectangles = the touch zones.
+P5_ICON_FIRST     = 10                 # = P5_BTN (below)
+FILAMENT_BUTTONS  = ((8, 196, 264, 236), (8, 244, 264, 284), (8, 292, 264, 332))   # LOAD, EXTRUDE, UNLOAD
+FILAMENT_ICON_FIRST = 14
+KTEST_BUTTON      = (8, 372, 132, 416)
+KTEST_ICON        = 17
+TUNE_BUTTONS      = ((8, 122, 264, 200), (8, 230, 264, 308))                          # hotend, bed
+TUNE_ICON_FIRST   = 18
 
 # BOOT_ANIMATION: the STOCK boot process. At power-on the display plays pictures 50..114 of the main library
 #   through the Image Animation record (0x5A04, frame time 5 = 40 ms) that the stock show file carries on

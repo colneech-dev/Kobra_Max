@@ -3603,6 +3603,15 @@ static void preheat_highlight(const bool force) {
   DgusTFT::SendValueToTFT(sel == 1 ? 1 : 0, TXT_PRE_SEL0 + 0x10);
 }
 
+// Show the lit copy of button `sel` (0..n-1, -1 = none) of a row of Variable Icons at vp0, 0x10 apart. Sent when it changes and again every 1.5 s: the display
+// drops values written right after a page change.
+static void sel_icons(const uint16_t vp0, const uint8_t n, const int8_t sel, int8_t &last, millis_t &ms) {
+  if (sel == last && !ELAPSED(millis(), ms)) return;
+  last = sel;
+  ms = millis() + 1500UL;
+  for (uint8_t i = 0; i < n; i++) DgusTFT::SendValueToTFT(i == sel ? 1 : 0, vp0 + i * 0x10);
+}
+
 void DgusTFT::page18_handle(void) //preheat
 {
   static millis_t flash_time = 0;
@@ -3698,6 +3707,12 @@ void DgusTFT::page19_handle(void)   // Filament
       filament_cmd = FILA_NO_ACT;
       flash_time = 0;
       break;
+  }
+
+  {  // the action that is waiting for the heat or running is lit
+    static int8_t last = -2; static millis_t ms = 0;
+    const filament_cmd_t act = filament_running != FILA_NO_ACT ? filament_running : filament_cmd;
+    sel_icons(TXT_FIL_SEL0, 3, act == FILA_IN ? 0 : (act == FILA_EXTRUDE ? 1 : (act == FILA_OUT ? 2 : -1)), last, ms);
   }
 
   if (millis() < (flash_time + 1000) ) {
@@ -4594,6 +4609,7 @@ static void tune_status_send() {
 void DgusTFT::page216_handle(void) {
   static millis_t flash_time = 0;
   const bool running = tune_state == TUNE_HOTEND || tune_state == TUNE_BED;
+  { static int8_t last = -2; static millis_t ms = 0; sel_icons(TXT_TUNE_SEL0, 2, tune_state == TUNE_HOTEND ? 0 : (tune_state == TUNE_BED ? 1 : -1), last, ms); }
 
   switch (key_value) {
     case 0:
@@ -4779,6 +4795,7 @@ static void la_show() {
 
 void DgusTFT::page174_handle(void) {
   static millis_t flash_time = 0;
+  { static int8_t last = -2; static millis_t ms = 0; sel_icons(TXT_KT_SEL, 1, kt_busy() ? 0 : -1, last, ms); }   // K TEST is lit (and says STOP) while the pattern prints
 
   switch (key_value) {
     case 0: break;
@@ -5286,6 +5303,7 @@ static void p5_leave_check() {
 
 void DgusTFT::page119_handle(void) {
   static millis_t flash_time = 0, poll_ms = 0;
+  { static int8_t last = -2; static millis_t ms = 0; sel_icons(TXT_P5_SEL0, 4, p5_pt, last, ms); }   // the corner being checked is lit
 
   // progress of the homing / move / heating / lowering (the queue is empty between the steps)
   if (millis() - poll_ms > 500) {
@@ -5566,7 +5584,7 @@ void DgusTFT::page172_handle(void) {
   // the first step that is not done is shown orange (an orange copy of its button, a Variable Icon, laid over it)
   int8_t next = -1;
   for (uint8_t i = 0; i < WZ_N && next < 0; i++) if (!wz_ok(i)) next = i;
-  for (uint8_t i = 0; i < WZ_N; i++) SendValueToTFT(i == next ? 1 : 0, TXT_WZ_SEL0 + i * 0x10);
+  for (uint8_t i = 0; i < WZ_N; i++) SendValueToTFT((i == next || (i == WZ_FIRST && fl_stage != FL_IDLE && !fl_k)) ? 1 : 0, TXT_WZ_SEL0 + i * 0x10);   // (the first-layer test is lit while it runs)
 }
 
 void DgusTFT::page217_handle(void) {
