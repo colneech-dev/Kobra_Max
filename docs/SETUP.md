@@ -4,8 +4,9 @@ For the printer with the Anycubic TriGorilla Pro A mainboard and the DWIN touch 
 (`release_vN`) from branch `kobra-max-hc32-2.1`. Everything below uses the printer's own touch screen; the Terminal page
 (System > TERMINAL) takes the few G-code commands.
 
-Many steps have not been tested on a printer yet: treat every step as a first run, stay near the machine and keep a hand on the
-power switch for the first homing.
+The probe check, bed mesh, Z offset and first-layer test have been used on a printer; the 5-point page, K test, E-steps page and
+power-loss resume have had little testing. Treat every step as a first run, stay near the machine and keep a hand on the power switch
+for the first homing.
 
 ## Before flashing
 
@@ -50,8 +51,8 @@ print or another step is running):
 
 **Mesh first, offset second.** The Z offset is only the small gap between the nozzle and the paper while the bed mesh is active
 (the mesh already holds the distance from the Z endstop to the bed). Set before the mesh, it would be counted twice and the nozzle
-would end up that much too low. For the same reason the manual Z page, the 5-point page and the first layer test refuse to start
-without a mesh.
+would end up that much too low. For the same reason the 5-point page and the first layer test refuse to start without a mesh, and MANUAL Z OFFSET and AUTO Z OFFSET
+ask to make one first.
 
 **The stale-mesh check.** Before the Z offset page, the 5-point page or the first layer test lowers the nozzle, the printer probes the
 bed (front-left mesh point and the centre) and compares with the mesh. If the bed is more than **0.5 mm** away from where the mesh

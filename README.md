@@ -46,19 +46,29 @@ All other screens, button by button: [docs/MANUAL.md](docs/MANUAL.md).
 
 ## Hardware this is for
 
-* Anycubic **Kobra Max** with the **TriGorilla Pro A** board (HC32F460, 256 KB flash) and the DWIN T5L DGUS II touch display.
-* A newer board revision with a micro-USB connector (TriGorilla Pro B) is reported to be different: it has **not** been tested.
+* Anycubic **Kobra Max** with the **TriGorilla Pro A** board (HC32F460, USB type B connector) and the DWIN T5L DGUS II touch display.
+* A newer board revision with a micro-USB connector (TriGorilla Pro B): the original 2.0.8 notes ([docs/LEGACY_2.0.8.md](docs/LEGACY_2.0.8.md))
+  report that Anycubic's firmware did not work on it. It has **not** been tested with this firmware.
 * Other Anycubic printers (Kobra, Kobra Go, Kobra 2) are **not** supported.
 
 ---
 
 ## Install
 
+**You need:** a Kobra Max with the TriGorilla Pro A board; **two microSD cards** and a card reader; a PC to format one card
+(Windows: `format X: /q /fs:fat32 /a:4096`; elsewhere any tool that makes FAT32 with 4096-byte clusters); a strip of paper and a hex
+key (to check that the print head is tight); about two hours for flashing and the first set-up. No programmer or IDE is needed to flash.
+Keep a copy of the stock firmware and display files first (see [Going back to stock](#going-back-to-stock-firmware)).
+
+**Release folders are not stored in this repository** (they are git-ignored). Build one yourself (see [Build](#build)) or use a
+`release_vN` folder or zip you were given. **Do not copy this repository's own `DWIN_SET/` folder to the display:** it holds source
+files with the stock names; the release's `DWIN_SET/` is the one to flash.
+
 You need **two SD cards**: one for the display and the printer's own card for the firmware. The display files and the firmware must
 come from the **same release folder**.
 
-1. **Get a release.** Build one (see [Build](#build)) or use a `release_vN` folder you were given. Each folder has a `README.txt`
-   with the exact steps for that release.
+1. **Get a release** (see above). Each release folder has a `README.txt` with the exact steps for that release. Check that
+   `firmware.bin` is about 194 KB: an empty or tiny file has caused a failed flash before.
 2. **Flash the display first.** A separate SD card, FAT32 with 4096-byte clusters, with the release's `DWIN_SET` folder at the root.
    Put it in the slot on the back of the display, power on, wait for the blue "END !" screen, power off for 15 to 20 seconds.
 3. **Flash the mainboard.** Copy `firmware.bin` to the printer's own SD card (front slot), power on. The printer renames the file to
@@ -69,13 +79,35 @@ come from the **same release folder**.
 If the display is blank or garbled after a flash: power off, wait 15 to 20 seconds, flash the last set that worked.
 Before flashing, send `M503` from a host or the Terminal and keep the output (your old settings).
 
+### Backing up and restoring settings
+
+`M503` prints the settings. To restore after a reset, send the `M92` (E-steps), `M301` and `M304` (PID), `M851` (Z probe offset),
+`M206` (home offset) and `M900` (linear advance K) lines from your saved output, then `M500`. The bed mesh is not worth restoring from
+text (it is tied to the Z offset and the bed condition): make a new one. A new release can change the settings layout; the firmware then
+restores defaults, so back up before each upgrade.
+
+### Going back to stock firmware
+
+Flash Anycubic's own display files and `firmware.bin` (from [ANYCUBIC-3D/Kobra_Max](https://github.com/ANYCUBIC-3D/Kobra_Max)) the same
+way: display card first, then the printer's card, with the 15 to 20 second power-off between. The settings this firmware keeps in two
+chip-flash sectors (`0x3C000`, `0x3E000`) are not used by the stock firmware. **This has not been tried on a printer** from this
+project: keep the stock files, and expect to redo the stock set-up.
+
+### What can go wrong
+
+* A bad display flash leaves the screen blank or garbled but the printer still runs: power off, wait 15 to 20 seconds, flash a set that
+  worked. The most common cause is an SD card with the wrong cluster size.
+* An empty or truncated `firmware.bin` fails to flash; the file is only renamed to `firmware.cur` after a successful start.
+* Display files and firmware from different releases mis-route buttons: always flash both from the same release.
+* Nothing here has been tested on the TriGorilla Pro B board.
+
 Full details and troubleshooting: [docs/SETUP.md](docs/SETUP.md). The display's file layout and quirks: [docs/DISPLAY_NOTES.md](docs/DISPLAY_NOTES.md).
 
 ---
 
 ## Status
 
-Developed and tested on one Kobra Max, 2026.
+Developed and tested on one Kobra Max, 2026 (state as of release_v75, November 2026).
 
 | Area | State |
 |---|---|
@@ -83,7 +115,7 @@ Developed and tested on one Kobra Max, 2026.
 | 9 x 9 mesh, probe check, Z offset page, wizard, first-layer test (five squares printed well) | Used on hardware |
 | Flash settings, file browser, Terminal, thermal tuning, PID, case light, filament runout | Used on hardware |
 | File browser folders and the folder path in the title bar (release_v75) | Reported working, printing from inside a folder not confirmed |
-| Page-change read-back, Z page -2.5 mm limit, `Z offset:` log lines, serial flush before a flash save (v70-v75) | Built, in use since v75, not tested separately |
+| Page-change read-back, Z page limit (2.5 mm below paper level), `Z offset:` log lines, serial flush before a flash save (v70-v75) | Built, in use since v75, not tested separately |
 | 5-point Z corrections, K test, E-steps page, power-loss resume | Built, little or no printing done with them |
 
 The last release that was used for longer test sessions before v70 is `release_v69`.
@@ -99,9 +131,16 @@ The last release that was used for longer test sessions before v70 is `release_v
   differences of 0.5 mm were seen. Make a new mesh if it keeps refusing.
 * **The display drops text** sent right after a page change; the firmware resends where it matters, but a screen may rarely need a tap.
 * **A save during a print is held** in memory and written when the printer is idle (a power cut before then loses it).
-* The watchdog timeout (about 21 s) has not been tuned. The firmware uses 90.7 % of the 256 KB flash.
+* The firmware (about 194 KB) uses 91 % of the 208 KB the build allows; the last two 8 KB sectors of the chip hold the settings. The
+  build is sized for a 256 KB part.
+* **Power-loss recovery has not been tested with a real power cut.** On RESUME the printer lifts 5 mm, homes and continues; check that
+  the nozzle is clear of the part.
+* **Thermal protection** is at Marlin's defaults (hotend 40 s / 4 C, bed 60 s); a false "thermal runaway" halt is possible with a
+  part-cooling fan (revert the setting in `Configuration_adv.h` if so).
 * The CI workflow on GitHub (`.github/workflows/display-and-firmware.yml`) had not run successfully before the last fix.
+* `docs/OPEN_ITEMS.md` and the plan files under `docs/` are working notes from earlier releases and partly out of date.
 
+Calibration order: tighten the print head, probe check, mesh, Z offset, 5-point, first-layer test, PID, E-steps, linear advance.
 Open items and review notes: [docs/OPEN_ITEMS.md](docs/OPEN_ITEMS.md), [docs/REVIEW_PLAN_2026-11-12.md](docs/REVIEW_PLAN_2026-11-12.md).
 
 ---
@@ -160,6 +199,21 @@ Every release folder holds `firmware.bin`, `DWIN_SET/` (display files), its own 
 
 ---
 
+## Questions
+
+* **Do I need a new mesh before every print?** No. Make one when the bed or plate changes; the stale-mesh check tells you.
+* **Different bed surface or plate?** Redo the mesh, the Z offset and the 5-point corrections.
+* **Can I print from OctoPrint or Pronterface?** A USB host can send G-code; the Pause / Resume / Stop buttons only act on prints from the SD card.
+* **Where are my settings?** In the chip's flash, not on the SD card.
+
+## Reporting problems and contributing
+
+When you report a problem, include the build id and display set from System > ABOUT, the `M115` line, your `M503` output and the
+Terminal log. Test reports from other Kobra Max printers are the most useful contribution: say which release and which pages you used.
+Display changes are made in `tools/` (`ui_features.py`, `generate_screens.py`, `patch_14showfile.py`) and checked by
+`tools/build_release.py`; keep the tree committed and clean when you build. Release source is the commit named in the release's
+`README.txt`.
+
 ## Credits and licence
 
 [Marlin Firmware](https://github.com/MarlinFirmware/Marlin) (GPLv3); Anycubic's official
@@ -168,4 +222,6 @@ Every release folder holds `firmware.bin`, `DWIN_SET/` (display files), its own 
 [docs/LEGACY_2.0.8.md](docs/LEGACY_2.0.8.md); the HC32F460 HAL for Marlin by shadow578 and contributors
 (`shadow578/framework-arduino-hc32f46x`); the 2.1.2.9 port, the display redesign and the tools by colneech-dev.
 
-Licensed under the **GNU General Public License v3** ([LICENSE](LICENSE)). Not affiliated with Anycubic.
+Licensed under the **GNU General Public License v3** ([LICENSE](LICENSE)). Not affiliated with Anycubic. The display art uses Font
+Awesome icons and is drawn with the Segoe UI font on the build machine (the font is not included); the display files derive from the
+Anycubic and wabbitguy display sets. `firmware.bin` is a derivative of GPL code; the source of a release is its commit.
