@@ -9,10 +9,10 @@ value and so on); the pictures show the empty boxes. They are not photos.
 
 **Status bar.** Every screen has a bar at the top with the nozzle temperature (left, flame) and the bed temperature (right, bed).
 
-**What has been tested.** Used on a Kobra Max: file browser, printing, tools, temperature, filament, thermal tuning (PID), the
-Terminal, probe check, bed mesh, Z offset page, setup wizard and first-layer test. Built and checked by the display cross-check, but
-with little or no printing done on them: **5-point Z, K test (linear advance), E-steps, power-loss resume**, and printing a file from
-inside a folder. Those pages are marked *(little tested)* below. See also the status table in the [README](../README.md#status).
+**What has been tested.** Used on a Kobra Max: file browser (including folders and printing from them), printing, pause and resume,
+tools, temperature, filament, thermal tuning (PID), E-steps, the K test, the Terminal, probe check, bed mesh, Z offset page, setup wizard,
+first-layer test and **power-loss recovery after real power cuts** (from the top level and from a folder). Built and checked by the display
+cross-check, but with little or no printing done on it: **5-point Z**. That page is marked *(little tested)* below. See also the status table in the [README](../README.md#status).
 
 Contents: [Main](#main-menu) · [Files and printing](#files-and-printing) · [Tools](#tools) · [Prepare](#prepare) ·
 [Leveling and Z offset](#leveling-and-z-offset) · [System](#system) · [Messages and errors](#messages-and-error-screens)
@@ -96,15 +96,20 @@ CANCEL goes back to the print, STOP PRINT ends it.
 
 OK returns to the main menu.
 
-### Power-loss recovery *(little tested)*
+### Power-loss recovery
 
 ![Power loss](images/screens/173-power-loss.png)
 
 Shown after power came back during a print. It names the file and progress. **RESUME** continues the print, **CANCEL** drops the
-recovery. (The recovery file is only written while `M413` is on, which is the default.) **Not yet tested with a real power cut.** On
-RESUME the printer lifts 5 mm, homes and continues: check that the nozzle is clear of the part first and do not rely on it for
-valuable prints. The recovery uses the folder the print was
-started from.
+recovery. (The recovery data is only written while `M413` is on, which is the default.) On RESUME the printer lifts 5 mm, homes
+and continues: check that the nozzle is clear of the part first.
+
+How it works: while printing, the firmware saves the print's position into two files on the SD card (`/PLR0` and `/PLR1`, alternating) at
+a layer change, at most every 3 seconds, so a write cut short never destroys the only good copy. When the supply voltage falls, the
+power-loss sensor makes one more save at the exact position. At boot the newest valid file is used. The boot log says which one it
+was (`saved by: outage (power-loss sensor)`, `layer change` or `pause / forced`). The recovery works for a file inside a folder.
+Tested with real power cuts on one printer; do not rely on it for valuable prints. `M413 A` (Terminal or host) shows the sensor's
+reading: about 24 V normally, and the detector fires below 19.5 V.
 
 ---
 
@@ -189,7 +194,7 @@ Runs PID autotune for the hotend (at 200 C) or the bed (at 60 C); the nozzle get
  It takes roughly 5 and 8 minutes (observed, not
 fixed). The results are saved automatically.
 
-### E-steps calibration *(little tested)*
+### E-steps calibration
 
 ![E-steps](images/screens/210-e-steps.png)
 
@@ -198,7 +203,7 @@ fixed). The results are saved automatically.
 3. Measure what is left and enter 120 minus that with the `-1 / +1 / -0.1 / +0.1` buttons.
 4. **SAVE**. The new steps per mm shows on the page.
 
-### Linear advance (ADVANCE K) *(little tested)*
+### Linear advance (ADVANCE K)
 
 ![Linear advance](images/screens/174-linear-advance-k.png)
 
@@ -317,7 +322,7 @@ wipes the settings without asking. **G29 LEVEL runs a bare G29** with no confirm
 instead. M500 SAVE is blocked while printing.
 
 Useful commands to type: `M119` (endstop / probe state), `M503` (show settings), `M500` (save to flash), `M851 Z` (probe offset),
-`M420 V` (mesh state), `M413 S1` / `S0` (power-loss recovery on / off), `M412` (filament runout sensor), `M115` (firmware version), `M48`
+`M420 V` (mesh state), `M413 S1` / `S0` (power-loss recovery on / off), `M413 A` (power-loss sensor reading), `M412` (filament runout sensor), `M115` (firmware version), `M48`
 (probe repeatability), `M600` (filament change, also usable in G-code).
 
 ### Factory reset

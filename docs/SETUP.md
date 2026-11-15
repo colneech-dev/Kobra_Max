@@ -94,8 +94,10 @@ centre of the bed. To stop it, tap step 5 again or press BACK: it finishes the m
 nozzle and switches the heaters off. The squares should be lightly squished: not see-through (too close), not round and lifting (too
 far). Adjust the offset in steps of 0.02 mm on the manual Z page and SAVE, or correct one corner on the 5-point page.
 
-**Power-loss test**, only when the first layer is good: start a short print and send `M413 O` from the Terminal. Then power-cycle and
-use the resume page.
+**Power-loss test**, only when the first layer is good: start a short, cheap print and switch the printer off at its power switch
+mid-print (you can also press PAUSE first: that writes the recovery file too). Switch on after 10 seconds: the POWER LOSS FOUND page should
+appear; check the nozzle is clear of the part, then tap RESUME. The simulated `M413 O` does not work for this: it ends the print, which
+deletes the recovery file at once.
 
 ## Tuning (after a first print works)
 

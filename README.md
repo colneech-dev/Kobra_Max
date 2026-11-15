@@ -129,7 +129,9 @@ Developed and tested on one Kobra Max, 2026 (state as of release_v76, November 2
 | Flash settings, file browser, Terminal, thermal tuning, PID, case light, filament runout | Used on hardware |
 | File browser folders and the folder path in the title bar (release_v75) | Reported working, printing from inside a folder not confirmed |
 | Page-change read-back, Z page limit (2.5 mm below paper level), `Z offset:` log lines, serial flush before a flash save (v70-v75) | Built, in use since v75, not tested separately |
-| 5-point Z corrections, K test, E-steps page, power-loss resume | Built, little or no printing done with them |
+| E-steps page, K test, pause and resume, PID tuning | Used on hardware (E-steps 420.90, K 0.60 on one printer) |
+| Power-loss recovery: layer saves, outage-sensor save, resume from the top level and from a folder, two alternating recovery files (v82, v83) | Used on hardware with real power cuts |
+| 5-point Z corrections | Built, little or no printing done with them |
 
 The last release that was used for longer test sessions before v70 is `release_v69`.
 
@@ -146,8 +148,8 @@ The last release that was used for longer test sessions before v70 is `release_v
 * **A save during a print is held** in memory and written when the printer is idle (a power cut before then loses it).
 * The firmware (about 194 KB) uses 91 % of the 208 KB the build allows; the last two 8 KB sectors of the chip hold the settings. The
   build is sized for a 256 KB part.
-* **Power-loss recovery has not been tested with a real power cut.** On RESUME the printer lifts 5 mm, homes and continues; check that
-  the nozzle is clear of the part.
+* **Power-loss recovery** has been tried with real power cuts on one printer (from the top level and from a folder). On RESUME the printer
+  lifts 5 mm, homes and continues; check that the nozzle is clear of the part, and do not rely on it for valuable prints.
 * **Thermal protection** is at Marlin's defaults (hotend 40 s / 4 C, bed 60 s); a false "thermal runaway" halt is possible with a
   part-cooling fan (revert the setting in `Configuration_adv.h` if so).
 * The CI workflow on GitHub (`.github/workflows/display-and-firmware.yml`) checks the display files and the package hashes; its firmware build job is allowed to fail (the PlatformIO download is flaky), so a green run does not prove the firmware builds. Releases are built locally with `tools/build_release.py`.
