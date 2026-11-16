@@ -154,7 +154,7 @@ The last release that was used for longer test sessions before v70 is `release_v
   lifts 5 mm, homes and continues; check that the nozzle is clear of the part, and do not rely on it for valuable prints.
 * **Thermal protection** is at Marlin's defaults (hotend 40 s / 4 C, bed 60 s); a false "thermal runaway" halt is possible with a
   part-cooling fan (revert the setting in `Configuration_adv.h` if so).
-* The CI workflow on GitHub (`.github/workflows/display-and-firmware.yml`) checks the display files and the package hashes; its firmware build job is allowed to fail (the PlatformIO download is flaky), so a green run does not prove the firmware builds. Releases are built locally with `tools/build_release.py`.
+* The CI workflow on GitHub (`.github/workflows/display-and-firmware.yml`) regenerates and checks the display files, builds the firmware on a clean machine and checks the framework package hashes and the vector table. It was green on 2026-11-16 (firmware build 176 s, flash 92.2 %). The firmware job is still marked allowed-to-fail, because the PlatformIO downloads can be flaky, and runs have so far started only when triggered by hand (Actions > display-and-firmware > Run workflow). Releases are built locally with `tools/build_release.py`.
 * The notes under `docs/history/` are working notes from earlier releases and are not maintained.
 
 Calibration order: tighten the print head, probe check, mesh, Z offset, 5-point, first-layer test, PID, E-steps, linear advance.
