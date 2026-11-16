@@ -1,0 +1,54 @@
+# Build a release package on GitHub's runner when a tag release_v* is pushed (or by hand), and keep it as a workflow artifact.
+# For a new tag it also creates a DRAFT release (never published automatically): check it, then publish it yourself.
+# A tag that already has a release is left alone (the hand-tested build stays the download); the artifact is still kept for comparison.
+name: release
+
+on:
+  push:
+    tags:
+      - "release_v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: python -m pip install platformio -r tools/requirements.txt
+
+      - name: Build the release (firmware, display set, every check)
+        run: python tools/build_release.py --out release_ci --script-icl
+
+      - name: Package (zip, firmware.bin, DWIN_SET.zip, SHA256SUMS.txt)
+        run: python tools/package_release.py release_ci dist "${GITHUB_REF_NAME}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-package
+          path: dist/*
+
+      - name: Draft release for a new tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists: left alone (the package is kept as a workflow artifact)."
+          else
+            printf '%s\n' \
+              "Automatic build of tag \`$TAG\` on GitHub (commit ${GITHUB_SHA::7}). **Draft: not yet tried on a printer.** Release notes to be completed by the maintainer." \
+              "" \
+              "The zip holds \`firmware.bin\` and the \`DWIN_SET\` folder; both are also offered separately. Check them with \`SHA256SUMS.txt\`." \
+              "Flash the display files and the firmware from the same release. See the README for the full steps and the warnings." > notes.md
+            gh release create "$TAG" dist/* --draft --verify-tag --title "$TAG" --notes-file notes.md
+          fi

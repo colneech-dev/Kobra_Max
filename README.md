@@ -71,8 +71,9 @@ All other screens, button by button: [docs/MANUAL.md](docs/MANUAL.md).
 key (to check that the print head is tight); about two hours for flashing and the first set-up. No programmer or IDE is needed to flash.
 Keep a copy of the stock firmware and display files first (see [Going back to stock](#going-back-to-stock-firmware)).
 
-**Download a release:** [Releases page](https://github.com/colneech-dev/Kobra_Max/releases) (the zip holds `firmware.bin` and the `DWIN_SET`
-folder, nothing else). You can also build one yourself (see [Build](#build)); release folders are not stored in the repository (they are
+**Download a release:** the [latest release](https://github.com/colneech-dev/Kobra_Max/releases/latest) (all releases:
+[Releases page](https://github.com/colneech-dev/Kobra_Max/releases)). The zip holds `firmware.bin` and the `DWIN_SET` folder, nothing else; both
+are also offered separately, with `SHA256SUMS.txt` to check them (`certutil -hashfile <file> SHA256` on Windows, `sha256sum -c SHA256SUMS.txt` elsewhere). You can also build one yourself (see [Build](#build)); release folders are not stored in the repository (they are
 git-ignored). **Do not copy this repository's own `DWIN_SET/` folder to the display:** it holds source files with the stock names; the
 release's `DWIN_SET/` is the one to flash.
 
@@ -187,6 +188,10 @@ regenerates every display file, cross-checks them, builds the picture and icon l
 fails and leaves no folder when a check fails or when a tracked file changes during the build. `python tools/build_release.py
 --package-hashes` prints the hashes of the PlatformIO framework packages, which release builds compare with
 `tools/expected_package_hashes.json` (the packages must be pristine).
+
+`python tools/package_release.py release_vN OUT_DIR` makes the download files (zip, `firmware.bin`, `DWIN_SET.zip`, `SHA256SUMS.txt`) from a release folder.
+Pushing a tag `release_v*` also runs the `release` workflow, which builds the package on GitHub and creates a **draft** release for a new tag (it never
+publishes by itself, and leaves a tag that already has a release alone).
 
 `M115` reports `2.1.2.9-hc32-<git hash>` (`-dirty` for uncommitted changes).
 
